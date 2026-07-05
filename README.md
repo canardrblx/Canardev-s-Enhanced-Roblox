@@ -54,6 +54,23 @@ Roblox's own Dark and Light, with a few custom themes below.
 </table>
 
 <details>
+<summary><b>Roblox Dark</b></summary>
+
+![Home](assets/screenshots/robloxdark/home.png)
+![Games](assets/screenshots/robloxdark/games.png)
+![Profile](assets/screenshots/robloxdark/profile.png)
+![Avatar](assets/screenshots/robloxdark/avatar.png)
+![Friends](assets/screenshots/robloxdark/friends.png)
+</details>
+
+<details>
+<summary><b>Roblox Light</b></summary>
+
+![Home](assets/screenshots/robloxlight/home.png)
+![Games](assets/screenshots/robloxlight/games.png)
+</details>
+
+<details>
 <summary><b>Grape</b></summary>
 
 ![Home](assets/screenshots/grape/home.png)

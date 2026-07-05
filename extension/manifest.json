@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Canardev's Enhanced Roblox",
-  "version": "0.25.8",
+  "version": "1.25.8",
   "description": "Makes Roblox look and feel better. Themes, redesigned pages, and more. Free, open source, no tracking.",
   "permissions": ["storage", "alarms"],
   "host_permissions": ["https://*.roblox.com/*", "https://discord.com/api/webhooks/*"],
