@@ -77,34 +77,67 @@
   const actions = CER.el("div", "cer-profile-actions");
   const play = CER.el("button", "btn-common-play-game-lg btn-primary-md cer-gp-play");
   play.appendChild(CER.el("span", "icon-common-play"));
-  const normalJoin = () => {
-    window.postMessage({ cer: "join-multiplayer", placeId }, location.origin);
-    setTimeout(() => (location.href = "roblox://experiences/start?placeId=" + placeId), 400);
-  };
+  // launch via Roblox's own GameLauncher only (the extra roblox:// deep link
+  // opened the app a SECOND time)
+  const normalJoin = () => window.postMessage({ cer: "join-multiplayer", placeId }, location.origin);
+  const joinInstance = (jobId) => window.postMessage({ cer: "join-instance", placeId, jobId }, location.origin);
+
   play.addEventListener("click", async () => {
     const settings = await CER.get();
     const region = settings.joinPrefs?.region;
     if (!region || region === "auto" || !CER.REGIONS?.[region]) return normalJoin();
-    // preferred region set: ask the worker to find a server there (it caps + throttles + cools down)
-    play.disabled = true;
-    CER.toast?.("Finding a server in " + CER.REGIONS[region] + "…");
-    const res = await new Promise((r) => {
-      try { CER.ext.runtime.sendMessage({ cer: "region-join", placeId, region }, r); } catch { r({ error: "failed" }); }
-    });
-    play.disabled = false;
-    if (res?.ok && res.jobId) {
-      window.postMessage({ cer: "join-instance", placeId, jobId: res.jobId }, location.origin);
-      setTimeout(() => (location.href = "roblox://experiences/start?placeId=" + placeId + "&gameInstanceId=" + res.jobId), 400);
-    } else if (res?.error === "busy") {
-      CER.toast?.("Still searching for a server. Give it a moment.", "error");
-    } else {
-      // empty game, no match, cooldown, or an error: never leave them stuck — join normally
-      if (res?.error === "notfound" || res?.error === "cooldown") {
-        CER.toast?.("No " + CER.REGIONS[region] + " server found. Joining a normal one.", "error");
-      }
-      normalJoin();
-    }
+    regionSearchModal(region, CER.REGIONS[region]);
   });
+
+  // Centered, blocking modal that shows live search progress (0/15, 1/15, ...)
+  // and, on failure, makes it clear you are NOT joining the chosen region.
+  function regionSearchModal(region, regionName) {
+    const backdrop = CER.el("div", "cer-update-backdrop");
+    const pop = CER.el("div", "cer-update-pop");
+    const title = CER.el("div", "cer-update-title", "Finding a " + regionName + " server");
+    const sub = CER.el("div", "cer-update-sub", "Checking servers 0/15");
+    pop.append(title, sub);
+    backdrop.appendChild(pop);
+    document.body.appendChild(backdrop);
+
+    let port = null;
+    try { port = CER.ext.runtime.connect({ name: "region-join" }); } catch {}
+    if (!port) { backdrop.remove(); return normalJoin(); }
+
+    port.onMessage.addListener((m) => {
+      if (m.progress != null) {
+        sub.textContent = "Checking servers " + m.progress + "/" + (m.total || 15);
+        return;
+      }
+      if (!m.done) return;
+      if (m.ok && m.jobId) {
+        title.textContent = "Joining a " + regionName + " server";
+        sub.textContent = "Opening Roblox";
+        joinInstance(m.jobId);
+        setTimeout(() => backdrop.remove(), 1600);
+      } else if (m.error === "empty") {
+        backdrop.remove();
+        normalJoin(); // game has no servers at all — just start one
+      } else {
+        const probeBroken = m.error === "notfound" && m.detected === 0;
+        title.textContent = probeBroken ? "Region check failed" : "No " + regionName + " server found";
+        sub.textContent =
+          m.error === "cooldown"
+            ? "Too many searches. Wait a few minutes. You are NOT in " + regionName + "."
+            : probeBroken
+            ? "Couldn't read any server's region. The region probe returned nothing (tell the developer)."
+            : "Checked " + (m.probed || 15) + " servers, none in " + regionName + ". You are NOT joining " + regionName + ".";
+        const actions = CER.el("div", "cer-update-actions");
+        const anyway = CER.el("button", "cer-update-btn cer-update-go", "Join a normal server");
+        anyway.addEventListener("click", () => { backdrop.remove(); normalJoin(); });
+        const cancel = CER.el("button", "cer-update-btn cer-update-cancel cer-update-cancel-ready", "Cancel");
+        cancel.addEventListener("click", () => backdrop.remove());
+        actions.append(anyway, cancel);
+        pop.appendChild(actions);
+      }
+    });
+    port.postMessage({ cer: "start", placeId, region });
+  }
   const gear = CER.el("button", "btn-common-play-game-lg btn-primary-md cer-join-btn");
   gear.title = "Join options";
   gear.appendChild(CER.gearIcon());

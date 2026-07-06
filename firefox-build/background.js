@@ -223,49 +223,66 @@ async function cerProbeRegion(placeId, jobId) {
   if (typeof coords.Latitude !== "number" || typeof coords.Longitude !== "number") return null;
   return cerNearestRegion(coords.Latitude, coords.Longitude);
 }
-async function cerFindRegionServer(placeId, regionKey) {
+const CER_REGION_MAX_PROBES = 15;
+async function cerFindRegionServer(placeId, regionKey, onProgress) {
   const listRes = await robloxFetch({
     url: `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100&excludeFullGames=true`,
     method: "GET",
   });
   const servers = (listRes.data?.data ?? []).filter((s) => s && s.id && s.playing < s.maxPlayers);
   if (servers.length === 0) return { empty: true }; // nothing to search (e.g. a game with no players)
-  let probes = 0;
+  let probes = 0, detected = 0;
   for (const s of servers) {
     const cached = cerRegionCache.get(s.id);
     if (cached !== undefined) { // already known — free, doesn't count toward the cap
+      if (cached) detected++;
       if (cached === regionKey) return { jobId: s.id };
       continue;
     }
-    if (probes >= 15) break; // hard cap: at most 15 live probes per search
+    if (probes >= CER_REGION_MAX_PROBES) break; // hard cap: at most 15 live probes per search
     probes++;
+    try { onProgress?.(probes, CER_REGION_MAX_PROBES); } catch {}
     let region = null;
     try { region = await cerProbeRegion(placeId, s.id); } catch { /* skip */ }
+    if (region) detected++; // this server's coordinates parsed ok
     cerRegionCache.set(s.id, region);
     if (region === regionKey) return { jobId: s.id };
     await new Promise((r) => setTimeout(r, 500)); // throttle between probes
   }
-  return { probed: probes };
+  return { probed: probes, detected };
 }
 let cerRegionBusy = false;
 const CER_REGION_COOLDOWN_MS = 15 * 60 * 1000;
-async function cerRegionJoin(placeId, regionKey) {
+async function cerRegionJoin(placeId, regionKey, onProgress) {
   if (!CER_REGIONS[regionKey]) return { error: "badregion" };
   const { regionCooldownUntil = 0 } = await ext.storage.local.get("regionCooldownUntil");
   if (Date.now() < regionCooldownUntil) return { error: "cooldown", until: regionCooldownUntil };
   if (cerRegionBusy) return { error: "busy" }; // one search at a time across all tabs
   cerRegionBusy = true;
   try {
-    const r = await cerFindRegionServer(placeId, regionKey);
+    const r = await cerFindRegionServer(placeId, regionKey, onProgress);
     if (r.jobId) return { ok: true, jobId: r.jobId };
     if (r.empty) return { error: "empty" }; // no servers to search — caller just joins normally, NO cooldown
     const until = Date.now() + CER_REGION_COOLDOWN_MS; // probed the list, none matched -> 15 min cooldown
     await ext.storage.local.set({ regionCooldownUntil: until });
-    return { error: "notfound", until };
+    return { error: "notfound", until, probed: r.probed, detected: r.detected };
   } finally {
     cerRegionBusy = false;
   }
 }
+// streaming port: the content script gets live "N/15" progress plus the result
+ext.runtime.onConnect.addListener((port) => {
+  if (port.name !== "region-join") return;
+  port.onMessage.addListener((msg) => {
+    if (msg?.cer !== "start") return;
+    cerRegionJoin(String(msg.placeId), msg.region, (n, total) => {
+      try { port.postMessage({ progress: n, total }); } catch {}
+    }).then(
+      (res) => { try { port.postMessage({ done: true, ...res }); } catch {} },
+      () => { try { port.postMessage({ done: true, error: "failed" }); } catch {} }
+    );
+  });
+});
 
 ext.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.cer === "playtime-tick") {
