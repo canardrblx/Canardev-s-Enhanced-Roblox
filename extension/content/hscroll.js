@@ -25,7 +25,7 @@
       if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return; // already a horizontal gesture (trackpad / tilt wheel)
       const row = scrollableRow(e.target);
       if (!row) return;
-      const atStart = row.scrollLeft <= 0;
+      const atStart = row.scrollLeft <= 1;
       const atEnd = row.scrollLeft + row.clientWidth >= row.scrollWidth - 1;
       if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return; // at the edge — let the page scroll
       row.scrollLeft += e.deltaY;

@@ -158,26 +158,6 @@ CER.THEMES = [
   },
 ];
 
-// Region preferences for the join settings (actual region-joining lands with
-// the server-tools phase; the preference is stored now).
-CER.REGIONS = [
-  ["auto", "Auto (closest)"],
-  ["us-east", "US East"],
-  ["us-central", "US Central"],
-  ["us-west", "US West"],
-  ["eu-london", "Europe — London"],
-  ["eu-amsterdam", "Europe — Amsterdam"],
-  ["eu-frankfurt", "Europe — Frankfurt"],
-  ["eu-paris", "Europe — Paris"],
-  ["eu-warsaw", "Europe — Warsaw"],
-  ["asia-tokyo", "Asia — Tokyo"],
-  ["asia-singapore", "Asia — Singapore"],
-  ["asia-hongkong", "Asia — Hong Kong"],
-  ["asia-mumbai", "Asia — Mumbai"],
-  ["au-sydney", "Australia — Sydney"],
-  ["sa-saopaulo", "South America — São Paulo"],
-];
-
 // True while our extension context is still valid. After a reload/update the
 // old content scripts stay live in open tabs; the instant they touch a chrome.*
 // API they throw "Extension context invalidated". Checking runtime.id lets us

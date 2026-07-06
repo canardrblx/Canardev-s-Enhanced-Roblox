@@ -104,12 +104,43 @@
     try { port = CER.ext.runtime.connect({ name: "region-join" }); } catch {}
     if (!port) { backdrop.remove(); return normalJoin(); }
 
+    let settled = false;
+    // shared failure card: give the player a normal-join escape hatch and a
+    // clear "you are NOT in <region>" so a failure can never look like success.
+    const showFail = (titleText, subText) => {
+      settled = true;
+      clearTimeout(timeout);
+      title.textContent = titleText;
+      sub.textContent = subText;
+      const actions = CER.el("div", "cer-update-actions");
+      const anyway = CER.el("button", "cer-update-btn cer-update-go", "Join a normal server");
+      anyway.addEventListener("click", () => { backdrop.remove(); normalJoin(); });
+      const cancel = CER.el("button", "cer-update-btn cer-update-cancel cer-update-cancel-ready", "Cancel");
+      cancel.addEventListener("click", () => backdrop.remove());
+      actions.append(anyway, cancel);
+      pop.appendChild(actions);
+    };
+
+    // MV3 workers can be killed mid-search; without this the blocking modal
+    // would hang forever. Bound it so the player always gets an escape hatch.
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      showFail("Search timed out", "The region search took too long. You are NOT joining " + regionName + ".");
+    }, 22000);
+
+    port.onDisconnect?.addListener?.(() => {
+      if (settled) return;
+      showFail("Search stopped", "The region search was interrupted. You are NOT joining " + regionName + ".");
+    });
+
     port.onMessage.addListener((m) => {
       if (m.progress != null) {
         sub.textContent = "Checking servers " + m.progress + "/" + (m.total || 15);
         return;
       }
       if (!m.done) return;
+      settled = true;
+      clearTimeout(timeout);
       if (m.ok && m.jobId) {
         title.textContent = "Joining a " + regionName + " server";
         sub.textContent = "Opening Roblox";
@@ -120,20 +151,14 @@
         normalJoin(); // game has no servers at all — just start one
       } else {
         const probeBroken = m.error === "notfound" && m.detected === 0;
-        title.textContent = probeBroken ? "Region check failed" : "No " + regionName + " server found";
-        sub.textContent =
+        showFail(
+          probeBroken ? "Region check failed" : "No " + regionName + " server found",
           m.error === "cooldown"
             ? "Too many searches. Wait a few minutes. You are NOT in " + regionName + "."
             : probeBroken
             ? "Couldn't read any server's region. The region probe returned nothing (tell the developer)."
-            : "Checked " + (m.probed || 15) + " servers, none in " + regionName + ". You are NOT joining " + regionName + ".";
-        const actions = CER.el("div", "cer-update-actions");
-        const anyway = CER.el("button", "cer-update-btn cer-update-go", "Join a normal server");
-        anyway.addEventListener("click", () => { backdrop.remove(); normalJoin(); });
-        const cancel = CER.el("button", "cer-update-btn cer-update-cancel cer-update-cancel-ready", "Cancel");
-        cancel.addEventListener("click", () => backdrop.remove());
-        actions.append(anyway, cancel);
-        pop.appendChild(actions);
+            : "Checked " + (m.probed || 15) + " servers, none in " + regionName + ". You are NOT joining " + regionName + "."
+        );
       }
     });
     port.postMessage({ cer: "start", placeId, region });

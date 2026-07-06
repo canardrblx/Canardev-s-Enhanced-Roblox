@@ -29,9 +29,11 @@ function cerVersionOlder(current, latest) {
 }
 async function checkForUpdate() {
   try {
-    // getSelf() works without the "management" permission
-    const self = await ext.management?.getSelf?.().catch(() => null);
-    if (self && self.installType !== "development") {
+    // Store installs (Chrome Web Store / Firefox AMO) auto-update and get an
+    // update_url injected into the runtime manifest; unpacked/git installs do
+    // not. This needs no permission, unlike management.getSelf() which Firefox
+    // gates behind the "management" permission.
+    if (ext.runtime.getManifest().update_url) {
       await ext.storage.local.set({ cerUpdate: { available: false } });
       return;
     }
