@@ -7,7 +7,47 @@ const ext = globalThis.browser ?? globalThis.chrome;
 
 ext.runtime.onInstalled.addListener(() => {
   console.log("Canardev's Enhanced Roblox installed");
+  checkForUpdate();
 });
+ext.runtime.onStartup?.addListener(checkForUpdate);
+
+// ---- update check ----
+// Compares the running version to the latest GitHub release and stashes the
+// result. Only nags UNPACKED / development installs (people who load CER from a
+// git clone). Store installs auto-update, so we never bother them.
+const CER_REPO = "canardrblx/Canardev-s-Enhanced-Roblox";
+function cerVersionOlder(current, latest) {
+  const a = String(current).replace(/^v/, "").split(".").map(Number);
+  const b = String(latest).replace(/^v/, "").split(".").map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0, y = b[i] || 0;
+    if (x < y) return true;
+    if (x > y) return false;
+  }
+  return false;
+}
+async function checkForUpdate() {
+  try {
+    // getSelf() works without the "management" permission
+    const self = await ext.management?.getSelf?.().catch(() => null);
+    if (self && self.installType !== "development") {
+      await ext.storage.local.set({ cerUpdate: { available: false } });
+      return;
+    }
+    const res = await fetch(`https://api.github.com/repos/${CER_REPO}/releases/latest`, {
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    if (!res.ok) return;
+    const latest = (await res.json())?.tag_name?.replace(/^v/, "");
+    if (!latest) return;
+    const current = ext.runtime.getManifest().version;
+    await ext.storage.local.set({
+      cerUpdate: { available: cerVersionOlder(current, latest), current, latest, checkedAt: Date.now() },
+    });
+  } catch {
+    /* offline or rate-limited — try again next time */
+  }
+}
 
 async function robloxFetch({ url, method = "GET", body }) {
   const opts = { method, credentials: "include", headers: {} };
@@ -140,6 +180,10 @@ async function sendFeedback(text) {
 ext.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.cer === "playtime-tick") {
     tickPlaytime().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
+    return true;
+  }
+  if (msg?.cer === "check-update") {
+    checkForUpdate().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
     return true;
   }
   if (msg?.cer === "feedback") {

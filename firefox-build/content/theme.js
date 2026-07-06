@@ -53,7 +53,9 @@
       // row) from ever flashing: if a redesign is slow or fails to build, the
       // veil simply stays until the new UI is present. Enhance-only pages with
       // no full root just wait on the sidebar + a settle beat.
-      CER._skelPending = new Set(["sidebar"]);
+      // on home, also hold the veil until our Continue row is in place, so the
+      // native Continue never flashes in before we swap it out
+      CER._skelPending = new Set(p.startsWith("/home") ? ["sidebar", "continue"] : ["sidebar"]);
       CER._skelRoot = p.startsWith("/charts")
         ? ".cer-games"
         : /\/users\/\d+\/profile/.test(p)

@@ -38,6 +38,7 @@ async function cerInitContinue() {
     await buildContinue(settings);
   } finally {
     cerContinueBusy = false;
+    CER.skelDone?.("continue"); // release the veil no matter which path we took
   }
 }
 
@@ -75,6 +76,7 @@ async function buildContinue(settings) {
   const grid = CER.el("div", "cer-grid cer-grid-wide");
   section.appendChild(grid);
   native.parentElement.insertBefore(section, native);
+  CER.skelDone?.("continue"); // row is in place + native is hidden — safe to lift the veil now, thumbnails fill in after
 
   const uniByPlace = await CER.getUniverseIds(games.map((g) => g.placeId));
   for (const g of games) g.universeId = uniByPlace[g.placeId];
