@@ -162,6 +162,15 @@
     // colour instead of each component falling back to its own hard-coded blue.
     rules.push(`:root { --cer-accent: ${tint ? tint.accent : "var(--color-action-emphasis-background, #335fff)"}; }`);
 
+    // skeleton veil background — match the theme even on native light (where we
+    // don't tint, so --color-surface-0 isn't set and it would fall back to dark)
+    let skelBg;
+    if (tint) skelBg = tint.flat ?? tint.bg;
+    else if (preset && preset.native === "Light") skelBg = "#f2f4f5";
+    else if (preset && preset.native === "Dark") skelBg = "#0f1116";
+    else skelBg = document.body && document.body.classList.contains("light-theme") ? "#f2f4f5" : "#0f1116";
+    rules.push(`:root { --cer-skel-bg: ${skelBg}; }`);
+
     // dark tints ride on native dark — re-assert the body class every load in
     // case the server-side flip didn't stick
     if (tint) {

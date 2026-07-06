@@ -3284,7 +3284,7 @@ body [class*="group-badge"] {
   position: fixed;
   inset: 0;
   z-index: 999999;
-  background: var(--color-surface-0, #12141a);
+  background: var(--cer-skel-bg, var(--color-surface-0, #12141a));
   display: flex;
   opacity: 1;
   transition: opacity 0.25s ease;
@@ -4131,7 +4131,8 @@ body.cer-group-cfg .cer-set-card {
 /* --- search + discover result cards: give them the CER look --- */
 .cer-search-page .game-card,
 .cer-search-page .game-card-link,
-.cer-search-page .avatar-card-container {
+.cer-search-page .avatar-card-container,
+.cer-search-page .group-card {
   border-radius: 14px;
   padding: 10px;
   background: var(--color-surface-100, rgba(128, 128, 128, 0.06));
@@ -4139,18 +4140,21 @@ body.cer-group-cfg .cer-set-card {
 }
 .cer-search-page .game-card:hover,
 .cer-search-page .game-card-link:hover,
-.cer-search-page .avatar-card-container:hover {
+.cer-search-page .avatar-card-container:hover,
+.cer-search-page .group-card:hover {
   transform: translateY(-4px);
   background: var(--color-surface-200, rgba(128, 128, 128, 0.12));
 }
 .cer-search-page .game-card-thumb-container,
 .cer-search-page .game-card-thumb,
 .cer-search-page .avatar-card-image,
-.cer-search-page .avatar-card-image img {
+.cer-search-page .avatar-card-image img,
+.cer-search-page .group-card .thumbnail-2d-container {
   border-radius: 12px;
   overflow: hidden;
 }
-.cer-search-page .game-card-name,
-.cer-search-page .avatar-card-caption {
+/* games: center the tile title. people cards keep their native alignment
+   (centering the caption broke the newer horizontal people-card layout). */
+.cer-search-page .game-card-name {
   text-align: center;
 }
