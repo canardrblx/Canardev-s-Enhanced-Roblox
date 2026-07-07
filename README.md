@@ -6,6 +6,12 @@
 
 <p align="center">A free browser extension that makes roblox.com look and feel a whole lot better.</p>
 
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/canardevs-enhanced-roblox/dlocfeligcnnmknnnmainkdbmpoaficc"><b>Chrome Web Store</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://addons.mozilla.org/en-US/firefox/addon/canardev-s-enhanced-roblox/"><b>Firefox Add-ons</b></a>
+</p>
+
 ---
 
 I'm canardev and I make Roblox games (you might have played Build a Country).
@@ -109,10 +115,10 @@ Roblox's own Dark and Light, with a few custom themes below.
 
 ## Install
 
-Coming soon to the **Chrome Web Store** and **Firefox Add-ons**. Links will land
-here once it's published.
+- **Chrome / Edge / Brave:** [Get it on the Chrome Web Store](https://chromewebstore.google.com/detail/canardevs-enhanced-roblox/dlocfeligcnnmknnnmainkdbmpoaficc)
+- **Firefox:** [Get it on Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/canardev-s-enhanced-roblox/)
 
-Want to try it before then? Clone the repo, then in Chrome open
+Prefer to run it straight from source? Clone the repo, then in Chrome open
 `chrome://extensions`, turn on Developer mode, and **Load unpacked** the
 `extension/` folder. Firefox: load `firefox-build/manifest.json` as a temporary
 add-on from `about:debugging`.
