@@ -650,167 +650,20 @@
 
     body.appendChild(CER.el("h3", "cer-h3", "Join options"));
 
-    // preferred region: a rotatable globe — drag to spin, click a pin to pick.
-    // Pins are colored by YOUR ping to that region (measured in the background).
-    const globeWrap = CER.el("div", "cer-globe-block");
-    const gHead = CER.el("div", "cer-globe-head");
-    gHead.appendChild(CER.el("div", "cer-feature-name", "Preferred region"));
-    gHead.appendChild(CER.el("div", "cer-feature-hint", "When you press Play, join a server in this region. Drag the globe, click a pin."));
-    globeWrap.appendChild(gHead);
-    const readout = CER.el("div", "cer-globe-readout");
-    globeWrap.appendChild(readout);
-    const globeBox = CER.el("div", "cer-globe-box");
-    const canvas = CER.el("canvas", "cer-globe-canvas");
-    globeBox.appendChild(canvas);
-    globeWrap.appendChild(globeBox);
-    const offBtn = CER.el("button", "cer-profile-btn cer-globe-off", "Turn off");
-    offBtn.addEventListener("click", async () => {
-      const cur = await CER.get();
-      await CER.set({ joinPrefs: { ...cur.joinPrefs, region: "auto" } });
-      globeState.sel = "auto";
-      updateReadout();
-    });
-    globeWrap.appendChild(offBtn);
-    body.appendChild(globeWrap);
-
-    const GLOBE_REGIONS = [
-      { k: "us-east", lat: 39.0, lon: -77.5 }, { k: "us-central", lat: 32.8, lon: -96.8 },
-      { k: "us-west", lat: 37.8, lon: -122.4 }, { k: "brazil", lat: -23.5, lon: -46.6 },
-      { k: "uk", lat: 51.5, lon: -0.1 }, { k: "europe", lat: 50.1, lon: 8.7 },
-      { k: "india", lat: 19.0, lon: 72.9 }, { k: "singapore", lat: 1.3, lon: 103.8 },
-      { k: "japan", lat: 35.7, lon: 139.7 }, { k: "australia", lat: -33.9, lon: 151.2 },
-    ];
-    const globeState = { sel: settings.joinPrefs.region ?? "auto", pings: {}, hover: null };
-    const pingColor = (p) => (p == null ? "#8b97a8" : p < 70 ? "#3ddc84" : p < 140 ? "#f5c542" : "#e24b4a");
-    function updateReadout() {
-      readout.textContent = "";
-      if (globeState.sel === "auto") {
-        readout.appendChild(CER.el("span", "cer-globe-rname", "Off"));
-        readout.appendChild(CER.el("span", "cer-globe-rping", "joins the closest server, like normal"));
-      } else {
-        readout.appendChild(CER.el("span", "cer-globe-rname", CER.REGIONS[globeState.sel] ?? globeState.sel));
-        const p = globeState.pings[globeState.sel];
-        const ping = CER.el("span", "cer-globe-rping", p != null ? p + " ms from you" : "measuring ping…");
-        ping.style.color = pingColor(p);
-        readout.appendChild(ping);
-      }
-    }
-    updateReadout();
-    try {
-      CER.ext.runtime.sendMessage({ cer: "region-ping" }, (res) => {
-        if (res?.ok) { globeState.pings = res.pings || {}; updateReadout(); }
-      });
-    } catch {}
-
-    // ---- the globe: plain canvas, no libraries ----
-    (() => {
-      const S = 560, R = 225, CX = S / 2, CY = S / 2;
-      canvas.width = S; canvas.height = S;
-      const ctx = canvas.getContext("2d");
-      let yaw = 1.3, pitch = -0.35, drag = false, lastX = 0, lastY = 0, moved = 0, spin = true;
-      const v3 = (lat, lon) => {
-        const a = (lat * Math.PI) / 180, b = (lon * Math.PI) / 180;
-        return [Math.cos(a) * Math.cos(b), Math.sin(a), Math.cos(a) * Math.sin(b)];
-      };
-      const proj = (p) => {
-        const x1 = p[0] * Math.cos(yaw) + p[2] * Math.sin(yaw);
-        const z1 = -p[0] * Math.sin(yaw) + p[2] * Math.cos(yaw);
-        const y2 = p[1] * Math.cos(pitch) - z1 * Math.sin(pitch);
-        const z2 = p[1] * Math.sin(pitch) + z1 * Math.cos(pitch);
-        return { x: CX + x1 * R, y: CY - y2 * R, z: z2 };
-      };
-      function ring(f) {
-        ctx.beginPath();
-        let started = false;
-        for (let t = 0; t <= 360; t += 6) {
-          const pp = proj(f(t));
-          if (pp.z < 0) { started = false; continue; }
-          if (!started) { ctx.moveTo(pp.x, pp.y); started = true; } else ctx.lineTo(pp.x, pp.y);
-        }
-        ctx.stroke();
-      }
-      function draw() {
-        ctx.clearRect(0, 0, S, S);
-        const g = ctx.createRadialGradient(CX - 70, CY - 70, 30, CX, CY, R);
-        g.addColorStop(0, "#16324f"); g.addColorStop(1, "#0b1a2c");
-        ctx.beginPath(); ctx.arc(CX, CY, R, 0, 7); ctx.fillStyle = g; ctx.fill();
-        ctx.strokeStyle = "#21496f"; ctx.lineWidth = 1;
-        for (let la = -60; la <= 60; la += 30) ring((t) => v3(la, t));
-        for (let lo = 0; lo < 360; lo += 30) ring((t) => v3(t - 90, lo));
-        const order = GLOBE_REGIONS.map((r) => ({ r, pp: proj(v3(r.lat, r.lon)) })).sort((a, b) => a.pp.z - b.pp.z);
-        for (const { r, pp } of order) {
-          if (pp.z < 0.02) continue;
-          const c = pingColor(globeState.pings[r.k]);
-          const sc = 0.6 + pp.z * 0.5;
-          ctx.globalAlpha = Math.min(1, pp.z * 1.6) * 0.18;
-          ctx.beginPath(); ctx.arc(pp.x, pp.y, 16 * sc, 0, 7); ctx.fillStyle = c; ctx.fill();
-          ctx.globalAlpha = Math.min(1, pp.z * 1.6);
-          ctx.beginPath(); ctx.arc(pp.x, pp.y, 7 * sc, 0, 7); ctx.fillStyle = c; ctx.fill();
-          ctx.beginPath(); ctx.arc(pp.x, pp.y, 7 * sc, 0, 7); ctx.strokeStyle = "#0b1a2c"; ctx.lineWidth = 2.5; ctx.stroke();
-          if (r.k === globeState.sel || r.k === globeState.hover) {
-            ctx.beginPath(); ctx.arc(pp.x, pp.y, 13 * sc, 0, 7);
-            ctx.strokeStyle = r.k === globeState.sel ? "#ffffff" : c; ctx.lineWidth = 2.5; ctx.stroke();
-            const p = globeState.pings[r.k];
-            ctx.font = "600 20px system-ui"; ctx.textAlign = "center"; ctx.fillStyle = "#eaf1fb";
-            ctx.fillText((CER.REGIONS[r.k] ?? r.k) + (p != null ? "  " + p + "ms" : ""), pp.x, pp.y - 24 * sc);
-          }
-          ctx.globalAlpha = 1;
-        }
-      }
-      const pick = (mx, my) => {
-        let best = null, bd = 22;
-        for (const r of GLOBE_REGIONS) {
-          const pp = proj(v3(r.lat, r.lon));
-          if (pp.z < 0.05) continue;
-          const d = Math.hypot(pp.x - mx, pp.y - my);
-          if (d < bd) { bd = d; best = r; }
-        }
-        return best;
-      };
-      const xy = (e) => {
-        const b = canvas.getBoundingClientRect();
-        return [((e.clientX - b.left) / b.width) * S, ((e.clientY - b.top) / b.height) * S];
-      };
-      canvas.addEventListener("pointerdown", (e) => {
-        drag = true; spin = false; moved = 0; lastX = e.clientX; lastY = e.clientY;
-        canvas.setPointerCapture(e.pointerId);
-      });
-      canvas.addEventListener("pointermove", (e) => {
-        if (drag) {
-          const dx = e.clientX - lastX, dy = e.clientY - lastY;
-          moved += Math.abs(dx) + Math.abs(dy);
-          yaw -= dx * 0.008;
-          pitch = Math.max(-1.2, Math.min(1.2, pitch + dy * 0.008));
-          lastX = e.clientX; lastY = e.clientY;
-        } else {
-          const c = xy(e);
-          const h = pick(c[0], c[1]);
-          globeState.hover = h ? h.k : null;
-          canvas.style.cursor = h ? "pointer" : "grab";
-        }
-      });
-      canvas.addEventListener("pointerup", async (e) => {
-        if (moved < 6) {
-          const c = xy(e);
-          const h = pick(c[0], c[1]);
-          if (h) {
-            globeState.sel = h.k;
-            updateReadout();
-            const cur = await CER.get();
-            await CER.set({ joinPrefs: { ...cur.joinPrefs, region: h.k } });
-          }
-        }
-        drag = false;
-        setTimeout(() => (spin = true), 2500);
-      });
-      canvas.addEventListener("pointerleave", () => (globeState.hover = null));
-      (function loop() {
-        if (!canvas.isConnected) return; // settings closed — stop the loop
-        if (spin && !drag) yaw -= 0.0022;
-        draw();
-        requestAnimationFrame(loop);
-      })();
-    })();
+    // preferred region: when set, pressing Play searches for a server there
+    const regionRow = CER.el("div", "cer-feature-row");
+    const rWrap = CER.el("div");
+    rWrap.appendChild(CER.el("div", "cer-feature-name", "Preferred region"));
+    rWrap.appendChild(CER.el("div", "cer-feature-hint", "When you press Play, join a server in this region."));
+    regionRow.appendChild(rWrap);
+    const regionOpts = [["auto", "Off"]].concat(Object.keys(CER.REGIONS).map((k) => [k, CER.REGIONS[k]]));
+    regionRow.appendChild(
+      CER.dropdown(regionOpts, settings.joinPrefs.region ?? "auto", async (v) => {
+        const cur = await CER.get();
+        await CER.set({ joinPrefs: { ...cur.joinPrefs, region: v } });
+      })
+    );
+    body.appendChild(regionRow);
 
     const row = CER.el("label", "cer-feature-row");
     const textWrap = CER.el("div");

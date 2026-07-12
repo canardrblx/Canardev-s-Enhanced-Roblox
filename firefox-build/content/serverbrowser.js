@@ -2,10 +2,12 @@
 // Adds sorting, small/empty/full filters, locally-tracked server age, a
 // one-click "best server" join, and join/copy by ID.
 //
-// REGION + UPTIME: each server's region and start time come from the shared
-// CER region cache (see region-worker/) with a few throttled live probes for
-// servers nobody has looked up yet. Fresh probes are reported back to the
-// cache, so coverage improves for everyone the more the feature is used.
+// NOTE ON REGION: showing each server's region requires its IP, obtained from
+// gamejoin.roblox.com/v1/join-game-instance. Roblox now hard-blocks that call
+// from anywhere but the real game client (returns status 12, "Unable to join"),
+// verified live. So region badges are not built here — the Join-tab region
+// preference stays parked until/unless that endpoint reopens. Everything below
+// works with the public server-list API alone.
 
 (async function () {
   if (typeof CER === "undefined") return;
@@ -27,14 +29,6 @@
     for (const [id, t] of Object.entries(seen)) if (now - t > 6.048e8) { delete seen[id]; changed = true; }
     if (changed) await CER.ext.storage.local.set({ [AGE_KEY]: seen });
     return seen;
-  }
-
-  function upText(ms) {
-    const m = Math.max(1, Math.floor(ms / 60000));
-    if (m < 60) return m + "m";
-    const h = Math.floor(m / 60);
-    if (h < 24) return h + "h " + (m % 60) + "m";
-    return Math.floor(h / 24) + "d " + (h % 24) + "h";
   }
 
   function ageText(ms) {
@@ -74,21 +68,12 @@
     "hasRoom",
     () => render()
   );
-  const regionSel = CER.dropdown(
-    [["all", "All regions"], ...Object.entries(CER.REGIONS)],
-    "all",
-    (key) => {
-      regionFilter = key;
-      if (key !== "all") fetchRegions(servers.map((x) => x.id).slice(0, 100), 10);
-      render();
-    }
-  );
   const refreshBtn = CER.el("button", "cer-profile-btn", "↻ Refresh");
   refreshBtn.addEventListener("click", () => load());
   const bestBtn = CER.el("button", "cer-join-menu-action cer-sb-best", "Join best server");
   bestBtn.addEventListener("click", joinBest);
 
-  controls.append(sortSel, filterSel, regionSel, refreshBtn);
+  controls.append(sortSel, filterSel, refreshBtn);
   panel.appendChild(controls);
   panel.appendChild(bestBtn);
 
@@ -128,27 +113,6 @@
   let servers = [];
   let firstSeen = {};
   let visibleCount = 10; // how many public servers to show before "Load more"
-  let regionFilter = "all";
-  const regionInfo = {}; // jobId -> { region, claimed } from the shared cache/probes
-  let regionBusy = false;
-
-  // Ask the background for regions: shared cache first, then a few live probes
-  // for unknowns. Progressive — rows fill in as answers arrive.
-  async function fetchRegions(ids, probe = 6) {
-    const want = ids.filter((id) => !(id in regionInfo));
-    if (!want.length || regionBusy) return;
-    regionBusy = true;
-    try {
-      const res = await new Promise((resolve) =>
-        CER.ext.runtime.sendMessage({ cer: "region-details", placeId, ids: want, probe }, (r) => resolve(r))
-      );
-      if (res?.ok) {
-        for (const [id, v] of Object.entries(res.known || {})) regionInfo[id] = v;
-        render();
-      }
-    } catch { /* background gone (extension reloaded) — leave rows plain */ }
-    finally { regionBusy = false; }
-  }
 
   async function load() {
     visibleCount = 10;
@@ -168,7 +132,6 @@
     servers = all;
     firstSeen = await markSeen(all.map((s) => s.id));
     render();
-    fetchRegions(all.slice(0, 40).map((s) => s.id));
   }
 
   function render() {
@@ -176,7 +139,6 @@
     const filter = filterSel.querySelector(".cer-dd-btn span").textContent;
     let rows = servers.slice();
 
-    if (regionFilter !== "all") rows = rows.filter((s) => regionInfo[s.id]?.region === regionFilter);
     if (/Has room/.test(filter)) rows = rows.filter((s) => s.playing < s.maxPlayers);
     else if (/Nearly empty/.test(filter)) rows = rows.filter((s) => s.playing <= Math.max(1, s.maxPlayers * 0.25));
     else if (/Nearly full/.test(filter)) rows = rows.filter((s) => s.playing >= s.maxPlayers * 0.75 && s.playing < s.maxPlayers);
@@ -200,7 +162,6 @@
       more.addEventListener("click", () => {
         visibleCount += 10;
         render();
-        fetchRegions(rows.slice(0, visibleCount).map((x) => x.id));
       });
       list.appendChild(more);
     }
@@ -214,17 +175,10 @@
     fill.style.width = (s.maxPlayers > 0 ? Math.round((s.playing / s.maxPlayers) * 100) : 0) + "%";
     if (s.playing >= s.maxPlayers) fill.classList.add("cer-sb-fill-full");
     bar.appendChild(fill);
-    const head = CER.el("div", "cer-sb-head");
-    head.appendChild(CER.el("div", "cer-sb-players", `${s.playing} / ${s.maxPlayers} players`));
-    const ri = regionInfo[s.id];
-    if (ri?.region && CER.REGIONS[ri.region]) head.appendChild(CER.el("span", "cer-sb-region", CER.REGIONS[ri.region]));
-    info.appendChild(head);
+    info.appendChild(CER.el("div", "cer-sb-players", `${s.playing} / ${s.maxPlayers} players`));
     info.appendChild(bar);
     const sub = CER.el("div", "cer-sb-sub");
-    const bits = [];
-    if (ri?.claimed) bits.push("up " + upText(Date.now() - ri.claimed));
-    bits.push(ageText(Date.now() - (firstSeen[s.id] ?? Date.now())));
-    sub.textContent = bits.join(" · ");
+    sub.textContent = ageText(Date.now() - (firstSeen[s.id] ?? Date.now()));
     info.appendChild(sub);
     row.appendChild(info);
 
