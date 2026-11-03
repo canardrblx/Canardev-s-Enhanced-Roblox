@@ -4,6 +4,9 @@
 (async function () {
   if (typeof CER === "undefined") return;
   if (!location.pathname.startsWith("/my/messages")) return;
+  // pages/messages.js owns this page now (CER.ui redesign); stand down.
+  if ((await CER.takeover) === "messages") return;
+  if (/[?&]cer=native\b/.test(location.search)) return; // escape hatch: Roblox's own page
   const settings = await CER.get();
   if (!settings.features.messagesPage) return;
 

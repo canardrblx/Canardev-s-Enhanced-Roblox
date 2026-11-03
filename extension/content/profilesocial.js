@@ -7,6 +7,10 @@
 
 (async function () {
   if (typeof CER === "undefined") return;
+  // retired where CER owns the page: pages/profile.js has notes, mutual
+  // friends and the right friends links built in. This runs only on Roblox's
+  // own profile (feature off or ?cer=native).
+  if ((await CER.takeover) === "profile") return;
   const userId = location.pathname.match(/\/users\/(\d+)\/profile/)?.[1];
   if (!userId) return;
 

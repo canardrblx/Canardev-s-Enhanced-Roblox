@@ -6,6 +6,8 @@
 
 (async function () {
   if (typeof CER === "undefined") return;
+  // CER's own home page (pages/home.js) owns /home now: no Roblox feed to manage
+  if ((await CER.takeover) === "home") return;
 
   function defaultVisible(title) {
     return /^friends/i.test(title) || /continue/i.test(title);
@@ -71,6 +73,7 @@
   let applyAgain = false;
   async function applyPrefs() {
     if (!location.pathname.startsWith("/home")) return; // SPA-safe guard
+    if (document.getElementById("cer-app")?.dataset.page === "home") return; // ours, not Roblox's feed
     if (applying) {
       applyAgain = true; // a wave landed mid-apply — run once more after
       return;

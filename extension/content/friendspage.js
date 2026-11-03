@@ -5,6 +5,9 @@
 (async function () {
   if (typeof CER === "undefined") return;
   if (!location.pathname.startsWith("/users/friends")) return;
+  // pages/friends.js owns this page now (CER.ui redesign); stand down.
+  if ((await CER.takeover) === "friends") return;
+  if (/[?&]cer=native\b/.test(location.search)) return; // escape hatch: Roblox's own page
   const settings = await CER.get();
   if (!settings.features.friendsPage) return CER.dismissSkeleton?.();
 

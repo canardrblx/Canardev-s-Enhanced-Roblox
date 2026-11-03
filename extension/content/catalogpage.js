@@ -5,6 +5,9 @@
 (async function () {
   if (typeof CER === "undefined") return;
   if (!location.pathname.startsWith("/catalog")) return;
+  // the catalog is CER's own page now (pages/catalog.js); this only tidies
+  // Roblox's version when it shows (?cer=native or the feature turned off)
+  if ((await CER.takeover) === "catalog") return;
   const settings = await CER.get();
   if (settings.features.catalogClean === false) return;
 

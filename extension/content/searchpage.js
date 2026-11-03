@@ -3,9 +3,21 @@
 // restyling those same card classes everywhere else on the site.
 (function () {
   if (typeof CER === "undefined") return;
+  // RETIRED on pages CER owns: pages/search.js builds its own results page
+  // there. This only still styles Roblox's native search (?cer=native, or the
+  // searchPage feature turned off).
+  let owned = false;
+  const refreshOwned = async () => {
+    try {
+      const s = await CER.get();
+      owned = CER.pageFor?.(location.pathname, location.search, s.features)?.tag === "search";
+    } catch {
+      owned = false;
+    }
+  };
   function mark() {
     const p = location.pathname;
-    const on = p.startsWith("/search") || p.startsWith("/discover");
+    const on = !owned && (p.startsWith("/search") || p.startsWith("/discover"));
     if (!document.body) return;
     document.body.classList.toggle("cer-search-page", on);
     // the people (users) results page keeps its title + search bar in a .top-row
@@ -45,7 +57,7 @@
   }
 
   function enhancePeople() {
-    if (!location.pathname.startsWith("/search/users")) return;
+    if (owned || !location.pathname.startsWith("/search/users")) return;
     const pending = [];
     for (const card of document.querySelectorAll(".avatar-card-container")) {
       const link = card.querySelector("a[href*='/users/']");
@@ -115,7 +127,7 @@
     peopleTimer = setTimeout(enhancePeople, 150);
   }
   function syncPeopleWatch() {
-    const on = location.pathname.startsWith("/search/users");
+    const on = !owned && location.pathname.startsWith("/search/users");
     if (on && !peopleObs && document.body) {
       peopleObs = new MutationObserver(schedulePeople);
       peopleObs.observe(document.body, { childList: true, subtree: true });
@@ -125,8 +137,15 @@
     }
   }
 
-  mark();
-  enhancePeople();
-  syncPeopleWatch();
-  CER.onNavigate?.(() => { mark(); syncPeopleWatch(); schedulePeople(); });
+  refreshOwned().then(() => {
+    mark();
+    enhancePeople();
+    syncPeopleWatch();
+  });
+  CER.onNavigate?.(async () => {
+    await refreshOwned();
+    mark();
+    syncPeopleWatch();
+    schedulePeople();
+  });
 })();

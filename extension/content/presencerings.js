@@ -68,7 +68,32 @@
       modernizeHoverIcons();
     });
   }
-  scan();
-  new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
-  CER.onNavigate?.(scan);
+  // CER-owned pages (html.cer-takeover) draw their own rings from presence
+  // data, so there is nothing to scan there: no page-wide observer at all.
+  // The observer only runs while Roblox's own page is showing, and starts or
+  // stops when the takeover class flips (release, SPA navigation).
+  const html = document.documentElement;
+  let mo = null;
+  function sync() {
+    if (html.classList.contains("cer-takeover")) {
+      mo?.disconnect();
+      mo = null;
+      return;
+    }
+    if (!mo) {
+      mo = new MutationObserver(scan);
+      mo.observe(html, { childList: true, subtree: true });
+    }
+    scan();
+  }
+  sync();
+  let owned = html.classList.contains("cer-takeover");
+  new MutationObserver(() => {
+    const now = html.classList.contains("cer-takeover");
+    if (now !== owned) {
+      owned = now;
+      sync();
+    }
+  }).observe(html, { attributes: true, attributeFilter: ["class"] });
+  CER.onNavigate?.(sync);
 })();

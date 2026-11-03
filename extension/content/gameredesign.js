@@ -6,6 +6,10 @@
 
 (async function () {
   if (typeof CER === "undefined") return;
+  // RETIRED: pages/game.js is the game page now (same gamePageRedesign switch).
+  // When the switch is on the page is ours; with ?cer=native Roblox's own page
+  // must show untouched. Region join was ported to pages/game.js.
+  return;
   const settings = await CER.get();
   if (!settings.features.gamePageRedesign) return;
 

@@ -82,12 +82,23 @@
   }
 
   // ---- shell: built synchronously so the page is usable at once ----
+  // Skin: CER design system (ui.js / ui.css tokens, pages/avatar.css). The
+  // `ui` helpers only build markup; editor behavior is unchanged without them.
+  const ui = CER.ui;
+  const skel = () => (ui ? ui.skeleton("tile", 12) : CER.skelGrid(12, 130, 110));
+  // sub-category picker: chips when the design system is loaded
+  const subPicker = (options, initial, onChange) =>
+    ui ? ui.chips(options.map(([id, label]) => ({ id, label })), initial, onChange) : CER.dropdown(options, initial, onChange);
 
-  const root = CER.el("div", "cer-avatar-inline");
-  const head = CER.el("div", "cer-avatar-head");
-  head.appendChild(CER.el("h1", "cer-avatar-title", "Avatar Editor"));
-  const classic = CER.el("button", "cer-profile-btn", "Use classic editor");
-  head.appendChild(classic);
+  const root = CER.el("div", "cer-avatar-inline cer-ui");
+  const classic = ui ? ui.button("Use classic editor", { variant: "outline", size: "sm" }) : CER.el("button", "cer-profile-btn", "Use classic editor");
+  let head;
+  if (ui) head = ui.header({ title: "Avatar", icon: "shirt", sub: "Tap an item to put it on or take it off.", actions: [classic] });
+  else {
+    head = CER.el("div", "cer-avatar-head");
+    head.appendChild(CER.el("h1", "cer-avatar-title", "Avatar Editor"));
+    head.appendChild(classic);
+  }
   root.appendChild(head);
 
   const body = CER.el("div", "cer-avatar-body");
@@ -101,7 +112,7 @@
   const spinner = CER.el("div", "cer-avatar-spinner");
   preview.appendChild(spinner);
   const refreshBtn = CER.el("button", "cer-avatar-refresh");
-  refreshBtn.appendChild(CER.svg("refresh", 16));
+  refreshBtn.appendChild(ui ? ui.icon("refresh", 17) : CER.svg("refresh", 16));
   refreshBtn.title = "Redraw preview";
   preview.appendChild(refreshBtn);
   side.appendChild(preview);
@@ -160,7 +171,7 @@
   }
   activeBtn = tabBtns[0];
   activeBtn.classList.add("cer-tab-active");
-  grid.appendChild(CER.skelGrid(12, 130, 110));
+  grid.append(...[skel()].flat());
   CER.skelDone?.("avatar");
 
   const me = await CER.me();
@@ -392,12 +403,12 @@
   let loadSeq = 0; // a newer view cancels older loads
   function startView() {
     const seq = ++loadSeq;
-    grid.replaceChildren(CER.skelGrid(12, 130, 110));
+    grid.replaceChildren(...[skel()].flat());
     return seq;
   }
   const stale = (seq) => seq !== loadSeq;
   function showMsg(text) {
-    grid.replaceChildren(CER.el("p", "cer-hint", text));
+    grid.replaceChildren(ui ? ui.empty(text, { icon: "shirt" }) : CER.el("p", "cer-hint", text));
   }
 
   function tile(name, thumb) {
@@ -471,7 +482,7 @@
       grid.appendChild(frag);
       paint();
       if (cursors.size) {
-        const more = CER.el("button", "cer-profile-btn cer-avatar-more", "Load more");
+        const more = CER.el("button", ui ? "cer-btn cer-btn-soft cer-avatar-more" : "cer-profile-btn cer-avatar-more", "Load more");
         more.addEventListener("click", () => {
           more.disabled = true;
           more.textContent = "Loading…";
@@ -566,11 +577,11 @@
   // small yes/no popover anchored to a button
   function confirmMenu(anchor, message, onYes) {
     document.querySelector(".cer-confirm-pop")?.remove();
-    const pop = CER.el("div", "cer-confirm-pop");
+    const pop = CER.el("div", "cer-confirm-pop cer-ui");
     pop.appendChild(CER.el("div", "cer-confirm-msg", message));
     const row = CER.el("div", "cer-confirm-row");
-    const yes = CER.el("button", "cer-join-menu-action", "Yes");
-    const no = CER.el("button", "cer-profile-btn", "Cancel");
+    const yes = CER.el("button", ui ? "cer-btn cer-btn-primary cer-btn-sm" : "cer-join-menu-action", "Yes");
+    const no = CER.el("button", ui ? "cer-btn cer-btn-soft cer-btn-sm" : "cer-profile-btn", "Cancel");
     row.append(yes, no);
     pop.appendChild(row);
     const close = () => {
@@ -604,7 +615,9 @@
 
   async function loadOutfits() {
     const seq = startView();
-    const create = CER.el("button", "cer-join-menu-action cer-avatar-create", "＋ Save this look");
+    const create = ui
+      ? ui.button("Save this look", { variant: "primary", icon: "plus", class: "cer-avatar-create" })
+      : CER.el("button", "cer-join-menu-action cer-avatar-create", "＋ Save this look");
     create.addEventListener("click", async () => {
       const name = prompt("Name your character:", "My Character");
       if (!name) return;
@@ -640,7 +653,7 @@
       if (stale(seq)) return;
       const frag = document.createDocumentFragment();
       frag.appendChild(create);
-      if (!outfits.length) frag.appendChild(CER.el("p", "cer-hint", "No saved characters yet."));
+      if (!outfits.length) frag.appendChild(ui ? ui.empty("No saved characters yet.", { icon: "user" }) : CER.el("p", "cer-hint", "No saved characters yet."));
       for (const o of outfits) {
         const t = tile(o.name, thumbs[o.id]);
         t.addEventListener("click", async () => {
@@ -661,7 +674,7 @@
         });
         const controls = CER.el("div", "cer-outfit-controls");
         const upd = CER.el("button", "cer-outfit-btn");
-        upd.appendChild(CER.svg("refresh", 16));
+        upd.appendChild(ui ? ui.icon("refresh", 15) : CER.svg("refresh", 16));
         upd.title = "Save current look here";
         upd.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -676,7 +689,7 @@
           });
         });
         const del = CER.el("button", "cer-outfit-btn cer-outfit-del");
-        del.appendChild(CER.svg("trash", 16));
+        del.appendChild(ui ? ui.icon("trash", 15) : CER.svg("trash", 16));
         del.title = "Delete";
         del.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -694,7 +707,7 @@
     } catch {
       if (!stale(seq)) {
         grid.replaceChildren(create);
-        grid.appendChild(CER.el("p", "cer-hint", "Couldn't load your characters."));
+        grid.appendChild(ui ? ui.empty("Couldn't load your characters.", { icon: "info" }) : CER.el("p", "cer-hint", "Couldn't load your characters."));
       }
     }
   }
@@ -801,7 +814,7 @@
     subRow.textContent = "";
     if (cat.characters) {
       subRow.appendChild(
-        CER.dropdown(
+        subPicker(
           [
             ["owned", "Owned"],
             ["created", "Saved by me"],
@@ -813,7 +826,7 @@
       loadBundles("BodyParts");
     } else if (cat.animations) {
       subRow.appendChild(
-        CER.dropdown(
+        subPicker(
           [
             ["packs", "Animation packs"],
             ["emotes", "Emotes"],
@@ -826,7 +839,7 @@
     } else if (cat.scale) {
       renderScale();
     } else if (cat.sub) {
-      subRow.appendChild(CER.dropdown(cat.sub.map(([n, t]) => [String(t), n]), String(cat.sub[0][1]), (v) => loadCategory(Number(v))));
+      subRow.appendChild(subPicker(cat.sub.map(([n, t]) => [String(t), n]), String(cat.sub[0][1]), (v) => loadCategory(Number(v))));
       loadCategory(cat.sub[0][1]);
     } else {
       loadCategory(cat.type);

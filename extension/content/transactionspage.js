@@ -5,6 +5,9 @@
 (async function () {
   if (typeof CER === "undefined") return;
   if (!location.pathname.startsWith("/transactions")) return;
+  // RETIRED: pages/transactions.js owns this page now. With ?cer=native or the
+  // feature off, Roblox's own page should show, so this never runs.
+  return;
 
   // page host and our user at the same time (CER.me() is shared, usually
   // already in flight)

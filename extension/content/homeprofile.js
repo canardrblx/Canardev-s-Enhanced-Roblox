@@ -13,6 +13,8 @@ async function cerInitProfileHeader() {
   // Roblox reaches /home via client-side navigation too — this re-runs on
   // every URL change (CER.onNavigate below) and must be idempotent
   if (!location.pathname.startsWith("/home")) return;
+  // CER's own home page (pages/home.js) owns /home now: stand down there
+  if (CER.pageFor?.(location.pathname, location.search, (await CER.get()).features)?.tag === "home") return;
   if (document.querySelector(".cer-profile") || cerHomeBusy) return;
   cerHomeBusy = true;
   try {

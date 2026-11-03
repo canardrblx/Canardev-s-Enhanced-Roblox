@@ -11,6 +11,8 @@
 
 (async function () {
   if (typeof CER === "undefined") return;
+  // CER's own game page (pages/game.js) has the server browser built in
+  if ((await CER.takeover) === "game") return;
   const placeId = location.pathname.match(/\/games\/(\d+)/)?.[1];
   if (!placeId) return;
 

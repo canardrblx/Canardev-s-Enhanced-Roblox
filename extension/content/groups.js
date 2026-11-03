@@ -18,6 +18,11 @@
   const onGroups = () =>
     !!groupIdFromPath() && !/^\/(?:communities|groups)\/\d+\/(?:configure|create)(?:\/|$)/i.test(location.pathname);
   const onProfile = () => /^\/users\/\d+\/profile/.test(location.pathname);
+  // The new groups page (pages/groups.js) owns group views now: the old
+  // tab/games/banner redesign below stands down there. Checked live (not
+  // once via CER.takeover) so SPA moves between groups and ?cer=native stay
+  // right. Leave/transfer PROTECTION still runs on every page.
+  const ownedByNewPage = () => CER.pageFor?.(location.pathname, location.search, settings.features)?.tag === "groups";
   const themed = () => {
     const preset = CER.THEMES.find((t) => t.id === settings.theme.preset);
     return preset && !preset.native && preset.id !== "" && settings.features.theme ? preset : null;
@@ -616,7 +621,7 @@
   // re-apply the mode when they land, so the tab bar never waits on fetches.
   function sweep() {
     chartsStyle();
-    const group = onGroups();
+    const group = onGroups() && !ownedByNewPage();
     document.body.classList.toggle("cer-group-page", group);
     if (group) {
       const gid = groupIdFromPath();
@@ -648,7 +653,7 @@
       sweep();
     }, delay);
   }
-  const wantsSweep = () => onGroups() || (onProfile() && Date.now() < bannerUntil);
+  const wantsSweep = () => (onGroups() && !ownedByNewPage()) || (onProfile() && Date.now() < bannerUntil);
 
   // one observer: protection sees every added node (before paint); group and
   // profile pages also get a sweep

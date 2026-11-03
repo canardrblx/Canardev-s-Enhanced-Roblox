@@ -15,6 +15,9 @@
   if (!location.pathname.startsWith("/charts")) return;
   const settings = await CER.get();
   if (!settings.features.gamesRedesign) return;
+  // RETIRED: pages/discover.js owns /charts whenever this feature is on, and
+  // ?cer=native means "show Roblox's page", so this old layout never builds.
+  if (CER.pageFor?.(location.pathname, location.search, settings.features)?.tag === "discover" || /[?&]cer=native\b/.test(location.search)) return;
   if (document.querySelector(".cer-games")) return;
 
   // the user id only seeds the explore sessionId; the shell doesn't wait on it

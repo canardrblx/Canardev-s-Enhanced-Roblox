@@ -1,1 +1,222 @@
 /* CER search page. Scope every rule under [data-page="search"]. */
+
+[data-page="search"] .cer-view {
+  gap: 28px;
+}
+
+/* ---------------------------------------------------------- top */
+[data-page="search"] .sr-top {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+[data-page="search"] .sr-title {
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+[data-page="search"] .sr-field {
+  height: 60px;
+  padding: 0 24px;
+  gap: 14px;
+  background: var(--cer-surface);
+  border: 1px solid var(--cer-line-2);
+  box-shadow: var(--cer-shadow);
+}
+[data-page="search"] .sr-field .cer-icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+[data-page="search"] .sr-field .cer-input-el {
+  font-size: 19px;
+  font-weight: 600;
+}
+[data-page="search"] .sr-field:focus-within {
+  border-color: var(--cer-acc);
+  box-shadow: 0 0 0 4px var(--cer-acc-soft), var(--cer-shadow);
+}
+[data-page="search"] .sr-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+[data-page="search"] .sr-status {
+  color: var(--cer-text-3);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------- results */
+[data-page="search"] .sr-results {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+[data-page="search"] .sr-more {
+  align-self: center;
+  min-width: 160px;
+}
+
+/* people */
+[data-page="search"] .sr-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 20px 12px 16px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-surface);
+  border: 1px solid var(--cer-line);
+  text-align: center;
+  color: var(--cer-text) !important;
+  transition: border-color 0.15s, transform 0.2s var(--cer-ease), background 0.15s;
+}
+[data-page="search"] .sr-person:hover {
+  border-color: var(--cer-line-2);
+  background: color-mix(in srgb, var(--cer-surface) 100%, var(--cer-raise));
+  transform: translateY(-2px);
+}
+[data-page="search"] .sr-person .cer-avatar {
+  --cer-bg-ring: var(--cer-surface);
+  margin-bottom: 10px;
+}
+[data-page="search"] .sr-person-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+}
+[data-page="search"] .sr-person-display {
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="search"] .sr-verified {
+  flex: none;
+  display: inline-flex;
+  color: var(--cer-acc);
+}
+[data-page="search"] .sr-person-user,
+[data-page="search"] .sr-person-status,
+[data-page="search"] .sr-person-was {
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--cer-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="search"] .sr-person-status,
+[data-page="search"] .sr-person-was {
+  min-height: 1.4em;
+  font-weight: 600;
+}
+[data-page="search"] .sr-person-status.is-ingame {
+  color: var(--cer-ingame);
+}
+[data-page="search"] .sr-person-status.is-online {
+  color: var(--cer-online);
+}
+[data-page="search"] .sr-person-status.is-studio {
+  color: var(--cer-studio);
+}
+[data-page="search"] .sr-sk-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 16px;
+  border-radius: var(--cer-r-l);
+  border: 1px solid var(--cer-line);
+}
+[data-page="search"] .sr-sk-face {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  margin-bottom: 6px;
+}
+[data-page="search"] .sr-sk-person .cer-sk-line {
+  width: 70%;
+}
+[data-page="search"] .sr-sk-person .cer-sk-line.short {
+  width: 45%;
+}
+
+/* groups */
+[data-page="search"] .sr-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-surface);
+  border: 1px solid var(--cer-line);
+  color: var(--cer-text) !important;
+  transition: border-color 0.15s, transform 0.2s var(--cer-ease);
+}
+[data-page="search"] .sr-group:hover {
+  border-color: var(--cer-line-2);
+  transform: translateY(-2px);
+}
+[data-page="search"] .sr-group-icon {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--cer-r-m);
+  overflow: hidden;
+  background: var(--cer-surface-2);
+}
+[data-page="search"] .sr-group-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 2px;
+}
+[data-page="search"] .sr-group-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+[data-page="search"] .sr-group-title {
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="search"] .sr-group-members {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cer-text-3);
+}
+[data-page="search"] .sr-group-desc {
+  margin-top: 2px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--cer-text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+[data-page="search"] .sr-sk-group {
+  height: 106px;
+  border-radius: var(--cer-r-l);
+}

@@ -338,7 +338,9 @@
 
   // Collects single-id requests made in the same tick into one batched call.
   // load(ids) must resolve to a Map/obj of id → value.
-  function batcher(load, max = 100, wait = 12) {
+  // keep:false → only coalesces calls in flight, never serves old values
+  // (for live data like presence).
+  function batcher(load, max = 100, wait = 12, keep = true) {
     const cache = new Map();
     let queue = [];
     let timer = null;
@@ -354,7 +356,7 @@
             for (const x of chunk) {
               const val = res instanceof Map ? res.get(String(x.id)) : res?.[x.id];
               x.resolve(val ?? null);
-              if (val == null) cache.delete(String(x.id)); // let a later call retry
+              if (val == null || !keep) cache.delete(String(x.id)); // let a later call refetch
             }
           });
       }
@@ -433,7 +435,7 @@
   api.presenceOne = batcher(async (ids) => {
     const j = await api.json("https://presence.roblox.com/v1/presence/users", { method: "POST", body: { userIds: ids.map(Number) }, bg: true });
     return new Map((j?.userPresences ?? []).map((p) => [String(p.userId), p]));
-  });
+  }, 100, 12, false);
   api.presence = (ids) => api.presenceOne.many(ids);
   // CSS state name for a presence object
   api.presenceState = (p) => ["offline", "online", "ingame", "studio", "offline"][p?.userPresenceType ?? 0] ?? "offline";

@@ -12,6 +12,8 @@
 
 (async function () {
   if (typeof CER === "undefined") return;
+  // retired where CER owns the page: pages/profile.js builds its own profile
+  if ((await CER.takeover) === "profile") return;
   const settings = await CER.get();
   if (settings.features.profileRedesign === false) return CER.dismissSkeleton?.();
   const userId = location.pathname.match(/\/users\/(\d+)\/profile/)?.[1];

@@ -88,39 +88,60 @@
   }
 
   // ---- the panel ----
+  // A slide-over on the right: conversation list, then a thread with bubbles
+  // and a composer. Built from CER.ui pieces only.
 
+  const { h, icon } = CER.ui;
   let panel = null;
   let pollTimer = null;
 
   function togglePanel() {
     if (panel) return closePanel();
-    panel = CER.el("div", "cer-chat-panel");
-    const head = CER.el("div", "cer-panel-head");
-    head.appendChild(CER.el("span", "cer-panel-title", "Chat"));
-    const x = CER.el("button", "cer-panel-x", "×");
-    x.addEventListener("click", closePanel);
-    head.appendChild(x);
-    panel.appendChild(head);
-    const body = CER.el("div", "cer-chat-body");
-    panel.appendChild(body);
+    const title = h("div", { class: "cer-chat-title" }, h("span", { text: "Chat" }));
+    const back = CER.ui.button("", { icon: "left", variant: "ghost", size: "sm", title: "Back", class: "cer-chat-back" });
+    back.hidden = true;
+    const x = CER.ui.button("", { icon: "x", variant: "ghost", size: "sm", title: "Close", onClick: closePanel });
+    const body = h("div", { class: "cer-chat-body" });
+    panel = h("aside", { class: "cer-ui cer-chat-panel", role: "dialog", "aria-label": "Chat" }, h("header", { class: "cer-chat-head" }, back, title, x), body);
+    panel.head = { back, title };
     document.body.appendChild(panel);
+    document.addEventListener("keydown", onKey);
     showConversations(body);
   }
 
   function closePanel() {
+    stopPoll();
+    document.removeEventListener("keydown", onKey);
+    const p = panel;
+    panel = null;
+    if (!p) return;
+    p.classList.add("is-out");
+    setTimeout(() => p.remove(), 160);
+  }
+  const onKey = (e) => {
+    if (e.key === "Escape" && panel) closePanel();
+  };
+
+  function setHead(opts) {
+    const { back, title } = panel.head;
+    back.hidden = !opts.onBack;
+    back.onclick = opts.onBack ?? null;
+    title.replaceChildren(...opts.title);
+  }
+
+  // live thread refresh: only while a thread is open and the tab is visible
+  function stopPoll() {
     clearInterval(pollTimer);
     pollTimer = null;
-    panel?.remove();
-    panel = null;
   }
 
   // Roblox's current chat API. Verified live from Roblox's own chat widget:
   //   reads : GET  /v1/get-user-conversations?include_user_data=true&pageSize=30
   //           GET  /v1/get-conversation-messages?conversation_id=<uuid>
   //   send  : POST /v1/send-messages  { conversation_id, messages: [{ content }] }
-  // The path is send-messageS (plural) with a messages ARRAY — the old singular
-  // /send-message 404'd, which is what broke sending. All routed through the
-  // background worker (apis.roblox.com blocks the page's write preflight).
+  // The path is send-messageS (plural) with a messages ARRAY. All routed
+  // through the background worker (apis.roblox.com blocks the page's write
+  // preflight).
   const API = "https://apis.roblox.com/platform-chat-api/v1";
 
   function partnerOf(convo) {
@@ -128,121 +149,118 @@
   }
 
   async function showConversations(body) {
-    clearInterval(pollTimer);
-    body.textContent = "";
-    body.appendChild(CER.el("p", "cer-hint", "Loading…"));
+    stopPoll();
+    setHead({ title: [h("span", { text: "Chat" })] });
+    body.replaceChildren(h("div", { class: "cer-chat-list" }, CER.ui.skeleton("row", 7)));
     const res = await CER.bgFetch(API + "/get-user-conversations?include_user_data=true&pageSize=30");
-    if (!res.ok) {
-      body.textContent = "";
-      body.appendChild(CER.el("p", "cer-hint", "Couldn't load chats."));
+    if (!panel || panel.querySelector(".cer-chat-body") !== body) return;
+    if (!res?.ok) {
+      body.replaceChildren(CER.ui.empty("Could not load your chats. Try again soon.", { icon: "chat" }));
       return;
     }
     const convos = res.data?.conversations ?? [];
-    body.textContent = "";
-    if (convos.length === 0) {
-      body.appendChild(CER.el("p", "cer-hint", "No conversations yet."));
+    if (!convos.length) {
+      body.replaceChildren(CER.ui.empty("No chats yet. Say hi to a friend!", { icon: "chat" }));
       return;
     }
-
-    const partnerIds = convos.map(partnerOf).filter(Boolean);
-    let heads = {};
-    try {
-      const r = await fetch(
-        "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" + [...new Set(partnerIds)].join(",") + "&size=48x48&format=Png&isCircular=true",
-        { credentials: "include" }
-      );
-      for (const d of (await r.json()).data ?? []) heads[d.targetId] = d.imageUrl;
-    } catch {
-      /* rows render without avatars */
-    }
-
+    const list = h("div", { class: "cer-chat-list" });
     for (const convo of convos) {
       const partnerId = partnerOf(convo);
-      const name = convo.name || convo.user_data?.[partnerId]?.display_name || "Conversation";
-      const row = CER.el("button", "cer-chat-row");
-      const img = CER.el("img", "cer-chat-avatar");
-      img.src = heads[partnerId] ?? "";
-      row.appendChild(img);
-      row.appendChild(CER.el("span", "cer-chat-name", name));
-      if (convo.has_unread_messages) row.appendChild(CER.el("span", "cer-chat-unread"));
-      row.addEventListener("click", () => showThread(body, convo, name));
-      body.appendChild(row);
+      const ud = convo.user_data?.[partnerId];
+      const isGroup = (convo.participant_user_ids?.length ?? 0) > 2;
+      const name = convo.name || ud?.display_name || ud?.name || "Chat";
+      const sub = isGroup ? (convo.participant_user_ids.length + " people") : ud?.name ? "@" + ud.name : "";
+      const pic = partnerId && !isGroup ? CER.ui.avatar(partnerId, { size: 44 }) : h("span", { class: "cer-chat-groupic" }, icon("users", 20));
+      const row = h(
+        "button",
+        { type: "button", class: "cer-chat-row" + (convo.has_unread_messages ? " is-unread" : "") },
+        pic,
+        h("span", { class: "cer-chat-row-text" }, h("span", { class: "cer-chat-row-name", text: name }), sub && h("span", { class: "cer-chat-row-sub", text: sub })),
+        convo.has_unread_messages && h("span", { class: "cer-chat-unread", title: "New messages" })
+      );
+      row.addEventListener("click", () => showThread(body, convo, name, isGroup ? null : partnerId));
+      list.appendChild(row);
     }
+    body.replaceChildren(list);
   }
 
-  async function showThread(body, convo, name) {
-    body.textContent = "";
-    const bar = CER.el("div", "cer-chat-threadbar");
-    const back = CER.el("button", "cer-chat-back", "‹ Back");
-    back.addEventListener("click", () => showConversations(body));
-    bar.appendChild(back);
-    bar.appendChild(CER.el("span", "cer-chat-name", name));
-    body.appendChild(bar);
+  async function showThread(body, convo, name, partnerId) {
+    stopPoll();
+    const titleKids = [
+      partnerId ? CER.ui.avatar(partnerId, { size: 30 }) : h("span", { class: "cer-chat-groupic is-sm" }, icon("users", 16)),
+      partnerId ? h("a", { class: "cer-chat-title-link", href: `https://www.roblox.com/users/${partnerId}/profile`, text: name, title: "Open profile" }) : h("span", { text: name }),
+    ];
+    setHead({ title: titleKids, onBack: () => showConversations(body) });
 
-    const log = CER.el("div", "cer-chat-log");
-    body.appendChild(log);
-
-    const composer = CER.el("div", "cer-chat-composer");
-    const input = CER.el("input", "cer-chat-input");
-    input.placeholder = "Message…";
-    input.maxLength = 500;
-    composer.appendChild(input);
-    body.appendChild(composer);
+    const log = h("div", { class: "cer-chat-log", "aria-live": "polite" });
+    const input = h("input", { class: "cer-chat-field", type: "text", placeholder: "Write a message", maxlength: "500", autocomplete: "off", "aria-label": "Message" });
+    const send = CER.ui.button("", { icon: "send", variant: "primary", size: "sm", title: "Send", class: "cer-chat-send" });
+    const composer = h("div", { class: "cer-chat-composer" }, h("label", { class: "cer-chat-inputwrap" }, input), send);
+    body.replaceChildren(log, composer);
 
     if (!convo.id) {
-      log.appendChild(CER.el("p", "cer-hint", "No messages yet."));
+      log.appendChild(CER.ui.empty("You can't chat here.", { icon: "lock" }));
       input.disabled = true;
-      input.placeholder = "Can't message here";
+      send.disabled = true;
       return;
     }
+    log.appendChild(h("div", { class: "cer-chat-loading" }, CER.ui.skeleton("line", 4)));
 
-    let lastCount = 0;
+    let lastSig = "";
     async function load() {
-      try {
-        const res = await CER.bgFetch(
-          API + "/get-conversation-messages?conversation_id=" + encodeURIComponent(convo.id) + "&pageSize=30"
-        );
-        const messages = res.data?.messages ?? [];
-        if (messages.length === lastCount) return;
-        lastCount = messages.length;
-        log.textContent = "";
-        for (const msg of messages.slice().reverse()) {
-          const mine = msg.sender_user_id === me.id;
-          log.appendChild(
-            CER.el("div", "cer-chat-bubble" + (mine ? " cer-chat-bubble-mine" : ""), msg.content ?? "")
-          );
-        }
-        log.scrollTop = log.scrollHeight;
-      } catch {
-        /* keep old log */
+      if (document.hidden) return;
+      const res = await CER.bgFetch(API + "/get-conversation-messages?conversation_id=" + encodeURIComponent(convo.id) + "&pageSize=30").catch(() => null);
+      if (!log.isConnected) return stopPoll();
+      if (!res?.ok) {
+        if (!lastSig) log.replaceChildren(CER.ui.empty("Could not load messages.", { icon: "chat" }));
+        return;
       }
+      const messages = res.data?.messages ?? [];
+      const sig = messages.length + ":" + (messages[0]?.id ?? "");
+      if (sig === lastSig) return;
+      lastSig = sig;
+      const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+      log.replaceChildren();
+      if (!messages.length) log.appendChild(h("p", { class: "cer-chat-note", text: "No messages yet. Say hi!" }));
+      let prevMine = null;
+      for (const msg of messages.slice().reverse()) {
+        const mine = msg.sender_user_id === me.id;
+        log.appendChild(h("div", { class: "cer-chat-bubble" + (mine ? " is-mine" : "") + (prevMine === mine ? " is-cont" : ""), text: msg.content ?? "" }));
+        prevMine = mine;
+      }
+      if (nearBottom || !log.dataset.loaded) log.scrollTop = log.scrollHeight;
+      log.dataset.loaded = "1";
     }
     await load();
-    clearInterval(pollTimer);
+    if (!log.isConnected) return;
     pollTimer = setInterval(load, 5000);
 
-    input.addEventListener("keydown", async (e) => {
-      if (e.key !== "Enter" || !input.value.trim()) return;
+    async function submit() {
       const text = input.value.trim();
+      if (!text) return;
       input.value = "";
-      // optimistic bubble so it shows instantly
-      const bubble = CER.el("div", "cer-chat-bubble cer-chat-bubble-mine cer-chat-sending", text);
+      log.querySelector(".cer-chat-note")?.remove();
+      // optimistic bubble so it shows at once
+      const bubble = h("div", { class: "cer-chat-bubble is-mine is-sending", text });
       log.appendChild(bubble);
       log.scrollTop = log.scrollHeight;
-      // send-messageS (plural), messages ARRAY — verified from Roblox's own chat.
-      const res = await CER.bgFetch(API + "/send-messages", "POST", {
-        conversation_id: convo.id,
-        messages: [{ content: text }],
-      });
-      bubble.classList.remove("cer-chat-sending");
+      const res = await CER.bgFetch(API + "/send-messages", "POST", { conversation_id: convo.id, messages: [{ content: text }] });
+      bubble.classList.remove("is-sending");
       if (res?.ok) {
-        lastCount = 0;
+        lastSig = "";
         setTimeout(load, 600);
       } else {
-        bubble.classList.add("cer-chat-failed");
-        bubble.title = "Failed to send (status " + (res?.status ?? "?") + ")";
+        bubble.classList.add("is-failed");
+        bubble.title = "Not sent. Try again.";
+      }
+    }
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.isComposing) {
+        e.preventDefault();
+        submit();
       }
     });
+    send.addEventListener("click", submit);
     input.focus();
   }
 })();

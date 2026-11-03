@@ -55,6 +55,8 @@ function cerWatchNativeContinue() {
 async function cerInitContinue() {
   if (typeof CER === "undefined") return;
   if (!location.pathname.startsWith("/home")) return;
+  // CER's own home page (pages/home.js) owns /home now: stand down there
+  if (CER.pageFor?.(location.pathname, location.search, (await CER.get()).features)?.tag === "home") return;
   // `busy` set synchronously so the observer/nav can't race two builds
   if (cerContinueBusy || document.querySelector("[data-cer-continue]")) return;
   cerContinueBusy = true;

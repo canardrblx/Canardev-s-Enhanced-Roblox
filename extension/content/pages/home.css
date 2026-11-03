@@ -1,1 +1,428 @@
-/* CER home page. Scope every rule under [data-page="home"]. */
+/* CER home page. Every rule scoped under [data-page="home"]. */
+
+[data-page="home"] .home-view {
+  gap: 34px;
+}
+[data-page="home"] [hidden],
+[data-page="home"] .is-user-hidden {
+  display: none !important;
+}
+/* rails size their cards from the column width, not the window */
+[data-page="home"] .home-cq {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------ greeting */
+[data-page="home"] .home-greet {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  min-height: 92px;
+}
+[data-page="home"] .home-greet-av {
+  flex: none;
+  width: 88px;
+  height: 88px;
+  border-radius: 26px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 30%, var(--cer-acc-soft), transparent 70%), var(--cer-surface);
+  border: 1px solid var(--cer-line);
+  transition: transform 0.2s var(--cer-ease), border-color 0.15s;
+}
+[data-page="home"] .home-greet-av:hover {
+  transform: translateY(-2px);
+  border-color: var(--cer-line-2);
+}
+[data-page="home"] .home-greet-text {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+[data-page="home"] .home-greet-title {
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="home"] .home-sk-text {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: 30px;
+  border-radius: 8px;
+}
+[data-page="home"] .home-greet-user {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+  min-height: 18px;
+}
+[data-page="home"] .home-greet-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  min-height: 30px;
+}
+[data-page="home"] .home-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--cer-raise);
+  border: 1px solid var(--cer-line);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cer-text-2) !important;
+  transition: background 0.15s, color 0.15s;
+}
+[data-page="home"] .home-pill:hover {
+  background: var(--cer-hover);
+  color: var(--cer-text) !important;
+}
+[data-page="home"] .home-sk-inline {
+  display: inline-block;
+  width: 70px;
+  height: 12px;
+  border-radius: 6px;
+}
+[data-page="home"] .home-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cer-ingame);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cer-ingame) 22%, transparent);
+}
+[data-page="home"] .home-dot.is-off {
+  background: var(--cer-text-3);
+  box-shadow: none;
+}
+[data-page="home"] .home-greet-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------ jump back in */
+[data-page="home"] .home-jump {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+[data-page="home"] .home-hero,
+[data-page="home"] .home-hero-sk {
+  min-height: 320px;
+}
+[data-page="home"] .home-hero-sk {
+  border-radius: var(--cer-r-xl);
+}
+[data-page="home"] .home-hero {
+  padding: 36px 40px;
+}
+[data-page="home"] .home-hero .cer-hero-art {
+  width: min(44%, 540px);
+  transition: transform 0.25s var(--cer-ease);
+}
+[data-page="home"] .home-hero .cer-hero-art:hover {
+  transform: translateY(-3px) scale(1.01);
+}
+[data-page="home"] .home-hero-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+[data-page="home"] .home-hero .cer-hero-actions {
+  align-items: center;
+}
+[data-page="home"] .home-hero-friends {
+  gap: 9px;
+}
+[data-page="home"] .home-hero-friends .home-stack-av {
+  box-shadow: 0 0 0 2px rgba(10, 11, 16, 0.85);
+}
+[data-page="home"] .home-hero-empty .cer-empty {
+  min-height: 240px;
+}
+[data-page="home"] .home-cont-rail:empty {
+  display: none;
+}
+@container (max-width: 760px) {
+  [data-page="home"] .home-hero .cer-hero-art {
+    display: none;
+  }
+  [data-page="home"] .home-hero,
+  [data-page="home"] .home-hero-sk {
+    min-height: 260px;
+  }
+}
+@media (max-width: 1180px) {
+  [data-page="home"] .home-hero .cer-hero-art {
+    width: 40%;
+  }
+  [data-page="home"] .home-hero {
+    padding: 30px;
+  }
+}
+
+/* pin toggle (cards + hero) */
+[data-page="home"] .home-pin {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 9, 14, 0.62);
+  backdrop-filter: blur(8px);
+  color: #fff !important;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.16s, transform 0.16s var(--cer-ease), background 0.15s;
+  z-index: 1;
+}
+[data-page="home"] .cer-gc:hover .home-pin,
+[data-page="home"] .home-pin:focus-visible,
+[data-page="home"] .home-pin.is-on {
+  opacity: 1;
+  transform: none;
+}
+[data-page="home"] .home-pin:hover {
+  background: rgba(8, 9, 14, 0.85);
+}
+[data-page="home"] .home-pin.is-on {
+  background: var(--cer-acc);
+}
+[data-page="home"] .home-pin.is-on .cer-icon {
+  fill: currentColor;
+}
+[data-page="home"] .home-pin.is-glass {
+  position: static;
+  opacity: 1;
+  transform: none;
+  width: 52px;
+  height: 52px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+[data-page="home"] .home-pin.is-glass:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+[data-page="home"] .home-pin.is-glass.is-on {
+  background: var(--cer-acc);
+  border-color: transparent;
+}
+
+/* ------------------------------------------------------------ rails */
+[data-page="home"] .home-rail .cer-rail-track {
+  grid-auto-columns: calc((100% - 4 * 16px) / 5);
+}
+@container (min-width: 1280px) {
+  [data-page="home"] .home-rail .cer-rail-track {
+    grid-auto-columns: calc((100% - 5 * 16px) / 6);
+  }
+}
+@container (max-width: 1000px) {
+  [data-page="home"] .home-rail .cer-rail-track {
+    grid-auto-columns: calc((100% - 3 * 16px) / 4);
+  }
+}
+@container (max-width: 720px) {
+  [data-page="home"] .home-rail .cer-rail-track {
+    grid-auto-columns: calc((100% - 2 * 16px) / 3);
+  }
+}
+@container (max-width: 480px) {
+  [data-page="home"] .home-rail .cer-rail-track {
+    grid-auto-columns: calc((100% - 16px) / 2);
+  }
+}
+[data-page="home"] .home-rail {
+  --rail-arrow-top: 28%;
+}
+[data-page="home"] .cer-sk-card .cer-sk-line {
+  height: 13px;
+}
+
+/* friends on a game card */
+[data-page="home"] .home-gc-friends {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(8, 9, 14, 0.6);
+  backdrop-filter: blur(8px);
+  display: inline-flex;
+}
+[data-page="home"] .home-stack {
+  --av: 28px;
+  display: inline-flex;
+  align-items: center;
+}
+[data-page="home"] .home-stack-av {
+  width: var(--av);
+  height: var(--av);
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--cer-surface-2);
+  box-shadow: 0 0 0 2px rgba(10, 11, 16, 0.9);
+  flex: none;
+}
+[data-page="home"] .home-stack-av + .home-stack-av {
+  margin-left: calc(var(--av) * -0.3);
+}
+[data-page="home"] .home-stack-av .cer-img {
+  border-radius: 50%;
+}
+[data-page="home"] .home-stack-more {
+  margin-left: 4px;
+  padding: 0 7px 0 3px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+}
+
+/* ------------------------------------------------------------ friends strip */
+[data-page="home"] .home-friend-rail {
+  --rail-arrow-top: 44px;
+}
+[data-page="home"] .home-friend-rail .cer-rail-track {
+  grid-auto-columns: 104px;
+  gap: 6px;
+}
+[data-page="home"] .home-friend,
+[data-page="home"] .home-friend-sk {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 4px 6px;
+  border-radius: var(--cer-r-m);
+  text-align: center;
+  color: var(--cer-text) !important;
+}
+[data-page="home"] .home-friend {
+  transition: background 0.15s;
+}
+[data-page="home"] .home-friend:hover {
+  background: var(--cer-raise);
+}
+[data-page="home"] .home-friend-av {
+  position: relative;
+  margin-bottom: 8px;
+}
+[data-page="home"] .home-friend.is-offline .cer-avatar {
+  opacity: 0.72;
+}
+[data-page="home"] .home-friend-name {
+  max-width: 100%;
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="home"] .home-friend-sub {
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="home"] .home-friend-sub.is-ingame {
+  color: var(--cer-ingame);
+}
+[data-page="home"] .home-friend-sub.is-online {
+  color: var(--cer-online);
+}
+[data-page="home"] .home-friend-sub.is-studio {
+  color: var(--cer-studio);
+}
+[data-page="home"] .home-join {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px 0 7px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--cer-good);
+  color: #062b16 !important;
+  font-size: 11.5px;
+  font-weight: 800;
+  box-shadow: 0 0 0 2px var(--cer-bg), 0 4px 10px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s var(--cer-ease), filter 0.15s;
+}
+[data-page="home"] .home-join:hover {
+  transform: translateX(-50%) scale(1.07);
+  filter: brightness(1.06);
+}
+[data-page="home"] .home-friend-sk > .cer-sk:first-child {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  margin-bottom: 10px;
+}
+[data-page="home"] .home-friend-sk > .cer-sk-line {
+  width: 64px !important;
+  height: 12px;
+}
+
+/* ------------------------------------------------------------ more */
+[data-page="home"] .home-more {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+[data-page="home"] .home-more:empty {
+  display: none;
+}
+
+/* ------------------------------------------------------------ customize modal */
+.home-cust .home-cust-hint {
+  margin-bottom: 12px !important;
+  color: var(--cer-text-3);
+}
+.home-cust .home-cust-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.home-cust .home-cust-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: var(--cer-r-s);
+  color: var(--cer-text);
+  font-weight: 700;
+  cursor: pointer;
+}
+.home-cust .home-cust-row:hover {
+  background: var(--cer-raise);
+}

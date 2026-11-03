@@ -1,1 +1,301 @@
 // CER search page. Built on CER.ui (content/ui.js).
+//
+// One results page for every search route:
+//   /discover?Keyword=q       → Games  (omni-search)
+//   /search/users?keyword=q   → People (users search + presence)
+//   /search/communities?...   → Groups (groups search)
+//   Catalog                   → a link to /catalog/?Keyword=q (catalog page owns it)
+// Typing re-searches after a short pause and keeps the URL in sync with
+// replaceState; switching tabs pushes a history entry so Back works.
+(function () {
+  if (typeof CER === "undefined" || !CER.ui) return;
+  const { ui, api, fmt } = CER;
+  const h = ui.h;
+
+  const SID = (() => {
+    try {
+      let s = localStorage.getItem("cer:exploreSid");
+      if (!s) localStorage.setItem("cer:exploreSid", (s = "cer-" + Math.random().toString(36).slice(2, 12)));
+      return s;
+    } catch {
+      return "cer-search";
+    }
+  })();
+
+  const TABS = [
+    { id: "games", label: "Games", icon: "gamepad" },
+    { id: "people", label: "People", icon: "user" },
+    { id: "groups", label: "Groups", icon: "users" },
+    { id: "catalog", label: "Catalog", icon: "shirt" },
+  ];
+
+  // ------------------------------------------------------------ url <-> state
+  function parse() {
+    const p = location.pathname.toLowerCase();
+    const tab = p.startsWith("/search/users") ? "people" : /^\/search\/(communities|groups)/.test(p) ? "groups" : "games";
+    let q = "";
+    for (const [k, v] of new URLSearchParams(location.search)) if (k.toLowerCase() === "keyword") q = v;
+    return { tab, q: q.trim() };
+  }
+  function urlFor(tab, q) {
+    const e = encodeURIComponent(q);
+    if (tab === "people") return "/search/users?keyword=" + e;
+    if (tab === "groups") return "/search/communities?keyword=" + e;
+    if (tab === "catalog") return "/catalog/?Keyword=" + e;
+    return "/discover?Keyword=" + e;
+  }
+
+  const S = { root: null, tab: "games", q: "", seq: 0 };
+  const alive = (root) => root && root.isConnected && document.getElementById("cer-app") === root;
+
+  ui.route("search", async () => {
+    const st = parse();
+    // our own replaceState / pushState re-runs the route: same page, just sync
+    if (alive(S.root)) {
+      if (st.tab !== S.tab || st.q !== S.q) apply(st, true);
+      return;
+    }
+    const { root, page } = ui.page("search");
+    S.root = root;
+    build(page, st);
+  });
+
+  // ------------------------------------------------------------ page
+  function build(page, st) {
+    S.tab = st.tab;
+    S.q = st.q;
+    const field = ui.search("Search games, people and groups", {
+      class: "sr-field",
+      value: st.q,
+      delay: 350,
+      onInput: (q) => setQuery(q),
+      onSubmit: (q) => setQuery(q, true),
+    });
+    field.input.setAttribute("aria-label", "Search");
+    field.input.setAttribute("enterkeyhint", "search");
+    const tabs = ui.tabs(
+      TABS.map((t) => ({ id: t.id, label: t.label, icon: t.icon })),
+      st.tab,
+      (id) => {
+        if (id === "catalog") {
+          tabs.set(S.tab); // the catalog page is its own page
+          location.href = urlFor("catalog", S.q);
+          return;
+        }
+        S.tab = id;
+        history.pushState(history.state, "", urlFor(id, S.q));
+        run();
+      }
+    );
+    tabs.classList.add("sr-tabs");
+    const status = h("div", { class: "sr-status", "aria-live": "polite" });
+    const results = h("div", { class: "sr-results" });
+    page.append(h("div", { class: "sr-top" }, h("h1", { class: "sr-title", text: "Search" }), field, h("div", { class: "sr-bar" }, tabs, status)), results);
+    Object.assign(S, { field, tabs, status, results });
+    if (!st.q) requestAnimationFrame(() => field.input.focus());
+    run();
+  }
+
+  // URL changed under us (Back/Forward, or a new search from the sidebar)
+  function apply(st) {
+    S.tab = st.tab;
+    S.q = st.q;
+    S.tabs.set(st.tab);
+    if (S.field.input.value.trim() !== st.q) S.field.input.value = st.q;
+    run();
+  }
+
+  function setQuery(q, now) {
+    if (q === S.q && !now) return;
+    S.q = q;
+    history.replaceState(history.state, "", urlFor(S.tab, q));
+    run();
+  }
+
+  // ------------------------------------------------------------ search
+  function run() {
+    const seq = ++S.seq;
+    const { tab, q } = S;
+    const ok = () => seq === S.seq && alive(S.root);
+    S.status.textContent = "";
+    if (!q) {
+      ui.clear(S.results, ui.empty(tab === "people" ? "Type a name to find people." : tab === "groups" ? "Type a name to find groups." : "Type a game name to search.", { icon: "search" }));
+      return;
+    }
+    if (tab === "people" && q.length < 3) {
+      ui.clear(S.results, ui.empty("Type 3 or more letters.", { icon: "user" }));
+      return;
+    }
+    ui.clear(S.results, skeleton(tab));
+    const load = tab === "people" ? searchPeople : tab === "groups" ? searchGroups : searchGames;
+    load(q, ok);
+  }
+
+  function skeleton(tab) {
+    if (tab === "games") return ui.grid(ui.skeleton("card", 12), { min: 220, gap: 20 });
+    if (tab === "people") return ui.grid(Array.from({ length: 12 }, () => h("div", { class: "sr-sk-person" }, h("div", { class: "cer-sk sr-sk-face" }), h("div", { class: "cer-sk cer-sk-line" }), h("div", { class: "cer-sk cer-sk-line short" }))), { min: 170, gap: 16 });
+    return ui.grid(ui.skeleton("row", 8).map((x) => (x.classList.add("sr-sk-group"), x)), { min: 360, gap: 14 });
+  }
+
+  function failed(retry) {
+    return ui.empty("Search is not working right now.", { icon: "refresh", action: ui.button("Try again", { icon: "refresh", onClick: retry }) });
+  }
+  function nothing(q, what) {
+    return ui.empty(`No ${what} found for "${q}". Try other words.`, { icon: "search" });
+  }
+
+  // "Show more" button that loads the next page into `grid`
+  function moreButton(onMore) {
+    const b = ui.button("Show more", { icon: "down", variant: "soft", class: "sr-more" });
+    b.addEventListener("click", async () => {
+      b.busy(true);
+      const done = await onMore();
+      b.busy(false);
+      if (done) b.remove();
+    });
+    return b;
+  }
+
+  // ---- games
+  const normGame = (x) =>
+    x && x.universeId && x.rootPlaceId && !x.isSponsored
+      ? { universeId: x.universeId, placeId: x.rootPlaceId, name: x.name ?? "", playing: x.playerCount ?? null, rating: fmt.pct(x.totalUpVotes, x.totalDownVotes) }
+      : null;
+  const omni = (q, token) =>
+    api.json(`https://apis.roblox.com/search-api/omni-search?searchQuery=${encodeURIComponent(q)}&sessionId=${SID}&pageType=Games${token ? "&pageToken=" + encodeURIComponent(token) : ""}`, { ttl: 120000 });
+  async function searchGames(q, ok) {
+    const j = await omni(q);
+    if (!ok()) return;
+    if (!j?.searchResults) return ui.clear(S.results, failed(run));
+    const seen = new Set();
+    const take = (res) =>
+      res
+        .flatMap((r) => (r.contentGroupType === "Game" ? r.contents ?? [] : []))
+        .map(normGame)
+        .filter((g) => g && !seen.has(g.universeId) && seen.add(g.universeId));
+    const games = take(j.searchResults);
+    if (!games.length) return ui.clear(S.results, nothing(q, "games"));
+    const grid = ui.grid(
+      games.map((g) => ui.gameCard(g)),
+      { min: 220, gap: 20, class: "sr-games" }
+    );
+    let token = j.nextPageToken;
+    ui.clear(
+      S.results,
+      grid,
+      token &&
+        moreButton(async () => {
+          const n = await omni(q, token);
+          if (!ok()) return true;
+          const more = take(n?.searchResults ?? []);
+          grid.append(...more.map((g) => ui.gameCard(g)));
+          token = n?.nextPageToken;
+          return !token || !more.length;
+        })
+    );
+  }
+
+  // ---- people
+  const usersUrl = (q, cursor) => `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(q)}&limit=25${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
+  async function searchPeople(q, ok) {
+    const j = await api.json(usersUrl(q), { ttl: 120000 });
+    if (!ok()) return;
+    if (!j?.data) return ui.clear(S.results, failed(run));
+    if (!j.data.length) return ui.clear(S.results, nothing(q, "people"));
+    const grid = ui.grid([], { min: 170, gap: 16, class: "sr-people" });
+    const addUsers = (list) => {
+      const tiles = list.map((u) => personTile(u, q));
+      grid.append(...tiles.map((t) => t.el));
+      // presence rings + "Playing X" fill in when presence arrives
+      api.presence(list.map((u) => u.id)).then((pres) => {
+        for (const t of tiles) t.setPresence(pres.get(String(t.id)));
+      });
+    };
+    addUsers(j.data);
+    let cursor = j.nextPageCursor;
+    ui.clear(
+      S.results,
+      grid,
+      cursor &&
+        moreButton(async () => {
+          const n = await api.json(usersUrl(q, cursor), { ttl: 120000 });
+          if (!ok()) return true;
+          if (n?.data?.length) addUsers(n.data);
+          cursor = n?.nextPageCursor;
+          return !cursor || !n?.data?.length;
+        })
+    );
+  }
+
+  function personTile(u, q) {
+    const href = `https://www.roblox.com/users/${u.id}/profile`;
+    const av = ui.avatar(u.id, { size: 96 });
+    const status = h("span", { class: "sr-person-status" });
+    // say why a result matched when it was an old name
+    const lower = q.toLowerCase();
+    const was = !u.name.toLowerCase().includes(lower) && !(u.displayName ?? "").toLowerCase().includes(lower) ? (u.previousUsernames ?? []).find((n) => n.toLowerCase().includes(lower)) : null;
+    const el = h(
+      "a",
+      { class: "sr-person", href, title: u.displayName ?? u.name },
+      av,
+      h("span", { class: "sr-person-name" }, h("span", { class: "sr-person-display", text: u.displayName || u.name }), u.hasVerifiedBadge && h("span", { class: "sr-verified", title: "Verified" }, ui.icon("verified", 15))),
+      h("span", { class: "sr-person-user", text: "@" + u.name }),
+      was ? h("span", { class: "sr-person-was", text: "Was @" + was }) : status
+    );
+    return {
+      el,
+      id: u.id,
+      setPresence(p) {
+        if (!p) return;
+        av.setPresence(p);
+        const state = api.presenceState(p);
+        if (was) return;
+        status.className = "sr-person-status is-" + state;
+        status.textContent = state === "ingame" ? (p.lastLocation ? "Playing " + p.lastLocation : "In a game") : state === "online" ? "Online" : state === "studio" ? "In Studio" : "";
+        status.title = status.textContent;
+      },
+    };
+  }
+
+  // ---- groups
+  const groupsUrl = (q, cursor) => `https://groups.roblox.com/v1/groups/search?keyword=${encodeURIComponent(q)}&limit=25${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
+  async function searchGroups(q, ok) {
+    const j = await api.json(groupsUrl(q), { ttl: 120000 });
+    if (!ok()) return;
+    if (!j?.data) return ui.clear(S.results, failed(run));
+    if (!j.data.length) return ui.clear(S.results, nothing(q, "groups"));
+    const grid = ui.grid(
+      j.data.map(groupCard),
+      { min: 360, gap: 14, class: "sr-groups" }
+    );
+    let cursor = j.nextPageCursor;
+    ui.clear(
+      S.results,
+      grid,
+      cursor &&
+        moreButton(async () => {
+          const n = await api.json(groupsUrl(q, cursor), { ttl: 120000 });
+          if (!ok()) return true;
+          if (n?.data?.length) grid.append(...n.data.map(groupCard));
+          cursor = n?.nextPageCursor;
+          return !cursor || !n?.data?.length;
+        })
+    );
+  }
+
+  function groupCard(g) {
+    const desc = (g.description ?? "").replace(/\s+/g, " ").trim();
+    return h(
+      "a",
+      { class: "sr-group", href: `https://www.roblox.com/communities/${g.id}`, title: g.name },
+      h("span", { class: "sr-group-icon" }, ui.thumb("groupIcon", g.id, { alt: "" })),
+      h(
+        "span",
+        { class: "sr-group-main" },
+        h("span", { class: "sr-group-name" }, h("span", { class: "sr-group-title", text: g.name }), g.hasVerifiedBadge && h("span", { class: "sr-verified", title: "Verified" }, ui.icon("verified", 15))),
+        h("span", { class: "sr-group-members" }, ui.icon("users", 14), h("span", { text: fmt.num(g.memberCount) + (g.memberCount === 1 ? " member" : " members") })),
+        desc && h("span", { class: "sr-group-desc", text: desc })
+      )
+    );
+  }
+})();

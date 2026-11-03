@@ -1,1 +1,658 @@
-/* CER groups page. Scope every rule under [data-page="groups"]. */
+/* CER groups pages. Scope every rule under [data-page="groups"]. */
+
+/* ------------------------------------------------------------ shell */
+[data-page="groups"] .cer-gp {
+  gap: 28px;
+}
+[data-page="groups"] .cer-gp-heroslot > .cer-sk-hero {
+  height: 300px;
+}
+[data-page="groups"] .cer-gp-tabbar {
+  min-height: 44px;
+  margin-bottom: -4px;
+}
+[data-page="groups"] .cer-gp-tabbar .cer-seg {
+  max-width: 100%;
+}
+[data-page="groups"] .cer-gp-pane[hidden] {
+  display: none !important;
+}
+[data-page="groups"] .cer-gp-pane {
+  animation: cer-view-in 0.22s var(--cer-ease) both;
+}
+[data-page="groups"] .cer-gp-sk {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+[data-page="groups"] .cer-gp-sk > .cer-sk-line {
+  grid-column: span 2;
+}
+[data-page="groups"] .cer-gp-muted {
+  color: var(--cer-text-3);
+  font-size: 15px;
+}
+[data-page="groups"] .cer-gp-verified {
+  display: inline-flex;
+  vertical-align: middle;
+  color: var(--cer-online);
+  flex: none;
+}
+[data-page="groups"] .cer-gp-verified .cer-icon path:last-child {
+  stroke: #fff;
+}
+
+/* ------------------------------------------------------------ hero */
+[data-page="groups"] .cer-gp-hero {
+  min-height: 300px;
+  padding: 36px 40px;
+  gap: 36px;
+  align-items: center;
+}
+[data-page="groups"] .cer-gp-hero .cer-hero-art {
+  order: -1;
+  width: 188px;
+  aspect-ratio: 1;
+  border-radius: 44px;
+  align-self: center;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 22px 60px rgba(0, 0, 0, 0.45);
+}
+[data-page="groups"] .cer-gp-hero .cer-hero-body {
+  justify-content: center;
+  gap: 10px;
+}
+[data-page="groups"] .cer-gp-hero .cer-hero-title {
+  font-size: clamp(30px, 3.2vw, 46px);
+}
+[data-page="groups"] .cer-gp-hero .cer-hero-title .cer-gp-verified {
+  color: #4aa8ff;
+  margin-left: 2px;
+  transform: translateY(-3px);
+}
+[data-page="groups"] .cer-gp-hero .cer-hero-actions {
+  display: none;
+}
+[data-page="groups"] .cer-gp-owner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+  color: rgba(255, 255, 255, 0.85);
+}
+[data-page="groups"] .cer-gp-owner-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  color: #fff !important;
+  transition: background 0.15s;
+  max-width: 100%;
+  min-width: 0;
+}
+[data-page="groups"] .cer-gp-owner-link:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+[data-page="groups"] .cer-gp-owner-link .cer-gp-verified {
+  color: #4aa8ff;
+}
+[data-page="groups"] .cer-gp-owner-by {
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 600;
+}
+[data-page="groups"] .cer-gp-owner-name {
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groups"] .cer-gp-owner .cer-avatar {
+  --cer-bg-ring: transparent;
+}
+[data-page="groups"] .cer-gp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  min-height: 52px;
+}
+[data-page="groups"] .cer-gp-actions > .cer-sk-line {
+  width: 180px;
+  height: 44px;
+  border-radius: 999px;
+  opacity: 0.5;
+}
+[data-page="groups"] .cer-gp-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #0b0c10;
+  font-size: 14.5px;
+  font-weight: 800;
+  max-width: 100%;
+  min-width: 0;
+}
+[data-page="groups"] .cer-gp-role > span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groups"] .cer-gp-role-k {
+  color: rgba(11, 12, 16, 0.55);
+  font-weight: 700;
+  flex: none;
+}
+[data-page="groups"] .cer-gp-role.is-plain {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* shout: a glass card on the right side of the hero */
+[data-page="groups"] .cer-gp-shout {
+  order: 2;
+  flex: 0 1 320px;
+  min-width: 240px;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: var(--cer-r-l);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(16px);
+}
+[data-page="groups"] .cer-gp-shout-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+[data-page="groups"] .cer-gp-shout-time {
+  margin-left: auto;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.55);
+}
+[data-page="groups"] .cer-gp-shout-body {
+  font-size: 15px;
+  line-height: 1.45;
+  color: #fff;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+[data-page="groups"] .cer-gp-shout-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85) !important;
+  align-self: flex-start;
+}
+[data-page="groups"] .cer-gp-shout-by:hover {
+  color: #fff !important;
+}
+/* no shout: the top game sits on the right of the hero */
+[data-page="groups"] .cer-gp-feat {
+  order: 2;
+  flex: 0 1 340px;
+  min-width: 260px;
+  align-self: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "media media" "body play";
+  align-items: center;
+  gap: 12px 12px;
+  padding: 10px 10px 14px;
+  border-radius: var(--cer-r-l);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(16px);
+  color: #fff !important;
+  transition: background 0.15s, transform 0.2s var(--cer-ease);
+  animation: cer-view-in 0.3s var(--cer-ease) both;
+}
+[data-page="groups"] .cer-gp-feat:hover {
+  background: rgba(255, 255, 255, 0.16);
+  transform: translateY(-2px);
+}
+[data-page="groups"] .cer-gp-feat-media {
+  grid-area: media;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--cer-r-m);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-page="groups"] .cer-gp-feat-body {
+  grid-area: body;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-left: 6px;
+}
+[data-page="groups"] .cer-gp-feat-k {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+[data-page="groups"] .cer-gp-feat-name {
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groups"] .cer-gp-feat-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+[data-page="groups"] .cer-gp-feat-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+[data-page="groups"] .cer-gp-feat > .cer-btn {
+  grid-area: play;
+  margin-right: 4px;
+}
+/* hero breakpoints follow the hero's own width (the CER sidebar changes
+   how much room the column has, so viewport queries guess wrong) */
+[data-page="groups"] .cer-gp-heroslot {
+  container-type: inline-size;
+}
+@container (max-width: 1060px) {
+  [data-page="groups"] .cer-gp-hero {
+    flex-wrap: wrap;
+  }
+  [data-page="groups"] .cer-gp-shout {
+    flex: 1 1 100%;
+  }
+  [data-page="groups"] .cer-gp-feat {
+    display: none;
+  }
+}
+@container (max-width: 720px) {
+  [data-page="groups"] .cer-gp-hero {
+    flex-direction: row;
+    padding: 24px;
+    gap: 20px;
+  }
+  [data-page="groups"] .cer-gp-hero .cer-hero-art {
+    width: 112px;
+    border-radius: 28px;
+  }
+}
+@media (max-width: 900px) {
+  [data-page="groups"] .cer-gp-hero {
+    flex-direction: row;
+  }
+}
+
+/* ------------------------------------------------------------ overview */
+[data-page="groups"] .cer-gp-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+[data-page="groups"] .cer-gp-links:not(:empty) {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--cer-line);
+}
+[data-page="groups"] .cer-gp-social {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 15px;
+  border-radius: 999px;
+  background: var(--cer-raise);
+  border: 1px solid var(--cer-line);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cer-text) !important;
+  max-width: 100%;
+  transition: background 0.15s, border-color 0.15s;
+}
+[data-page="groups"] .cer-gp-social > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groups"] .cer-gp-social:hover {
+  background: var(--cer-hover);
+  border-color: var(--cer-line-2);
+}
+[data-page="groups"] .cer-gp-social .cer-icon {
+  color: var(--cer-acc);
+  flex: none;
+}
+[data-page="groups"] .cer-gp-social.is-discord .cer-icon {
+  color: #5865f2;
+}
+[data-page="groups"] .cer-gp-social.is-youtube .cer-icon {
+  color: #ff3b3b;
+}
+[data-page="groups"] .cer-gp-social.is-twitch .cer-icon {
+  color: #a970ff;
+}
+
+/* facts card */
+[data-page="groups"] .cer-gp-facts-card {
+  padding: 6px 18px;
+}
+[data-page="groups"] .cer-gp-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 50px;
+  padding: 8px 0;
+  font-size: 14.5px;
+}
+[data-page="groups"] .cer-gp-fact + .cer-gp-fact {
+  border-top: 1px solid var(--cer-line);
+}
+[data-page="groups"] .cer-gp-fact-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--cer-text-3);
+  font-weight: 600;
+  flex: none;
+}
+[data-page="groups"] .cer-gp-fact-v {
+  font-weight: 800;
+  min-width: 0;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groups"] .cer-gp-fact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+[data-page="groups"] .cer-gp-fact-link > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groups"] .cer-gp-fact-link:hover {
+  color: var(--cer-acc) !important;
+}
+
+/* allies list (side) */
+[data-page="groups"] .cer-gp-allylist .cer-list {
+  padding: 6px;
+}
+[data-page="groups"] .cer-gp-allyrow {
+  padding: 9px 10px;
+}
+[data-page="groups"] .cer-gp-allyrow .cer-row-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+[data-page="groups"] .cer-gp-allyrow .cer-row-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groups"] .cer-gp-ally-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--cer-surface-2);
+}
+
+/* ------------------------------------------------------------ store items */
+[data-page="groups"] .cer-gp-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 18px;
+}
+[data-page="groups"] .cer-gp-items.is-preview {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-auto-rows: auto;
+}
+[data-page="groups"] .cer-gp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  color: var(--cer-text) !important;
+}
+[data-page="groups"] .cer-gp-item-media {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--cer-r-m);
+  overflow: hidden;
+  background: var(--cer-surface);
+  border: 1px solid var(--cer-line);
+  transition: transform 0.22s var(--cer-ease), box-shadow 0.22s, border-color 0.15s;
+}
+[data-page="groups"] .cer-gp-item:hover .cer-gp-item-media {
+  transform: translateY(-3px);
+  box-shadow: var(--cer-shadow);
+  border-color: var(--cer-line-2);
+}
+[data-page="groups"] .cer-gp-item-name {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+[data-page="groups"] .cer-gp-item-price {
+  font-size: 14px;
+  font-weight: 800;
+}
+[data-page="groups"] .cer-gp-item-price > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+[data-page="groups"] .cer-gp-item-price .cer-icon {
+  color: var(--cer-text-2);
+}
+[data-page="groups"] .cer-gp-item-price .is-off {
+  color: var(--cer-text-3);
+  font-weight: 700;
+}
+[data-page="groups"] .cer-gp-item-price .is-free {
+  color: var(--cer-good);
+}
+
+/* ------------------------------------------------------------ members */
+[data-page="groups"] .cer-gp-rolebar {
+  margin-bottom: 20px;
+}
+[data-page="groups"] .cer-gp-rolebar > .cer-sk-line {
+  height: 36px;
+  width: 420px;
+  max-width: 100%;
+}
+[data-page="groups"] .cer-gp-members .cer-autogrid {
+  gap: 10px;
+}
+[data-page="groups"] .cer-gp-members .cer-user {
+  padding: 12px 6px;
+}
+[data-page="groups"] .cer-gp-members .cer-sk-tile {
+  aspect-ratio: auto;
+  height: 140px;
+}
+[data-page="groups"] .cer-gp-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+/* ------------------------------------------------------------ group card */
+[data-page="groups"] .cer-gp-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 16px 18px;
+  text-align: center;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-surface);
+  border: 1px solid var(--cer-line);
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--cer-text) !important;
+  transition: transform 0.2s var(--cer-ease), border-color 0.15s, box-shadow 0.2s;
+}
+[data-page="groups"] .cer-gp-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--cer-line-2);
+  box-shadow: var(--cer-shadow);
+}
+[data-page="groups"] .cer-gp-card-banner {
+  position: relative;
+  align-self: stretch;
+  height: 72px;
+  margin: 0 -16px;
+  overflow: hidden;
+  background: var(--cer-surface-2);
+  z-index: -1;
+}
+[data-page="groups"] .cer-gp-card-banner .cer-img {
+  filter: blur(16px) saturate(1.7);
+  transform: scale(1.6);
+}
+[data-page="groups"] .cer-gp-card-banner .cer-img.cer-img-in {
+  opacity: 0.75;
+}
+[data-page="groups"] .cer-gp-card-icon {
+  width: 80px;
+  height: 80px;
+  margin-top: -42px;
+  margin-bottom: 4px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: var(--cer-surface-2);
+  box-shadow: 0 0 0 4px var(--cer-surface), 0 8px 20px rgba(0, 0, 0, 0.25);
+  transition: transform 0.25s var(--cer-ease);
+}
+[data-page="groups"] .cer-gp-card:hover .cer-gp-card-icon {
+  transform: scale(1.04);
+}
+[data-page="groups"] .cer-gp-card-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  max-width: 100%;
+  font-size: 15.5px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+[data-page="groups"] .cer-gp-card-name > span:first-child {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+[data-page="groups"] .cer-gp-card-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+}
+[data-page="groups"] .cer-gp-card-role {
+  margin-top: 4px;
+  max-width: 100%;
+}
+[data-page="groups"] .cer-gp-card-role .cer-badge {
+  max-width: 100%;
+}
+[data-page="groups"] .cer-gp-card-role .cer-badge > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groups"] .cer-gp-card.is-primary {
+  border-color: color-mix(in srgb, var(--cer-acc) 60%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cer-acc) 40%, transparent);
+}
+[data-page="groups"] .cer-gp-card-pin {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--cer-acc);
+  color: var(--cer-acc-ink);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+/* ------------------------------------------------------------ my groups */
+[data-page="groups"] .cer-mg {
+  gap: 24px;
+}
+[data-page="groups"] .cer-mg .cer-view-title .cer-mg-count {
+  align-self: center;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+[data-page="groups"] .cer-mg-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+[data-page="groups"] .cer-mg-search {
+  flex: 1 1 320px;
+  max-width: 520px;
+}
+[data-page="groups"] .cer-mg-grid .cer-sk-tile {
+  aspect-ratio: auto;
+  height: 196px;
+  border-radius: var(--cer-r-l);
+}
+[data-page="groups"] .cer-mg-none {
+  grid-column: 1 / -1;
+}

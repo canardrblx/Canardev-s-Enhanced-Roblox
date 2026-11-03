@@ -9,6 +9,9 @@
   const isGroupCfgPath = (p) => /^\/(communities|groups)\/(\d+\/)?configure/.test(p);
   const isSettingsPath = (p) => p.startsWith("/my/account") || p.startsWith("/my/settings") || isGroupCfgPath(p);
   if (!isSettingsPath(location.pathname)) return;
+  // /my/account is CER's own page now (pages/settings.js); this reskin stays
+  // for ?cer=native, /my/settings and community configure pages
+  if ((await CER.takeover) === "settings") return;
 
   // the group/community "Configure" page has a different shell (big title,
   // author line, funds, side menu). Treat it specially so it ends up looking
