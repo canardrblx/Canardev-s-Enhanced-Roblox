@@ -25,29 +25,6 @@ try {
   /* localStorage unavailable — the force CSS still applies */
 }
 
-// Some accounts never had the new sidebar, so the key/entry doesn't exist and
-// the sync block above can't create it (no user id yet). Fetch the id and
-// enable it — takes effect on the next page load.
-(async () => {
-  try {
-    const me = await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" }).then((r) => r.json());
-    if (!me || !me.id) return;
-    let obj = {};
-    try {
-      obj = JSON.parse(localStorage.getItem("new-left-nav")) || {};
-    } catch {
-      obj = {};
-    }
-    if (!obj.data) obj.data = {};
-    if (obj.data[me.id] !== true) {
-      obj.data[me.id] = true;
-      localStorage.setItem("new-left-nav", JSON.stringify(obj));
-    }
-  } catch {
-    /* ignore */
-  }
-})();
-
 const CER = {
   // `browser` on Firefox, `chrome` on Chrome — same API either way.
   ext: globalThis.browser ?? globalThis.chrome,
@@ -172,28 +149,68 @@ CER.alive = function () {
 
 // Roblox navigates between some pages client-side (no page load), so
 // URL-scoped scripts must re-run when the address changes.
+// One shared watcher for every caller (it used to be one 700 ms interval per
+// script, ten of them, plus a fixed 500 ms delay before reacting). Content
+// scripts can't hook the page's history.pushState, so this polls — cheaply.
+CER._navCbs = [];
 CER.onNavigate = function (cb) {
+  CER._navCbs.push(cb);
+  if (CER._navTimer) return;
   let last = location.href;
-  const timer = setInterval(() => {
+  const check = () => {
     if (!CER.alive()) {
-      clearInterval(timer); // stop the orphaned poll after a reload/update
+      clearInterval(CER._navTimer); // stop the orphaned poll after a reload/update
       return;
     }
-    if (location.href !== last) {
-      last = location.href;
-      setTimeout(cb, 500);
-    }
-  }, 700);
+    if (location.href === last) return;
+    last = location.href;
+    // a short beat so the new route has started rendering
+    setTimeout(() => {
+      for (const fn of CER._navCbs) {
+        try {
+          fn();
+        } catch {
+          /* one broken caller must not stop the rest */
+        }
+      }
+    }, 150);
+  };
+  CER._navTimer = setInterval(check, 300);
+  window.addEventListener("popstate", check);
 };
+
+// Settings keys. Everything else in storage (playtime, caches, notes) is NOT a
+// setting: reading it on every CER.get() made each page load pull the whole
+// store, and a background playtime write every minute re-ran every
+// settings listener in every tab.
+CER.SETTINGS_KEYS = [
+  "features",
+  "knownSidebarItems",
+  "sidebarPrefs",
+  "knownSections",
+  "sectionPrefs",
+  "joinPrefs",
+  "theme",
+  "uiState",
+  "cerHealV1",
+];
 
 // Read all settings, filling in defaults for anything not saved yet.
 // (Like DataStore reads in BAC: never trust the stored shape blindly.)
+// One storage read per page: ~20 scripts call this at startup, so the read is
+// shared and only redone after a settings key actually changes.
+CER._settingsP = null;
 CER.get = async function () {
+  if (!CER._settingsP) CER._settingsP = CER._readSettings();
+  return structuredClone(await CER._settingsP);
+};
+CER._readSettings = async function () {
   let stored = {};
   try {
-    stored = await CER.ext.storage.local.get(null);
+    stored = await CER.ext.storage.local.get(CER.SETTINGS_KEYS);
   } catch {
     // context invalidated (reload/update) — hand back defaults, don't reject
+    CER._settingsP = null;
     return structuredClone(CER.DEFAULTS);
   }
   const merged = {
@@ -201,6 +218,7 @@ CER.get = async function () {
     ...stored,
     features: { ...CER.DEFAULTS.features, ...(stored.features ?? {}) },
     joinPrefs: { ...CER.DEFAULTS.joinPrefs, ...(stored.joinPrefs ?? {}) },
+    sidebarPrefs: { ...(stored.sidebarPrefs ?? {}) },
     sectionPrefs: { ...(stored.sectionPrefs ?? {}) },
     theme: { ...CER.DEFAULTS.theme, ...(stored.theme ?? {}) },
     uiState: { ...CER.DEFAULTS.uiState, ...(stored.uiState ?? {}) },
@@ -215,6 +233,75 @@ CER.get = async function () {
   }
   return merged;
 };
+
+// Run `cb(changes)` when a SETTING changes (not caches/playtime). Debounced so
+// a burst of toggles is one call. Use this instead of storage.onChanged.
+CER.onSettingsChanged = function (cb, delay = 80) {
+  let t = null;
+  CER.ext.storage.onChanged.addListener((changes, area) => {
+    if (area && area !== "local") return;
+    if (!Object.keys(changes).some((k) => CER.SETTINGS_KEYS.includes(k))) return;
+    clearTimeout(t);
+    t = setTimeout(() => cb(changes), delay);
+  });
+};
+// drop the shared read whenever a setting changes (registered first, so every
+// later listener sees fresh values)
+try {
+  CER.ext.storage.onChanged.addListener((changes, area) => {
+    if (area && area !== "local") return;
+    if (Object.keys(changes).some((k) => CER.SETTINGS_KEYS.includes(k))) CER._settingsP = null;
+  });
+} catch {
+  /* context invalidated */
+}
+
+// Our own user ({ id, name, displayName } or null). Fetched once per page and
+// shared; before this, five scripts each fetched it separately on every load.
+CER._meP = null;
+CER.me = function () {
+  if (!CER._meP) {
+    CER._meP = fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => (d && d.id ? d : null))
+      .catch(() => null);
+  }
+  return CER._meP;
+};
+
+// Some accounts never had the new sidebar, so the key/entry doesn't exist and
+// the sync block above can't create it (no user id yet). Fetch the id and
+// enable it — takes effect on the next page load.
+(async () => {
+  try {
+    const me = await CER.me();
+    if (!me || !me.id) return;
+    let obj = {};
+    try {
+      obj = JSON.parse(localStorage.getItem("new-left-nav")) || {};
+    } catch {
+      obj = {};
+    }
+    if (!obj.data) obj.data = {};
+    if (obj.data[me.id] !== true) {
+      obj.data[me.id] = true;
+      localStorage.setItem("new-left-nav", JSON.stringify(obj));
+    }
+  } catch {
+    /* ignore */
+  }
+})();
+
+// Dev only: unpacked installs (no update_url) can be reloaded from the page
+// with window.postMessage({ cer: "dev-reload" }) so changes can be tested
+// without clicking reload on chrome://extensions. Store installs ignore it.
+try {
+  if (!CER.ext.runtime.getManifest().update_url) {
+    window.addEventListener("message", (e) => {
+      if (e.source === window && e.data?.cer === "dev-reload") CER.ext.runtime.sendMessage({ cer: "dev-reload" });
+    });
+  }
+} catch {}
 
 // Send feedback/bug/idea to the maintainer's Discord webhook, via the
 // background worker (Roblox CSP blocks a page fetch to discord.com). The URL
@@ -231,7 +318,7 @@ CER.sendFeedback = async function (kind, message) {
   if (wait > 0) return { ok: false, cooldown: Math.ceil(wait / 60000) };
   let me = null;
   try {
-    me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
+    me = await CER.me();
   } catch {}
   const who = me ? `${me.name} (${me.id})` : "unknown user";
   const v = CER.ext.runtime.getManifest().version;
@@ -341,7 +428,7 @@ CER.robloxWrite = async function (url, method, body) {
       headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": token },
       body: JSON.stringify(body),
     });
-    if (res.status === 403) {
+    if (res.status === 403 && attempt === 0) {
       const fresh = res.headers.get("x-csrf-token");
       if (fresh) CER._csrf = fresh;
       const next = fresh || CER._csrf;
@@ -350,7 +437,7 @@ CER.robloxWrite = async function (url, method, body) {
         continue;
       }
     }
-    return res;
+    return res; // always a Response (it used to fall out as undefined)
   }
 };
 
@@ -376,8 +463,13 @@ CER.setNativeTheme = async function (type) {
   } catch {
     /* purely cosmetic — the body-class flip below still applies this tab */
   }
-  document.body?.classList.toggle("dark-theme", type === "Dark");
-  document.body?.classList.toggle("light-theme", type === "Light");
+  for (const [cls, on] of [
+    ["dark-theme", type === "Dark"],
+    ["light-theme", type === "Light"],
+    ["color-mode-dark", type === "Dark"],
+    ["color-mode-light", type === "Light"],
+  ])
+    document.body?.classList.toggle(cls, on);
 };
 
 // Game icons from Roblox's thumbnail API. Returns { [universeId]: imageUrl }.
@@ -389,9 +481,9 @@ CER.getGameIcons = async function (universeIds) {
     "&size=150x150&format=Png&isCircular=false";
   const icons = {};
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(url, { credentials: "include" });
-    if (!res.ok) return icons;
-    const body = await res.json();
+    const res = await fetch(url, { credentials: "include" }).catch(() => null);
+    if (!res || !res.ok) return icons;
+    const body = await res.json().catch(() => ({}));
     let pending = false;
     for (const item of body.data ?? []) {
       if (item.imageUrl) icons[item.targetId] = item.imageUrl;
@@ -406,7 +498,12 @@ CER.getGameIcons = async function (universeIds) {
 // placeId → universeId, cached in storage so Continue-tab thumbnail swaps
 // don't refetch on every page load.
 CER.getUniverseIds = async function (placeIds) {
-  const { placeUniverseCache = {} } = await CER.ext.storage.local.get("placeUniverseCache");
+  let placeUniverseCache = {};
+  try {
+    ({ placeUniverseCache = {} } = await CER.ext.storage.local.get("placeUniverseCache"));
+  } catch {
+    /* context invalidated: resolve without the cache */
+  }
   const result = {};
   const missing = [];
   for (const p of placeIds) {
@@ -428,7 +525,12 @@ CER.getUniverseIds = async function (placeIds) {
       }
     })
   );
-  if (missing.length) await CER.ext.storage.local.set({ placeUniverseCache });
+  if (missing.length) {
+    // place → universe never changes, but don't let the map grow forever
+    const keys = Object.keys(placeUniverseCache);
+    if (keys.length > 2000) for (const k of keys.slice(0, keys.length - 1500)) delete placeUniverseCache[k];
+    await CER.set({ placeUniverseCache });
+  }
   return result;
 };
 
@@ -589,6 +691,22 @@ CER.dropdown = function (options, initial, onChange) {
   return wrap;
 };
 
+// Launch through Roblox's own GameLauncher (bridge.js, page world). Only if
+// the bridge doesn't confirm within 500 ms, fall back to the protocol URL.
+CER.launch = function (msg, fallbackUrl) {
+  const nonce = Math.random().toString(36).slice(2);
+  let acked = false;
+  const onAck = (e) => {
+    if (e.source === window && e.data?.cer === "launch-ack" && e.data.nonce === nonce) acked = true;
+  };
+  window.addEventListener("message", onAck);
+  window.postMessage({ ...msg, nonce }, location.origin);
+  setTimeout(() => {
+    window.removeEventListener("message", onAck);
+    if (!acked && fallbackUrl) location.href = fallbackUrl;
+  }, 500);
+};
+
 // Native-looking game card (thumbnail or icon) with the rating/CCU row.
 // opts: { wide, art, meta: {votesPct, playing}, features, onUnpin }
 CER.buildGameCard = function (game, opts) {
@@ -633,10 +751,7 @@ CER.buildGameCard = function (game, opts) {
   play.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    window.postMessage({ cer: "join-multiplayer", placeId: game.placeId }, location.origin);
-    setTimeout(() => {
-      location.href = "roblox://experiences/start?placeId=" + game.placeId;
-    }, 400);
+    CER.launch({ cer: "join-multiplayer", placeId: game.placeId }, "roblox://experiences/start?placeId=" + game.placeId);
   });
   thumb.appendChild(play);
 

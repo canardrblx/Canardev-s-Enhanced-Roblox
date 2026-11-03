@@ -11,7 +11,7 @@
 
   let me = null;
   try {
-    me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
+    me = await CER.me();
   } catch {
     return;
   }

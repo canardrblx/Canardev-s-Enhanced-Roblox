@@ -701,8 +701,7 @@
           // jobId of the server they're in — exclude those
           if (cur.joinPrefs.avoidFriends) {
             try {
-              const meRes = await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" });
-              const myId = (await meRes.json()).id;
+              const myId = (await CER.me())?.id;
               const friends = (await (await fetch(`https://friends.roblox.com/v1/users/${myId}/friends`, { credentials: "include" })).json()).data ?? [];
               if (friends.length) {
                 const pres = await CER.robloxWrite("https://presence.roblox.com/v1/presence/users", "POST", {

@@ -9,17 +9,17 @@
 (function () {
   if (typeof CER === "undefined") return;
 
+  let cerGamesTeardown = null; // set while our page is mounted
+
   async function runGamesRedesign() {
   if (!location.pathname.startsWith("/charts")) return;
   const settings = await CER.get();
   if (!settings.features.gamesRedesign) return;
   if (document.querySelector(".cer-games")) return;
 
-  const me = await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })
-    .then((r) => r.json())
-    .catch(() => null);
-
-  const SID = "cer-" + (me?.id ?? "guest");
+  // the user id only seeds the explore sessionId; the shell doesn't wait on it
+  const meP = CER.me();
+  const sid = async () => "cer-" + ((await meP)?.id ?? "guest");
   const EXPLORE = "https://apis.roblox.com/explore-api/v1";
   const GENRES = ["Roleplay", "Obby", "Simulator", "Tower Defense", "Survival", "Fighting", "Horror", "Tycoon", "Sports", "Adventure"];
 
@@ -32,7 +32,8 @@
   // ---- data ----
   async function fetchSort(sortId) {
     try {
-      const r = await fetch(`${EXPLORE}/get-sort-content?sessionId=${SID}&sortId=${sortId}&device=computer&country=all`, { credentials: "include" });
+      const r = await fetch(`${EXPLORE}/get-sort-content?sessionId=${await sid()}&sortId=${sortId}&device=computer&country=all`, { credentials: "include" });
+      if (!r.ok) return [];
       return (await r.json()).games ?? [];
     } catch {
       return [];
@@ -41,9 +42,10 @@
   async function searchGenre(genre) {
     try {
       const r = await fetch(
-        `https://apis.roblox.com/search-api/omni-search?searchQuery=${encodeURIComponent(genre)}&sessionId=${SID}&pageType=Games`,
+        `https://apis.roblox.com/search-api/omni-search?searchQuery=${encodeURIComponent(genre)}&sessionId=${await sid()}&pageType=Games`,
         { credentials: "include" }
       );
+      if (!r.ok) return [];
       const j = await r.json();
       const out = [];
       for (const group of j.searchResults ?? []) {
@@ -149,49 +151,95 @@
     return card;
   }
 
-  async function renderRow(container, games, limit) {
+  // thumbs + votes/players for a row's games (including wildcard picks) so
+  // they match the home tiles instead of showing just a raw player count
+  async function rowData(games, limit) {
     const list = games.slice(0, limit);
     const uni = list.map((g) => g.universeId);
-    // fetch votes + players for every card (including wildcard picks) so they
-    // match the home tiles instead of showing just a raw player count
-    const [thumbs, meta] = await Promise.all([thumbsForUniverses(uni), CER.getGameMeta(uni)]);
+    const [thumbs, meta] = await Promise.all([
+      thumbsForUniverses(uni).catch(() => ({})),
+      CER.getGameMeta(uni.filter(Boolean)).catch(() => ({})),
+    ]);
+    return { list, thumbs, meta };
+  }
+  function paintRow(container, data) {
     container.textContent = "";
-    for (const g of list) container.appendChild(gameCard(g, thumbs[g.universeId], meta[g.universeId]));
+    for (const g of data.list) container.appendChild(gameCard(g, data.thumbs[g.universeId], data.meta[g.universeId]));
+  }
+  // `isCurrent` is checked after the fetch: a row that was superseded (newer
+  // genre) or left behind (SPA exit) must not be painted
+  async function renderRow(container, games, limit, isCurrent = alive) {
+    const data = await rowData(games, limit);
+    if (isCurrent()) paintRow(container, data);
   }
 
   // ---- build the page ----
-  const kill = document.createElement("style");
-  kill.textContent = `#charts, .charts-page, .games-list-container, .home-header { display:none !important; }`;
-  document.documentElement.appendChild(kill);
-
   const host = await CER.waitFor(() => document.querySelector("#content, .content"), 15000).catch(() => null);
-  if (!host) return;
-  for (const c of host.children) c.style.display = "none";
+  if (!host || !location.pathname.startsWith("/charts") || document.querySelector(".cer-games")) {
+    if (!document.querySelector(".cer-games")) CER.dismissSkeleton?.(); // show the stock page, never a blank one
+    return;
+  }
 
   const root = CER.el("div", "cer-games");
+  // still on /charts with our root mounted — every timer and late fetch checks this
+  function alive() {
+    return root.isConnected && location.pathname.startsWith("/charts");
+  }
+  const hiddenKids = [];
+  for (const c of host.children) {
+    hiddenKids.push([c, c.style.display]);
+    c.style.display = "none";
+  }
   host.appendChild(root);
+
+  // the native charts are killed only once our root exists — if anything
+  // above bails, the stock page stays visible
+  const kill = document.createElement("style");
+  kill.id = "cer-games-kill";
+  kill.textContent = `#charts, .charts-page, .games-list-container, .home-header { display:none !important; }`;
+  document.documentElement.appendChild(kill);
 
   // Roblox renders the native charts INTO #content AFTER we've built ours (that's
   // the "clicked Games, got the old page" race) — keep everything but our root
   // hidden on every re-render.
-  new MutationObserver(() => {
-    if (!location.pathname.startsWith("/charts")) return; // don't touch other pages
+  const hostObs = new MutationObserver(() => {
+    if (!location.pathname.startsWith("/charts")) return teardown(); // don't touch other pages
     for (const c of host.children) {
       if (c !== root && c.style.display !== "none") c.style.display = "none";
     }
     if (!root.isConnected) host.appendChild(root);
-  }).observe(host, { childList: true });
+  });
+  hostObs.observe(host, { childList: true });
+
   const main = CER.el("div", "cer-games-main");
   const side = CER.el("aside", "cer-games-side");
   root.appendChild(main);
   root.appendChild(side);
+
+  // leaving /charts in-app: stop every timer and give the page back (the kill
+  // style would otherwise keep hiding .home-header etc. on the next page)
+  let tornDown = false;
+  let picksTimer = null;
+  function teardown() {
+    if (tornDown) return;
+    tornDown = true;
+    hostObs.disconnect();
+    stopCarousel();
+    clearInterval(picksTimer);
+    document.removeEventListener("visibilitychange", onVisibility);
+    kill.remove();
+    root.remove();
+    for (const [c, display] of hiddenKids) if (c.isConnected) c.style.display = display;
+    if (cerGamesTeardown === teardown) cerGamesTeardown = null;
+  }
+  cerGamesTeardown = teardown;
 
   // --- Top Experiences ---
   main.appendChild(CER.el("h2", "cer-g-h2", "Top Games"));
   const topRow = CER.el("div", "cer-g-grid");
   main.appendChild(topRow);
   topRow.appendChild(CER.skelGrid(6, 140, 250));
-  fetchSort("top-playing-now").then((games) => renderRow(topRow, games, 12).then(() => CER.skelDone?.("games")));
+  fetchSort("top-playing-now").then((games) => renderRow(topRow, games, 12));
 
   // --- Trending in X (genre carousel) ---
   const trendHead = CER.el("div", "cer-g-trendhead");
@@ -212,6 +260,18 @@
   const cover = CER.el("span", "cer-g-genre-cover");
   genrePill.appendChild(cover);
 
+  // each genre's row data is fetched once per visit and reused on every lap
+  // of the carousel (it used to refetch 3 APIs every 15 s, forever)
+  const genreCache = new Map();
+  function loadGenre(genre) {
+    if (!genreCache.has(genre)) {
+      const p = searchGenre(genre).then((games) => rowData(games, 12));
+      p.then((d) => { if (!d.list.length) genreCache.delete(genre); }); // don't cache an empty/failed answer
+      genreCache.set(genre, p);
+    }
+    return genreCache.get(genre);
+  }
+
   async function showGenre(i) {
     // the carousel timer fires this without awaiting, so a slow genre fetch can
     // still be in flight when the next tick starts. Tag each call and bail if a
@@ -220,23 +280,31 @@
     genreIdx = ((i % GENRES.length) + GENRES.length) % GENRES.length;
     const genre = GENRES[genreIdx];
     genreLabel.textContent = genre + " ▾"; // the pill shows what it's sorting
-    trendRow.textContent = "";
-    trendRow.appendChild(CER.skelGrid(6, 140, 250));
-    const games = await searchGenre(genre);
-    if (seq !== genreSeq) return; // superseded by a newer showGenre call
-    await renderRow(trendRow, games, 12);
+    const pending = loadGenre(genre);
+    // only flash the skeleton when the data isn't already here
+    const ready = await Promise.race([pending.then(() => true), new Promise((r) => setTimeout(() => r(false), 30))]);
+    if (!ready && seq === genreSeq) {
+      trendRow.textContent = "";
+      trendRow.appendChild(CER.skelGrid(6, 140, 250));
+    }
+    const data = await pending;
+    if (seq !== genreSeq || !alive()) return; // superseded, or we left /charts
+    paintRow(trendRow, data);
   }
 
   function startCarousel() {
     stopCarousel();
-    if (stopped) return;
+    if (stopped || !alive()) return;
     let elapsed = 0;
     const STEP = 100;
     const TOTAL = 15000;
     carouselTimer = setInterval(() => {
-      if (!root.isConnected) return stopCarousel(); // stop after leaving /charts
+      if (!alive()) return stopCarousel(); // stop after leaving /charts (onNavigate tears down)
+      if (document.hidden) return; // paused in background tabs
       elapsed += STEP;
       cover.style.width = ((1 - elapsed / TOTAL) * 100).toFixed(1) + "%";
+      // warm the next genre a few seconds early so the swap is instant
+      if (elapsed === TOTAL - 3000) loadGenre(GENRES[(genreIdx + 1) % GENRES.length]);
       if (elapsed >= TOTAL) {
         elapsed = 0;
         showGenre(genreIdx + 1);
@@ -247,6 +315,12 @@
     if (carouselTimer) clearInterval(carouselTimer);
     carouselTimer = null;
   }
+  // a hidden tab doesn't need the timer ticking at all
+  function onVisibility() {
+    if (document.hidden) stopCarousel();
+    else if (!stopped && alive() && !carouselTimer) startCarousel();
+  }
+  document.addEventListener("visibilitychange", onVisibility);
 
   // dropdown to pick a genre (stops the carousel)
   genrePill.addEventListener("click", (e) => {
@@ -271,7 +345,10 @@
     setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
   });
 
-  showGenre(0).then(startCarousel);
+  trendRow.appendChild(CER.skelGrid(6, 140, 250));
+  showGenre(0).then(() => {
+    if (!document.hidden) startCarousel();
+  });
 
   // --- Canardev's picks ---
   // title + countdown share one line (timer sits right after the heading)
@@ -284,8 +361,18 @@
   const picksRow = CER.el("div", "cer-g-grid");
   main.appendChild(picksRow);
 
+  picksRow.appendChild(CER.skelGrid(3, 140, 250));
+
   (async () => {
-    const salt = await pickSalt();
+    // Everything that doesn't depend on today's draw starts at once: the
+    // salt, the front-page list (for wildcards) and all list picks' universe
+    // ids (cached in storage after the first visit). It used to be 5 serial steps.
+    const [salt, trending, uni] = await Promise.all([
+      pickSalt(),
+      fetchSort("top-trending"),
+      CER.getUniverseIds(PICK_PLACES).catch(() => ({})),
+    ]);
+    if (!alive()) return;
     const rng = mulberry32(salt + localDateKey());
     // shuffle the list deterministically, take 3
     const pool = [...PICK_PLACES];
@@ -296,16 +383,12 @@
     let chosenPlaces = pool.slice(0, 3);
     // wildcard: chance to swap 1–2 for a current front-page game not in the list
     const wilds = rng() < 0.6 ? (rng() < 0.5 ? 1 : 2) : 0;
-    let frontGames = [];
-    if (wilds) frontGames = (await fetchSort("top-trending")).filter((g) => !PICK_PLACES.includes(String(g.rootPlaceId)));
+    const frontGames = wilds ? trending.filter((g) => !PICK_PLACES.includes(String(g.rootPlaceId))) : [];
     for (let w = 0; w < wilds && frontGames.length; w++) {
       const pick = frontGames[Math.floor(rng() * frontGames.length)];
       chosenPlaces[w] = "wild:" + pick.rootPlaceId + ":" + pick.universeId + ":" + pick.name;
     }
 
-    // resolve place → universe for the list picks
-    const listPlaces = chosenPlaces.filter((p) => !p.startsWith("wild:"));
-    const uni = await CER.getUniverseIds(listPlaces);
     const games = chosenPlaces.map((p) => {
       if (p.startsWith("wild:")) {
         const [, place, universe, ...name] = p.split(":");
@@ -313,17 +396,20 @@
       }
       return { rootPlaceId: p, universeId: uni[p], name: "" };
     });
-    // names for list picks come from the game details
-    try {
+    // names for list picks come from the game details — fetched alongside the
+    // row's thumbs + meta instead of before them
+    const namesP = (async () => {
       const ids = games.filter((g) => !g.name).map((g) => g.universeId).filter(Boolean);
-      if (ids.length) {
-        const r = await fetch("https://games.roblox.com/v1/games?universeIds=" + ids.join(","), { credentials: "include" });
-        const byId = {};
-        for (const d of (await r.json()).data ?? []) byId[d.id] = d;
-        for (const g of games) if (!g.name && byId[g.universeId]) { g.name = byId[g.universeId].name; g.playerCount = byId[g.universeId].playing; }
-      }
-    } catch {}
-    await renderRow(picksRow, games, 3);
+      if (!ids.length) return;
+      const r = await fetch("https://games.roblox.com/v1/games?universeIds=" + ids.join(","), { credentials: "include" });
+      if (!r.ok) return;
+      const byId = {};
+      for (const d of (await r.json()).data ?? []) byId[d.id] = d;
+      for (const g of games) if (!g.name && byId[g.universeId]) { g.name = byId[g.universeId].name; g.playerCount = byId[g.universeId].playing; }
+    })().catch(() => {});
+    const [data] = await Promise.all([rowData(games, 3), namesP]);
+    if (!alive()) return;
+    paintRow(picksRow, data);
 
     // countdown to local midnight — HH:MM:SS so it doesn't read like minutes
     function tick() {
@@ -335,8 +421,8 @@
       picksSub.textContent = "Changes in " + p(h) + ":" + p(m) + ":" + p(s);
     }
     tick();
-    const picksTimer = setInterval(() => {
-      if (!root.isConnected) return clearInterval(picksTimer); // stop after leaving /charts
+    picksTimer = setInterval(() => {
+      if (!alive()) return clearInterval(picksTimer); // stop after leaving /charts
       tick();
     }, 1000);
   })();
@@ -347,27 +433,41 @@
   side.appendChild(sideList);
   sideList.appendChild(CER.el("p", "cer-hint", "Loading…"));
 
+  // the shell (headings + skeleton rows) is up — lift the page veil now,
+  // the rows fill in on their own
+  CER.skelDone?.("games");
+
   (async () => {
+    const me = await meP;
+    if (!alive()) return;
     if (!me?.id) { sideList.textContent = ""; sideList.appendChild(CER.el("p", "cer-hint", "No friends online right now.")); return; }
     try {
-      const friends = (await (await fetch(`https://friends.roblox.com/v1/users/${me.id}/friends`, { credentials: "include" })).json()).data ?? [];
+      const fr = await fetch(`https://friends.roblox.com/v1/users/${me.id}/friends`, { credentials: "include" });
+      if (!fr.ok) throw new Error("friends " + fr.status);
+      const friends = (await fr.json()).data ?? [];
       const ids = friends.map((f) => f.id);
-      const pres = (await CER.bgFetch("https://presence.roblox.com/v1/presence/users", "POST", { userIds: ids })).data?.userPresences ?? [];
+      const pres = ids.length ? (await CER.bgFetch("https://presence.roblox.com/v1/presence/users", "POST", { userIds: ids })).data?.userPresences ?? [] : [];
       const inGame = pres.filter((p) => p.userPresenceType === 2 && p.universeId && p.placeId);
-      // names
+      if (!alive()) return;
+      if (!inGame.length) { sideList.textContent = ""; sideList.appendChild(CER.el("p", "cer-hint", "No friends online right now.")); return; }
+      // names, game thumbs and headshots don't depend on each other
       const nameById = {};
-      try {
-        const nr = await CER.robloxWrite("https://users.roblox.com/v1/users", "POST", { userIds: inGame.map((p) => p.userId), excludeBannedUsers: false });
-        for (const u of (await nr.json()).data ?? []) nameById[u.id] = u.displayName || u.name;
-      } catch {}
-      sideList.textContent = "";
-      if (!inGame.length) { sideList.appendChild(CER.el("p", "cer-hint", "No friends online right now.")); return; }
-      const thumbs = await thumbsForUniverses(inGame.map((p) => p.universeId));
       const heads = {};
-      try {
-        const hr = await fetch("https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" + inGame.map((p) => p.userId).join(",") + "&size=48x48&format=Png&isCircular=true", { credentials: "include" });
-        for (const d of (await hr.json()).data ?? []) heads[d.targetId] = d.imageUrl;
-      } catch {}
+      const [thumbs] = await Promise.all([
+        thumbsForUniverses(inGame.map((p) => p.universeId)).catch(() => ({})),
+        (async () => {
+          const nr = await CER.robloxWrite("https://users.roblox.com/v1/users", "POST", { userIds: inGame.map((p) => p.userId), excludeBannedUsers: false });
+          if (!nr?.ok) return;
+          for (const u of (await nr.json()).data ?? []) nameById[u.id] = u.displayName || u.name;
+        })().catch(() => {}),
+        (async () => {
+          const hr = await fetch("https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" + inGame.map((p) => p.userId).join(",") + "&size=48x48&format=Png&isCircular=true", { credentials: "include" });
+          if (!hr.ok) return;
+          for (const d of (await hr.json()).data ?? []) heads[d.targetId] = d.imageUrl;
+        })().catch(() => {}),
+      ]);
+      if (!alive()) return;
+      sideList.textContent = "";
       for (const p of inGame) {
         const item = CER.el("a", "cer-g-friendgame");
         item.href = "https://www.roblox.com/games/" + p.placeId + "/";
@@ -382,6 +482,7 @@
         sideList.appendChild(item);
       }
     } catch {
+      if (!alive()) return;
       sideList.textContent = "";
       sideList.appendChild(CER.el("p", "cer-hint", "Couldn't load friends."));
     }
@@ -394,5 +495,6 @@
   runGamesRedesign();
   CER.onNavigate?.(() => {
     if (location.pathname.startsWith("/charts")) runGamesRedesign();
+    else cerGamesTeardown?.(); // left /charts in-app: stop timers, restore the page
   });
 })();

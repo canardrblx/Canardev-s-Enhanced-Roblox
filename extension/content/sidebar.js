@@ -142,7 +142,7 @@
     const link = list && [...list.querySelectorAll("a")].find((a) => a.textContent.trim().replace(/\d+$/, "").trim() === "Friends");
     if (!link) return;
     try {
-      const me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
+      const me = await CER.me();
       const friends = (await (await fetch(`https://friends.roblox.com/v1/users/${me.id}/friends`, { credentials: "include" })).json()).data ?? [];
       if (!friends.length) return;
       const pres = await CER.bgFetch("https://presence.roblox.com/v1/presence/users", "POST", { userIds: friends.map((f) => f.id) });
@@ -171,7 +171,7 @@
     timer = setTimeout(apply, 500);
   });
   observer.observe(document.body, { childList: true, subtree: true });
-  CER.ext.storage.onChanged.addListener(() => apply());
+  CER.onSettingsChanged(() => apply());
   await apply();
 
   // version tag at the bottom of every page — click opens settings

@@ -13,47 +13,50 @@
 (async function () {
   if (typeof CER === "undefined") return;
   const settings = await CER.get();
-  if (settings.features.profileRedesign === false) return;
+  if (settings.features.profileRedesign === false) return CER.dismissSkeleton?.();
   const userId = location.pathname.match(/\/users\/(\d+)\/profile/)?.[1];
-  if (!userId) return;
-
-  let me = null;
-  try {
-    me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
-  } catch {
-    /* logged out — still fine, just no owner-only bits */
-  }
-  const isSelf = String(me?.id) === userId;
-
-  const pane = await CER.waitFor(() => {
-    const p = document.querySelector(".profile-tab-content");
-    return p && p.children.length ? p : null;
-  }, 20000).catch(() => null);
-  if (!pane || document.querySelector(".cer-profile-pills")) return;
+  if (!userId) return CER.dismissSkeleton?.();
 
   // All experiences credited to this user: their own games PLUS games in groups
   // they own (Roblox lists those under Creations too). Shared by the Creations
-  // grid and the Place Visits stat. Fetched once.
-  const creatorGamesP = (async () => {
-    let games = [];
-    try {
-      games = (await (await fetch(`https://games.roblox.com/v2/users/${userId}/games?limit=50&sortOrder=Desc`, { credentials: "include" })).json()).data ?? [];
-    } catch {
-      /* none */
+  // grid and the Place Visits stat. Fetched once, started before we even wait
+  // for the pane. Resolves { games, more } — `more` = a list was cut off at the
+  // page cap, so the visits total is a floor, not the real number.
+  const GAME_PAGES = 4; // 4 x 50 = 200 games per source, plenty for nearly everyone
+  async function pagedGames(base) {
+    let out = [];
+    let cursor = "";
+    for (let i = 0; i < GAME_PAGES; i++) {
+      const res = await fetch(base + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), { credentials: "include" });
+      if (!res.ok) break;
+      const d = await res.json();
+      out = out.concat(d.data ?? []);
+      cursor = d.nextPageCursor;
+      if (!cursor) return { data: out, more: false };
     }
-    try {
-      const roles = (await (await fetch(`https://groups.roblox.com/v1/users/${userId}/groups/roles`, { credentials: "include" })).json()).data ?? [];
-      for (const r of roles) {
-        if (r.role?.rank !== 255) continue; // owner rank only
-        try {
-          const gg = (await (await fetch(`https://games.roblox.com/v2/groups/${r.group.id}/games?limit=50&sortOrder=Desc`, { credentials: "include" })).json()).data ?? [];
-          games = games.concat(gg);
-        } catch {
-          /* skip this group */
-        }
+    return { data: out, more: !!cursor };
+  }
+  const creatorGamesP = (async () => {
+    let more = false;
+    const own = pagedGames(`https://games.roblox.com/v2/users/${userId}/games?limit=50&sortOrder=Desc`).catch(() => ({ data: [], more: false }));
+    // owned groups' games, all groups in parallel (was one group at a time)
+    const grp = (async () => {
+      try {
+        const roles = (await (await fetch(`https://groups.roblox.com/v1/users/${userId}/groups/roles`, { credentials: "include" })).json()).data ?? [];
+        const owned = roles.filter((r) => r.role?.rank === 255 && r.group?.id); // owner rank only
+        return await Promise.all(
+          owned.map((r) =>
+            pagedGames(`https://games.roblox.com/v2/groups/${r.group.id}/games?limit=50&sortOrder=Desc`).catch(() => ({ data: [], more: false }))
+          )
+        );
+      } catch {
+        return []; // not in any owned groups
       }
-    } catch {
-      /* not in any owned groups */
+    })();
+    let games = [];
+    for (const r of [await own, ...(await grp)]) {
+      games = games.concat(r.data);
+      if (r.more) more = true;
     }
     // Only PUBLIC experiences belong in Creations (private/unpublished ones
     // shouldn't leak). develop-api returns each universe's privacyType; keep a
@@ -61,18 +64,42 @@
     // list — other users' games are already public-filtered server-side).
     try {
       const ids = games.map((g) => g.id).filter(Boolean);
-      if (ids.length) {
-        const q = ids.map((id) => "ids=" + id).join("&");
-        const priv = (await (await fetch(`https://develop.roblox.com/v1/universes/multiget?${q}`, { credentials: "include" })).json()).data ?? [];
-        const privateSet = new Set(priv.filter((u) => u.privacyType && u.privacyType !== "Public").map((u) => u.id));
-        if (privateSet.size) games = games.filter((g) => !privateSet.has(g.id));
-      }
+      const chunks = [];
+      for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
+      const lists = await Promise.all(
+        chunks.map(async (c) => {
+          const res = await fetch(`https://develop.roblox.com/v1/universes/multiget?${c.map((id) => "ids=" + id).join("&")}`, { credentials: "include" });
+          return res.ok ? (await res.json()).data ?? [] : [];
+        })
+      );
+      const privateSet = new Set(lists.flat().filter((u) => u.privacyType && u.privacyType !== "Public").map((u) => u.id));
+      if (privateSet.size) games = games.filter((g) => !privateSet.has(g.id));
     } catch {
       /* leave the list as-is on lookup failure */
     }
     games.sort((a, b) => (b.placeVisits || 0) - (a.placeVisits || 0)); // most-visited first
-    return games;
+    return { games, more };
   })();
+
+  // About-card data, also started before the pane wait so it races Roblox's
+  // own render instead of queueing behind it
+  const getJson = (url) =>
+    fetch(url, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+  const infoP = getJson(`https://users.roblox.com/v1/users/${userId}`);
+  const countsP = Promise.all(
+    ["friends", "followers", "followings"].map((k) => getJson(`https://friends.roblox.com/v1/users/${userId}/${k}/count`).then((d) => d?.count ?? null))
+  );
+
+  // .profile-tab-content = the older tabbed profile; .profile-content = the
+  // 2026 single-scroll profile (3D avatar banner, no About/Creations tabs)
+  const pane = await CER.waitFor(() => {
+    const p = document.querySelector(".profile-tab-content, .profile-content");
+    return p && p.children.length ? p : null;
+  }, 12000).catch(() => null);
+  if (!pane) return CER.dismissSkeleton?.(); // terminated/blocked user, or Roblox changed the page
+  if (document.querySelector(".cer-profile-pills")) return; // another run owns the page
 
   // ---- map the About sections (stable profile-* classes; Friends is classless) ----
   function sectionsOf() {
@@ -82,6 +109,8 @@
       const head = (c.querySelector(".container-header, h2, h3")?.textContent || "").trim();
       if (c.classList.contains("profile-currently-wearing")) s.wearing = c;
       else if (c.classList.contains("profile-favorite-experiences")) s.favorites = c;
+      else if (c.classList.contains("profile-experiences")) s.creations = c; // 2026 layout: Games
+      else if (c.classList.contains("react-friends-carousel-container")) s.friends = c;
       else if (c.classList.contains("profile-collections")) s.collections = c;
       else if (c.classList.contains("profile-communities")) s.groups = c;
       else if (c.classList.contains("profile-carousel") && /badge/i.test(head)) s.badges = c;
@@ -107,44 +136,31 @@
   // ---- the About view: info card ABOVE the bio (both built from the API, so
   //      we never touch Roblox's fragile Angular bio node) ----
   const aboutView = CER.el("div", "cer-profile-aboutview");
-  (async () => {
-    let description = "";
-    const rows = [];
-    try {
-      const info = await (await fetch(`https://users.roblox.com/v1/users/${userId}`, { credentials: "include" })).json();
-      description = info?.description || "";
-      if (info?.created) {
-        rows.push(["Joined", new Date(info.created).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })]);
-      }
-    } catch {
-      /* ignore */
+  // undefined = still loading (skeleton cell), null = hide the cell
+  const info = { Joined: undefined, "Place Visits": undefined, Friends: undefined, Followers: undefined, Following: undefined };
+  const infoGrid = CER.el("div", "cer-profile-info");
+  aboutView.appendChild(infoGrid);
+  function renderInfo() {
+    infoGrid.textContent = "";
+    for (const [k, v] of Object.entries(info)) {
+      if (v === null) continue;
+      const cell = CER.el("div", "cer-profile-infocell" + (v === undefined ? " cer-skel-tile" : ""));
+      cell.appendChild(CER.el("div", "cer-profile-infoval", v === undefined ? "\u00a0" : String(v)));
+      cell.appendChild(CER.el("div", "cer-profile-infokey", v === undefined ? "\u00a0" : k));
+      infoGrid.appendChild(cell);
     }
-    // total place visits across the user's games + owned-group games
-    try {
-      const games = await creatorGamesP;
-      const visits = games.reduce((s, g) => s + (g.placeVisits || 0), 0);
-      if (visits > 0) rows.push(["Place Visits", visits.toLocaleString()]);
-    } catch {
-      /* creators only */
-    }
-    const [friendsCnt, followers, following] = await Promise.all([
-      fetch(`https://friends.roblox.com/v1/users/${userId}/friends/count`, { credentials: "include" }).then((r) => r.json()).then((d) => d.count).catch(() => null),
-      fetch(`https://friends.roblox.com/v1/users/${userId}/followers/count`, { credentials: "include" }).then((r) => r.json()).then((d) => d.count).catch(() => null),
-      fetch(`https://friends.roblox.com/v1/users/${userId}/followings/count`, { credentials: "include" }).then((r) => r.json()).then((d) => d.count).catch(() => null),
-    ]);
-    if (friendsCnt != null) rows.push(["Friends", friendsCnt.toLocaleString()]);
-    if (followers != null) rows.push(["Followers", followers.toLocaleString()]);
-    if (following != null) rows.push(["Following", following.toLocaleString()]);
+  }
+  renderInfo(); // skeleton cells right away; filled in as each fetch lands
 
-    // info card FIRST
-    const grid = CER.el("div", "cer-profile-info");
-    for (const [k, v] of rows) {
-      const cell = CER.el("div", "cer-profile-infocell");
-      cell.appendChild(CER.el("div", "cer-profile-infoval", String(v)));
-      cell.appendChild(CER.el("div", "cer-profile-infokey", k));
-      grid.appendChild(cell);
-    }
-    aboutView.appendChild(grid);
+  // join date, bio and counts arrive together (all started above)
+  (async () => {
+    const [u, [friendsCnt, followers, following]] = await Promise.all([infoP, countsP]);
+    info.Joined = u?.created ? new Date(u.created).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : null;
+    info.Friends = friendsCnt != null ? friendsCnt.toLocaleString() : null;
+    info.Followers = followers != null ? followers.toLocaleString() : null;
+    info.Following = following != null ? following.toLocaleString() : null;
+    renderInfo();
+    const description = u?.description || "";
 
     // bio BELOW the info card — clamp at 12 lines with a Show more toggle
     if (description.trim()) {
@@ -172,8 +188,19 @@
         }
       });
     }
-    CER.skelDone?.("profile"); // About info card is populated — safe to reveal
   })();
+  // total place visits across the user's games + owned-group games; slower
+  // (several round trips), so it fills its own cell when ready. "+" when a
+  // list hit the page cap, so the number never claims to be the full total.
+  creatorGamesP
+    .then(({ games, more }) => {
+      const visits = games.reduce((s, g) => s + (g.placeVisits || 0), 0);
+      info["Place Visits"] = visits > 0 ? visits.toLocaleString() + (more ? "+" : "") : null;
+    })
+    .catch(() => {
+      info["Place Visits"] = null;
+    })
+    .then(renderInfo);
 
   // ---- custom thumbnail grids for Favorites / Creations ----
   // Roblox pins its square icon cards (aspect-ratio overrides are ignored), so
@@ -189,14 +216,17 @@
       favGames = [];
     }
     try {
-      myGames = await creatorGamesP; // personal + owned-group experiences
+      myGames = (await creatorGamesP).games; // personal + owned-group experiences
     } catch {
       myGames = [];
     }
     rebuildPills();
   })();
 
+  let gridToken = 0; // bumps per render, so a slow thumbnail fetch for a pill
+  // the user already left can't overwrite the one they switched to
   async function renderGameGrid(list) {
+    const token = ++gridToken;
     customView.textContent = "";
     if (!list.length) {
       customView.appendChild(CER.el("p", "cer-hint", "Nothing here yet."));
@@ -205,6 +235,7 @@
     customView.appendChild(CER.skelGrid(Math.min(list.length, 6), 120, 190)); // skeleton while thumbs load
     // v2 games API: id IS the universeId, place lives in rootPlace.id
     const thumbs = await CER.getGameThumbs(list.map((g) => String(g.id)));
+    if (token !== gridToken) return;
     const grid = CER.el("div", "cer-g-grid");
     for (const g of list) {
       const card = CER.el("a", "cer-g-card");
@@ -277,7 +308,8 @@
     // "Show all" link underneath instead
     if (wantKey === "friends" && secs.friends && !secs.friends.querySelector(".cer-show-all")) {
       const link = CER.el("a", "cer-show-all", "Show all friends →");
-      link.href = "https://www.roblox.com/users/friends";
+      // THIS profile's friends, not the viewer's own (/users/friends is "mine")
+      link.href = `https://www.roblox.com/users/${userId}/friends`;
       secs.friends.appendChild(link);
     }
   }
@@ -323,7 +355,7 @@
   // tabs "showed nothing").
   const PILL_DEFS = [
     ["About", "about", () => true],
-    ["Creations", "creations", () => !!creationsTab || (myGames && myGames.length > 0)],
+    ["Creations", "creations", () => !!creationsTab || (myGames && myGames.length > 0) || hasContent(secs.creations)],
     ["Favorites", "favorites", () => (favGames ? favGames.length > 0 : hasContent(secs.favorites))],
     ["Friends", "friends", () => !!secs.friends],
     ["Collections", "collections", () => hasContent(secs.collections)],
@@ -374,12 +406,13 @@
 
   // default view
   select("about", pills[0].el);
-  // note: skelDone("profile") fires from the About builder once its info card
-  // (join date / visits / counts) is populated — not here
+  // the shell (pill bar + About card with skeleton cells) is in place; the
+  // data fills in on its own, so reveal the page now
+  CER.skelDone?.("profile");
 
   // Roblox re-renders the pane (tab switches, lazy loads) — re-assert our view.
   let raf = null;
-  new MutationObserver(() => {
+  const paneObs = new MutationObserver(() => {
     if (raf) return;
     raf = requestAnimationFrame(() => {
       raf = null;
@@ -391,16 +424,40 @@
       if (customActive || wantKey !== "creations") apply();
       else hideTitles();
     });
-  }).observe(pane, { childList: true });
+  });
+  paneObs.observe(pane, { childList: true });
 
   // the profile ⋯ menu has a redundant "Favorites" entry (we have a Favorites
-  // pill) — hide it whenever the menu renders
+  // pill) — hide it whenever the menu renders. The menu mounts in a portal, so
+  // we watch the body, but only scan the nodes that were just added, once per
+  // frame (a full-document [class*=] scan on every mutation was a hot path).
+  const MENU_SEL = '[role="menuitem"], .dropdown-menu li, [class*="menu-item"], [class*="MenuItem"]';
+  let addedNodes = [];
+  let menuRaf = null;
   function hideMenuFavorites() {
-    for (const el of document.querySelectorAll('[role="menuitem"], .dropdown-menu li, [class*="menu-item"], [class*="MenuItem"]')) {
-      if (el.textContent.trim() === "Favorites" && !el.closest(".cer-profile-pills")) {
-        el.style.setProperty("display", "none", "important");
+    menuRaf = null;
+    const roots = addedNodes;
+    addedNodes = [];
+    for (const root of roots) {
+      if (!root.isConnected) continue;
+      const items = root.matches(MENU_SEL) ? [root] : root.querySelectorAll(MENU_SEL);
+      for (const el of items) {
+        if (el.textContent.trim() === "Favorites" && !el.closest(".cer-profile-pills")) {
+          el.style.setProperty("display", "none", "important");
+        }
       }
     }
   }
-  new MutationObserver(hideMenuFavorites).observe(document.body, { childList: true, subtree: true });
+  const menuObs = new MutationObserver((muts) => {
+    for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1) addedNodes.push(n);
+    if (addedNodes.length && !menuRaf) menuRaf = requestAnimationFrame(hideMenuFavorites);
+  });
+  menuObs.observe(document.body, { childList: true, subtree: true });
+
+  // Roblox can leave the profile client-side: stop watching once we're gone
+  CER.onNavigate(() => {
+    if (location.pathname.includes(`/users/${userId}/profile`)) return;
+    paneObs.disconnect();
+    menuObs.disconnect();
+  });
 })();

@@ -35,7 +35,7 @@
 
   // re-read settings when the panel changes them, so toggling "show top bar"
   // (or Groups rename) takes effect live instead of only after a reload
-  CER.ext.storage.onChanged?.addListener?.(async (changes) => {
+  CER.onSettingsChanged(async (changes) => {
     if (!changes.features) return;
     settings = await CER.get();
     updateTopbarMode();

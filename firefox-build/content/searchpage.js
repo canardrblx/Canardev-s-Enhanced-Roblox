@@ -21,56 +21,82 @@
   // headshot in the card, so we fetch the full-body render (the same thumbnail
   // the profile/home hero uses) and hide the native headshot via CSS. The real
   // profile picture is never restyled, only replaced by the render.
+  // Fetch full-body renders + headshots, retrying ids Roblox still reports as
+  // "Pending" (a fresh render), like CER.getGameThumbs does for games.
+  async function userThumbs(kind, ids, size) {
+    const out = {};
+    let todo = ids;
+    for (let attempt = 0; attempt < 3 && todo.length; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 1200));
+      const res = await fetch(
+        "https://thumbnails.roblox.com/v1/users/" + kind + "?userIds=" + todo.join(",") + "&size=" + size + "&format=Png&isCircular=false",
+        { credentials: "include" }
+      ).catch(() => null);
+      if (!res || !res.ok) break;
+      const body = await res.json().catch(() => ({}));
+      const pending = [];
+      for (const e of body.data || []) {
+        if (e.imageUrl) out[e.targetId] = e.imageUrl;
+        else if (e.state === "Pending") pending.push(e.targetId);
+      }
+      todo = pending;
+    }
+    return out;
+  }
+
   function enhancePeople() {
     if (!location.pathname.startsWith("/search/users")) return;
-    const cards = document.querySelectorAll(".avatar-card-container:not([data-cer-body])");
     const pending = [];
-    cards.forEach((card) => {
+    for (const card of document.querySelectorAll(".avatar-card-container")) {
       const link = card.querySelector("a[href*='/users/']");
       const m = link && link.href.match(/\/users\/(\d+)/);
-      if (!m) return;
-      card.dataset.cerBody = "1";
-      // full-body render across the top
-      const banner = CER.el("div", "cer-people-banner");
-      const body = CER.el("img", "cer-people-body");
-      body.loading = "lazy";
-      banner.appendChild(body);
-      card.insertBefore(banner, card.firstChild);
-      // headshot (the profile picture) + names in a row overlapping the banner
-      const meta = CER.el("div", "cer-people-meta");
-      const head = CER.el("img", "cer-people-head");
-      head.loading = "lazy";
-      meta.appendChild(head);
-      const cap = card.querySelector(".avatar-card-caption");
-      if (cap) meta.appendChild(cap);
-      banner.after(meta);
-      // clicking the avatar / headshot / name opens the profile (the native card
-      // has no obvious way in now); the Add-friend button is separate so it still
-      // works on its own.
-      const go = () => { location.href = "https://www.roblox.com/users/" + m[1] + "/profile"; };
-      banner.style.cursor = "pointer";
-      meta.style.cursor = "pointer";
-      banner.addEventListener("click", go);
-      meta.addEventListener("click", go);
-      pending.push({ id: m[1], body, head });
-    });
+      if (!m) continue;
+      const id = m[1];
+      // React can reuse a card for a different user on a new search — the
+      // stored id (not just "done") decides whether this card is up to date
+      if (card.dataset.cerBody === id) continue;
+      const reused = !!card.dataset.cerBody;
+      card.dataset.cerBody = id;
+      let body, head;
+      if (reused) {
+        body = card.querySelector(".cer-people-body");
+        head = card.querySelector(".cer-people-head");
+        // clear the old user's pictures while the new ones load
+        body?.removeAttribute("src");
+        head?.removeAttribute("src");
+      }
+      if (!body || !head) {
+        // full-body render across the top
+        const banner = CER.el("div", "cer-people-banner");
+        body = CER.el("img", "cer-people-body");
+        body.loading = "lazy";
+        banner.appendChild(body);
+        card.insertBefore(banner, card.firstChild);
+        // headshot (the profile picture) + names in a row overlapping the banner
+        const meta = CER.el("div", "cer-people-meta");
+        head = CER.el("img", "cer-people-head");
+        head.loading = "lazy";
+        meta.appendChild(head);
+        const cap = card.querySelector(".avatar-card-caption");
+        if (cap) meta.appendChild(cap);
+        banner.after(meta);
+        // clicking the avatar / headshot / name opens the profile (the native card
+        // has no obvious way in now); the Add-friend button is separate so it still
+        // works on its own. Reads the card's CURRENT user id.
+        const go = () => { location.href = "https://www.roblox.com/users/" + card.dataset.cerBody + "/profile"; };
+        banner.style.cursor = "pointer";
+        meta.style.cursor = "pointer";
+        banner.addEventListener("click", go);
+        meta.addEventListener("click", go);
+      }
+      pending.push({ id, card, body, head });
+    }
     if (!pending.length) return;
     const ids = [...new Set(pending.map((p) => p.id))];
-    Promise.all([
-      fetch(
-        "https://thumbnails.roblox.com/v1/users/avatar?userIds=" + ids.join(",") + "&size=420x420&format=Png&isCircular=false",
-        { credentials: "include" }
-      ).then((r) => r.json()),
-      fetch(
-        "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" + ids.join(",") + "&size=150x150&format=Png&isCircular=false",
-        { credentials: "include" }
-      ).then((r) => r.json()),
-    ])
-      .then(([bodies, heads]) => {
-        const bm = {}, hm = {};
-        (bodies.data || []).forEach((e) => (bm[e.targetId] = e.imageUrl));
-        (heads.data || []).forEach((e) => (hm[e.targetId] = e.imageUrl));
+    Promise.all([userThumbs("avatar", ids, "420x420"), userThumbs("avatar-headshot", ids, "150x150")])
+      .then(([bm, hm]) => {
         pending.forEach((p) => {
+          if (p.card.dataset.cerBody !== p.id) return; // reused again meanwhile
           if (bm[p.id]) p.body.src = bm[p.id];
           if (hm[p.id]) p.head.src = hm[p.id];
         });
@@ -78,17 +104,29 @@
       .catch(() => {});
   }
 
-  // cards stream in (async render + infinite scroll), so re-run on DOM changes,
-  // debounced. enhancePeople bails instantly when we're not on the users page.
+  // Cards stream in (async render + infinite scroll), so re-run on DOM changes,
+  // debounced — but only while on the people results page. This used to watch
+  // the whole document on every page of the site.
   let peopleTimer = null;
+  let peopleObs = null;
   function schedulePeople() {
     if (CER.alive && !CER.alive()) return;
     clearTimeout(peopleTimer);
     peopleTimer = setTimeout(enhancePeople, 150);
   }
+  function syncPeopleWatch() {
+    const on = location.pathname.startsWith("/search/users");
+    if (on && !peopleObs && document.body) {
+      peopleObs = new MutationObserver(schedulePeople);
+      peopleObs.observe(document.body, { childList: true, subtree: true });
+    } else if (!on && peopleObs) {
+      peopleObs.disconnect();
+      peopleObs = null;
+    }
+  }
 
   mark();
   enhancePeople();
-  CER.onNavigate?.(() => { mark(); schedulePeople(); });
-  new MutationObserver(schedulePeople).observe(document.documentElement, { childList: true, subtree: true });
+  syncPeopleWatch();
+  CER.onNavigate?.(() => { mark(); syncPeopleWatch(); schedulePeople(); });
 })();

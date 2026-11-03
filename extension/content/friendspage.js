@@ -6,18 +6,14 @@
   if (typeof CER === "undefined") return;
   if (!location.pathname.startsWith("/users/friends")) return;
   const settings = await CER.get();
-  if (!settings.features.friendsPage) return;
+  if (!settings.features.friendsPage) return CER.dismissSkeleton?.();
 
-  let me = null;
-  try {
-    me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
-  } catch {
-    return;
-  }
-  if (!me?.id) return;
+  const me = await CER.me().catch(() => null);
+  if (!me?.id) return CER.dismissSkeleton?.(); // logged out: show Roblox's own page
 
   const host = await CER.waitFor(() => document.querySelector("#content, main"), 20000).catch(() => null);
-  if (!host) return;
+  if (!host) return CER.dismissSkeleton?.();
+  if (host.querySelector(":scope > .cer-page")) return; // another run owns the page
 
   const root = CER.el("div", "cer-page");
   for (const child of host.children) child.style.display = "none";
@@ -55,55 +51,106 @@
 
   const PRESENCE = { 0: ["Offline", ""], 1: ["Online", "cer-presence-online"], 2: ["In game", "cer-presence-game"], 3: ["In Studio", "cer-presence-studio"] };
 
+  // every render bumps this; a load that finishes after the user switched tabs
+  // sees a newer token and drops its result instead of overwriting the page
+  let renderToken = 0;
+
+  const chunk = (arr, n) => {
+    const out = [];
+    for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+    return out;
+  };
+
+  // headshots, 100 ids per GET (bigger lists get rejected → blank avatars)
   async function getHeads(ids) {
-    if (ids.length === 0) return {};
-    try {
-      const r = await fetch(
-        "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" + ids.join(",") + "&size=150x150&format=Png&isCircular=false",
-        { credentials: "include" }
-      );
-      const map = {};
-      for (const d of (await r.json()).data ?? []) map[d.targetId] = d.imageUrl;
-      return map;
-    } catch {
-      return {};
-    }
+    const map = {};
+    await Promise.all(
+      chunk(ids, 100).map(async (c) => {
+        try {
+          const r = await fetch(
+            "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" + c.join(",") + "&size=150x150&format=Png&isCircular=false",
+            { credentials: "include" }
+          );
+          if (!r.ok) return;
+          for (const d of (await r.json()).data ?? []) if (d.imageUrl) map[d.targetId] = d.imageUrl;
+        } catch {
+          /* these stay blank */
+        }
+      })
+    );
+    return map;
+  }
+
+  // { id: { name, displayName } }, 100 ids per POST
+  async function getNames(ids) {
+    const byId = {};
+    await Promise.all(
+      chunk(ids, 100).map(async (c) => {
+        try {
+          const res = await CER.robloxWrite("https://users.roblox.com/v1/users", "POST", { userIds: c, excludeBannedUsers: false });
+          if (!res?.ok) return;
+          for (const u of (await res.json()).data ?? []) byId[u.id] = u;
+        } catch {
+          /* names stay as-is */
+        }
+      })
+    );
+    return byId;
+  }
+
+  // { id: presence }, 50 ids per POST
+  async function getPresence(ids) {
+    const map = {};
+    await Promise.all(
+      chunk(ids, 50).map(async (c) => {
+        try {
+          const res = await CER.robloxWrite("https://presence.roblox.com/v1/presence/users", "POST", { userIds: c });
+          if (!res?.ok) return;
+          for (const p of (await res.json()).userPresences ?? []) map[p.userId] = p;
+        } catch {
+          /* cards render without presence */
+        }
+      })
+    );
+    return map;
+  }
+
+  // a write that must really succeed before the card goes away. Returns true
+  // on success; on failure toasts and re-enables the button.
+  async function act(btn, url, failMsg) {
+    btn.disabled = true;
+    const res = await CER.robloxWrite(url, "POST", {}).catch(() => null);
+    if (res?.ok) return true;
+    btn.disabled = false;
+    CER.toast(res?.status === 429 ? "Too fast! Wait a moment." : failMsg, "error");
+    return false;
   }
 
   async function renderFriends() {
+    const token = ++renderToken;
     body.textContent = "";
     body.appendChild(CER.skelGrid(8, 150, 150));
     let friends = [];
     try {
-      friends = (await (await fetch(`https://friends.roblox.com/v1/users/${me.id}/friends`, { credentials: "include" })).json()).data ?? [];
+      const res = await fetch(`https://friends.roblox.com/v1/users/${me.id}/friends`, { credentials: "include" });
+      if (!res.ok) throw new Error(res.status);
+      friends = (await res.json()).data ?? [];
     } catch {
-      body.textContent = "Couldn't load friends.";
+      if (token === renderToken) body.textContent = "Couldn't load friends.";
       return;
     }
+    if (token !== renderToken) return;
     const ids = friends.map((f) => f.id);
-    // the friends list now returns empty name/displayName — backfill from the
-    // users endpoint (batched)
-    try {
-      const res = await CER.robloxWrite("https://users.roblox.com/v1/users", "POST", { userIds: ids, excludeBannedUsers: false });
-      const byId = {};
-      for (const u of (await res.json()).data ?? []) byId[u.id] = u;
-      for (const f of friends) {
-        if (byId[f.id]) {
-          f.name = byId[f.id].name;
-          f.displayName = byId[f.id].displayName;
-        }
+    // the friends list now returns empty name/displayName, so backfill from
+    // the users endpoint. Names, presence and heads all load at once.
+    const [byId, presence, heads] = await Promise.all([getNames(ids), getPresence(ids), getHeads(ids)]);
+    if (token !== renderToken) return;
+    for (const f of friends) {
+      if (byId[f.id]) {
+        f.name = byId[f.id].name;
+        f.displayName = byId[f.id].displayName;
       }
-    } catch {
-      /* names stay as-is */
     }
-    let presence = {};
-    try {
-      const res = await CER.robloxWrite("https://presence.roblox.com/v1/presence/users", "POST", { userIds: ids });
-      for (const p of (await res.json()).userPresences ?? []) presence[p.userId] = p;
-    } catch {
-      /* cards render without presence */
-    }
-    const heads = await getHeads(ids);
 
     body.textContent = "";
     if (friends.length === 0) {
@@ -146,8 +193,7 @@
           }, 3000);
           return;
         }
-        await CER.robloxWrite(`https://friends.roblox.com/v1/users/${f.id}/unfriend`, "POST", {}).catch(() => {});
-        card.remove();
+        if (await act(unfriend, `https://friends.roblox.com/v1/users/${f.id}/unfriend`, "Couldn't unfriend. Try again.")) card.remove();
       });
       row.appendChild(chat);
       row.appendChild(unfriend);
@@ -155,44 +201,41 @@
       grid.appendChild(card);
     }
     body.appendChild(grid);
-    CER.skelDone?.("friends"); // all friend cards rendered
   }
 
   async function renderRequests() {
+    const token = ++renderToken;
     body.textContent = "";
     body.appendChild(CER.skelGrid(6, 150, 150));
     let requests = [];
     try {
       // the request inbox is /my/friends/requests, not /users/{id}/...
-      requests = (await (await fetch("https://friends.roblox.com/v1/my/friends/requests?limit=50&sortOrder=Desc", { credentials: "include" })).json()).data ?? [];
+      const res = await fetch("https://friends.roblox.com/v1/my/friends/requests?limit=50&sortOrder=Desc", { credentials: "include" });
+      if (!res.ok) throw new Error(res.status);
+      requests = (await res.json()).data ?? [];
     } catch {
-      body.textContent = "Couldn't load requests.";
+      if (token === renderToken) body.textContent = "Couldn't load requests.";
       return;
     }
-    const heads = await getHeads(requests.map((r) => r.id));
-    body.textContent = "";
+    if (token !== renderToken) return;
     if (requests.length === 0) {
+      body.textContent = "";
       body.appendChild(CER.el("p", "cer-hint", "No pending requests."));
       return;
     }
 
-    // some request payloads omit name/displayName — backfill from user details
+    // some request payloads omit name/displayName, so backfill those (in
+    // parallel with the heads)
     const needNames = requests.filter((r) => !r.name && !r.displayName).map((r) => r.id);
-    if (needNames.length) {
-      try {
-        const res = await CER.robloxWrite("https://users.roblox.com/v1/users", "POST", { userIds: needNames, excludeBannedUsers: false });
-        const byId = {};
-        for (const u of (await res.json()).data ?? []) byId[u.id] = u;
-        for (const r of requests) {
-          if (byId[r.id]) {
-            r.name = byId[r.id].name;
-            r.displayName = byId[r.id].displayName;
-          }
-        }
-      } catch {
-        /* names stay blank */
+    const [heads, byId] = await Promise.all([getHeads(requests.map((r) => r.id)), needNames.length ? getNames(needNames) : {}]);
+    if (token !== renderToken) return;
+    for (const r of requests) {
+      if (byId[r.id]) {
+        r.name = byId[r.id].name;
+        r.displayName = byId[r.id].displayName;
       }
     }
+    body.textContent = "";
     const grid = CER.el("div", "cer-friend-grid");
     for (const r of requests) {
       const card = CER.el("div", "cer-friend-card");
@@ -206,13 +249,11 @@
       const row = CER.el("div", "cer-friend-actions");
       const accept = CER.el("button", "cer-friend-btn cer-friend-btn-primary", "Accept");
       accept.addEventListener("click", async () => {
-        await CER.robloxWrite(`https://friends.roblox.com/v1/users/${r.id}/accept-friend-request`, "POST", {}).catch(() => {});
-        card.remove();
+        if (await act(accept, `https://friends.roblox.com/v1/users/${r.id}/accept-friend-request`, "Couldn't accept. Try again.")) card.remove();
       });
       const decline = CER.el("button", "cer-friend-btn cer-friend-btn-danger", "Decline");
       decline.addEventListener("click", async () => {
-        await CER.robloxWrite(`https://friends.roblox.com/v1/users/${r.id}/decline-friend-request`, "POST", {}).catch(() => {});
-        card.remove();
+        if (await act(decline, `https://friends.roblox.com/v1/users/${r.id}/decline-friend-request`, "Couldn't decline. Try again.")) card.remove();
       });
       row.appendChild(accept);
       row.appendChild(decline);
@@ -223,4 +264,6 @@
   }
 
   renderFriends();
+  // the shell (title, tabs, skeleton grid) is up; cards fill in when loaded
+  CER.skelDone?.("friends");
 })();

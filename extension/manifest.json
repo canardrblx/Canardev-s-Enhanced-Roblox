@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Canardev's Enhanced Roblox",
-  "version": "1.29.8",
+  "version": "1.30.0",
   "description": "Makes Roblox look and feel better. Themes, redesigned pages, and more. Free, open source, no tracking.",
   "permissions": [
     "storage",
@@ -50,7 +50,7 @@
         "content/updatecheck.js",
         "content/searchpage.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -61,7 +61,7 @@
         "content/gameredesign.js",
         "content/serverbrowser.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -70,7 +70,7 @@
       "js": [
         "content/gamesredesign.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -79,7 +79,7 @@
       "js": [
         "content/avatar.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -88,7 +88,7 @@
       "js": [
         "content/friendspage.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -98,7 +98,7 @@
         "content/profilesocial.js",
         "content/profileredesign.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -107,7 +107,7 @@
       "js": [
         "content/transactionspage.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -120,7 +120,7 @@
       "js": [
         "content/settingsreskin.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -129,7 +129,7 @@
       "js": [
         "content/messagespage.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [
@@ -138,7 +138,7 @@
       "js": [
         "content/catalogpage.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": [

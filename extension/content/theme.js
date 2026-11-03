@@ -11,101 +11,76 @@
 (async function () {
   if (typeof CER === "undefined") return;
 
-  // ---- loading skeleton (runs at document_start, before Roblox paints) ----
-  // Hides the old UI so redesigned pages don't flash the stock look for a
-  // second. customsidebar.js fades it out once our nav is mounted; a hard
-  // timeout removes it no matter what so a broken script can't trap the page.
+  // ---- document_start: decide what never paints ----
+  // Classes on <html> gate CSS in styles.css, so Roblox's nav/top bar and the
+  // native parts we replace are hidden BEFORE the first paint (no JS race).
   try {
     const sQuick = await CER.ext.storage.local.get("features");
     const feats = sQuick.features ?? {};
-    if (feats.customSidebar !== false && feats.loadingSkeleton !== false) {
-      const p = location.pathname;
-      // page-specific skeleton shapes so it resembles what's loading, not a
-      // generic grey box everywhere
-      let mainHtml;
+    const root = document.documentElement;
+    if (feats.customSidebar !== false) {
+      root.classList.add("cer-cnav");
+      // failsafe: if our sidebar never mounts (script error, logged out),
+      // give Roblox's own nav back instead of leaving no nav at all
+      setTimeout(() => {
+        if (!document.querySelector(".cer-custom-nav")) root.classList.remove("cer-cnav");
+      }, 5000);
+    }
+
+    // ---- content veil ----
+    // Covers ONLY the page column (never the nav) while a redesigned page
+    // builds its UI, so the stock version doesn't flash first. It lifts the
+    // moment the redesign's root element exists. Pages with no full redesign
+    // get no veil at all — they render natively and our tweaks land on top.
+    // Old version: full-screen, waited for the sidebar + a 300 ms settle, and
+    // only gave up after 16 s, which is why pages felt so slow.
+    const p = location.pathname;
+    // the redesign reports CER.skelDone(tag) once its UI is usable
+    const pageTag = /\/users\/\d+\/profile/.test(p) && feats.profileRedesign !== false
+      ? "profile"
+      : p.startsWith("/users/friends") && feats.friendsPage !== false
+      ? "friends"
+      : p.startsWith("/my/avatar") && feats.avatarEditor !== false
+      ? "avatar"
+      : p.startsWith("/charts") && feats.gamesRedesign !== false
+      ? "games"
+      : p.startsWith("/home") && feats.wideTiles !== false
+      ? "continue"
+      : null;
+    if (pageTag && feats.loadingSkeleton !== false) {
       const block = (h, w) => `<div class="cer-skel-block" style="height:${h}px;max-width:${w}px"></div>`;
       const row = (n, h, w) => `<div class="cer-skel-row">${Array.from({ length: n }, () => `<div class="cer-skel-tile" style="height:${h}px;width:${w}px"></div>`).join("")}</div>`;
+      let mainHtml;
       if (p.startsWith("/home")) {
-        mainHtml = block(140, 1000) + `<div class="cer-skel-block" style="height:22px;width:180px;margin-top:26px"></div>` + row(8, 90, 90) + `<div class="cer-skel-block" style="height:22px;width:140px;margin-top:26px"></div>` + row(6, 150, 220);
+        mainHtml = block(140, 1000) + block(22, 180) + row(8, 90, 90) + block(22, 140) + row(6, 150, 220);
       } else if (/\/users\/\d+\/profile/.test(p)) {
-        mainHtml = block(200, 1100) + `<div class="cer-skel-row" style="margin-top:20px">${Array.from({ length: 6 }, () => `<div class="cer-skel-tile" style="height:34px;width:90px;border-radius:999px"></div>`).join("")}</div>` + row(5, 120, 120);
+        mainHtml = block(200, 1100) + `<div class="cer-skel-row">${Array.from({ length: 6 }, () => `<div class="cer-skel-tile" style="height:34px;width:90px;border-radius:999px"></div>`).join("")}</div>` + row(5, 120, 120);
       } else if (p.startsWith("/charts")) {
-        mainHtml = `<div class="cer-skel-block" style="height:22px;width:150px"></div>` + row(6, 150, 220) + `<div class="cer-skel-block" style="height:22px;width:200px;margin-top:26px"></div>` + row(6, 150, 220);
+        mainHtml = block(22, 150) + row(6, 150, 220) + block(22, 200) + row(6, 150, 220);
+      } else if (p.startsWith("/my/avatar")) {
+        mainHtml = `<div class="cer-skel-row"><div class="cer-skel-tile" style="height:420px;width:360px"></div><div style="flex:1;display:flex;flex-direction:column;gap:16px">${block(40, 600)}${row(8, 110, 110)}</div></div>`;
       } else {
-        mainHtml = block(120, 900) + block(200, 1100) + block(200, 1100);
+        mainHtml = block(60, 900) + row(8, 150, 150);
       }
       const sk = document.createElement("div");
       sk.id = "cer-skeleton";
-      sk.innerHTML = `<div class="cer-skel-nav"></div><div class="cer-skel-main">${mainHtml}</div>`;
-      document.documentElement.appendChild(sk);
+      sk.innerHTML = `<div class="cer-skel-main">${mainHtml}</div>`;
+      root.appendChild(sk);
 
-      CER.dismissSkeleton = () => {
-        const el = document.getElementById("cer-skeleton");
-        if (!el) return;
-        el.classList.add("cer-skeleton-fade");
-        setTimeout(() => el.remove(), 300);
-      };
-
-      // The veil only lifts when TWO things are true: the custom sidebar has
-      // mounted (it reports via skelDone) AND the page's own redesigned root
-      // element is actually in the DOM. Gating on the real element — not just a
-      // timer — is what stops the old native page (old Games list, old Continue
-      // row) from ever flashing: if a redesign is slow or fails to build, the
-      // veil simply stays until the new UI is present. Enhance-only pages with
-      // no full root just wait on the sidebar + a settle beat.
-      // on home, also hold the veil until our Continue row is in place, so the
-      // native Continue never flashes in before we swap it out
-      CER._skelPending = new Set(p.startsWith("/home") ? ["sidebar", "continue"] : ["sidebar"]);
-      CER._skelRoot = p.startsWith("/charts")
-        ? ".cer-games"
-        : /\/users\/\d+\/profile/.test(p)
-        ? ".cer-profile-pills"
-        : /^\/(communities|groups)\//.test(p)
-        ? ".cer-group-tabs"
-        : p.startsWith("/users/friends")
-        ? ".cer-page"
-        : p.startsWith("/my/avatar")
-        ? ".cer-avatar-inline"
-        : p.startsWith("/catalog")
-        ? "[class*='item-card'], .catalog-item-container, [class*='ItemCard']"
-        : p.startsWith("/charts")
-        ? ".cer-games"
-        : p.startsWith("/home")
-        ? ".friends-carousel-container"
-        : null;
-
-      let dismissed = false;
-      let settleTimer = null;
-      const rootReady = () => !CER._skelRoot || !!document.querySelector(CER._skelRoot);
+      let done = false;
       const finish = () => {
-        if (dismissed) return;
-        dismissed = true;
-        clearTimeout(settleTimer);
-        clearInterval(pollTimer);
-        CER.dismissSkeleton();
+        if (done) return;
+        done = true;
+        sk.classList.add("cer-skeleton-fade");
+        setTimeout(() => sk.remove(), 220);
       };
-      // schedule the fade exactly once, and only when the new UI is verifiably
-      // there. Poll (not just skelDone) because most redesigns build their root
-      // without reporting; the poll notices the element the moment it appears.
-      const maybeFinish = () => {
-        if (dismissed || settleTimer) return;
-        if (CER._skelPending && CER._skelPending.size > 0) return; // sidebar not up
-        if (!rootReady()) return; // new UI not mounted yet — hold the veil
-        settleTimer = setTimeout(finish, 300); // let it paint, then lift
-      };
+      CER.dismissSkeleton = finish;
       CER.skelDone = (tag) => {
-        CER._skelPending?.delete(tag);
-        maybeFinish();
+        if (tag === pageTag) requestAnimationFrame(finish);
       };
-      const pollTimer = setInterval(maybeFinish, 250);
-      // soft failsafe: after 9s stop waiting on the sidebar report, but STILL
-      // require the page root if there is one
-      setTimeout(() => {
-        CER._skelPending?.clear();
-        maybeFinish();
-      }, 9000);
-      // hard failsafe: never trap the page, even if a redesign is truly broken
-      setTimeout(finish, 16000);
+      // never hold the page hostage: a redesign that hasn't reported after
+      // 3.5 s shows whatever is there
+      setTimeout(finish, 3500);
     }
   } catch {
     /* never block the page over a skeleton */
@@ -139,6 +114,32 @@
 }`;
   }
 
+  let bodyWant = null; // { dark, stripAppTheme } or null = hands off
+  let bodyWatch = null;
+  const APP_THEME = /^theme-(?!roblox$)/; // theme-roblox is the base, keep it
+  const strippedAppThemes = new Set(); // put back when the user returns to Default
+  function enforceBody() {
+    const b = document.body;
+    if (!b) return;
+    if (!bodyWant) {
+      for (const c of strippedAppThemes) b.classList.add(c);
+      strippedAppThemes.clear();
+      return;
+    }
+    const want = bodyWant;
+    // only touch what's wrong, so our own writes don't re-trigger forever
+    const fix = (cls, on) => b.classList.contains(cls) !== on && b.classList.toggle(cls, on);
+    fix("dark-theme", want.dark);
+    fix("light-theme", !want.dark);
+    fix("color-mode-dark", want.dark);
+    fix("color-mode-light", !want.dark);
+    if (want.stripAppTheme)
+      for (const c of [...b.classList])
+        if (APP_THEME.test(c)) {
+          strippedAppThemes.add(c);
+          b.classList.remove(c);
+        }
+  }
   async function apply() {
     const settings = await CER.get();
     let style = document.getElementById("cer-theme");
@@ -168,28 +169,33 @@
     if (tint) skelBg = tint.flat ?? tint.bg;
     else if (preset && preset.native === "Light") skelBg = "#f2f4f5";
     else if (preset && preset.native === "Dark") skelBg = "#0f1116";
-    else skelBg = document.body && document.body.classList.contains("light-theme") ? "#f2f4f5" : "#0f1116";
+    else {
+      // Default: match whatever Roblox (or its app theme) is painting. The
+      // veil sits outside <body>, so it can't inherit body's tokens itself.
+      const own = document.body && getComputedStyle(document.body).getPropertyValue("--color-surface-0").trim();
+      skelBg = own || (document.body?.classList.contains("light-theme") ? "#f2f4f5" : "#0f1116");
+    }
     rules.push(`:root { --cer-skel-bg: ${skelBg}; }`);
 
-    // Re-assert the body class every load. This is what actually makes the theme
-    // show: Roblox re-renders its CACHED theme after a reload (so changing the
-    // server setting alone never flips the visual — verified: server said Light
-    // but the page stayed dark). Forcing the body class here overrides that, for
-    // both dark tints (which ride on native dark) and the native Light/Dark
-    // presets themselves.
-    if (tint) {
-      document.body?.classList.toggle("dark-theme", !!tint.dark);
-      document.body?.classList.toggle("light-theme", !tint.dark);
-    } else if (preset && preset.native) {
-      // Roblox sets its cached class during its own init, which can land after
-      // ours — re-assert a few times so ours wins the race, then stop (no
-      // lingering observer that would fight a later switch to a tint theme).
-      const setNative = () => {
-        document.body?.classList.toggle("dark-theme", preset.native === "Dark");
-        document.body?.classList.toggle("light-theme", preset.native === "Light");
-      };
-      setNative();
-      [150, 500, 1200].forEach((ms) => setTimeout(setNative, ms));
+    // Body classes decide Roblox's own colours: dark-theme / light-theme pick
+    // the mode, and (since mid 2026) a theme-<name> class adds a Roblox Plus
+    // app theme (e.g. theme-halloween-2026) that rewrites ~140 colour tokens.
+    //  - Default: leave all of it alone (the user's app theme shows).
+    //  - Roblox Light / Dark: plain Roblox, so the app theme class comes off.
+    //  - Tints: ride on native dark/light with the app theme off, or its
+    //    colours leak into every token we don't set ourselves.
+    // Roblox re-renders its CACHED mode after a reload and can re-add classes
+    // on re-render, so a class-only observer on <body> keeps ours in place.
+    // (Verified live 2026-11-03.)
+    if (tint) bodyWant = { dark: !!tint.dark, stripAppTheme: true };
+    else if (preset && preset.native) bodyWant = { dark: preset.native === "Dark", stripAppTheme: true };
+    else bodyWant = null;
+    // the app theme's full-screen art layer (#theme-background) goes too
+    document.documentElement.classList.toggle("cer-own-theme", !!bodyWant);
+    enforceBody();
+    if (document.body && !bodyWatch) {
+      bodyWatch = new MutationObserver(enforceBody);
+      bodyWatch.observe(document.body, { attributes: true, attributeFilter: ["class"] });
     }
 
     // feature-driven chrome rules (independent of the color preset)
@@ -335,16 +341,18 @@
       }
     }
 
-    style.textContent = rules.join("\n");
+    // unchanged rules = no write (a write restyles the whole page)
+    const css = rules.join("\n");
+    if (style.textContent !== css) style.textContent = css;
   }
 
   // debounce: any storage change fires this, but apply() rebuilds ~50 CSS rules,
   // so batch rapid changes (e.g. several feature toggles) into one re-theme
-  let applyT = null;
-  CER.ext.storage.onChanged.addListener(() => {
-    clearTimeout(applyT);
-    applyT = setTimeout(apply, 120);
-  });
+  CER.onSettingsChanged((changes) => {
+    // only what the theme actually reads — a sidebar/section pref write
+    // shouldn't rebuild every CSS rule
+    if (changes.theme || changes.features) apply();
+  }, 120);
   // runs at document_start now (kills the default-theme flash); body-class
   // toggles need the body, so re-apply once the DOM exists
   document.addEventListener("DOMContentLoaded", () => apply());

@@ -12,7 +12,7 @@
 
   let me = null;
   try {
-    me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
+    me = await CER.me();
   } catch {
     /* not logged in — notes still work */
   }
@@ -46,10 +46,22 @@
     let t = null;
     const obs = new MutationObserver(() => {
       if (!CER.alive?.()) return obs.disconnect();
-      clearTimeout(t);
-      t = setTimeout(patch, 300);
+      // throttle, not debounce: a page that never stops mutating can't
+      // starve the patch forever
+      if (t) return;
+      t = setTimeout(() => {
+        t = null;
+        patch();
+      }, 300);
     });
     obs.observe(document.body, { childList: true, subtree: true });
+    // Roblox can leave the profile client-side: stop watching once we're gone
+    CER.onNavigate(() => {
+      if (!location.pathname.includes(`/users/${userId}/profile`)) {
+        obs.disconnect();
+        clearTimeout(t);
+      }
+    });
   })();
 
   // anchor under the names block (the profile header)
@@ -91,36 +103,49 @@
       if (text) chips.appendChild(CER.el("span", "cer-psocial-chip cer-psocial-stat", text));
     });
 
-    // friendship duration (friends list carries no since-date, but the
-    // friendship-created endpoint does when available)
-    j(`https://friends.roblox.com/v1/users/${userId}/friends/statuses?userIds=${me?.id ?? 0}`).then(async () => {
-      // no reliable public "friends since" — approximate via our own first-seen
-      // record so the feature is honest rather than fabricated
+    // MY friends list: fetched once per page and shared by the friendship
+    // chip and the mutual friends row (it used to be fetched twice, plus a
+    // statuses call whose result was thrown away)
+    const myFriendsP = me ? j(`https://friends.roblox.com/v1/users/${me.id}/friends`) : Promise.resolve(null);
+
+    // friendship duration: no reliable public "friends since", so approximate
+    // via our own first-seen record (honest rather than fabricated)
+    myFriendsP.then(async (mine) => {
+      const list = mine?.data;
+      if (!Array.isArray(list)) return; // lookup failed: don't touch the record
       const KEY = "friendSince";
-      const { [KEY]: since = {} } = await CER.ext.storage.local.get(KEY);
-      if (me) {
-        const areFriends = (await j(`https://friends.roblox.com/v1/users/${me.id}/friends`))?.data?.some?.(
-          (f) => String(f.id) === userId
-        );
-        if (areFriends) {
-          if (!since[userId]) {
-            since[userId] = Date.now();
-            await CER.ext.storage.local.set({ [KEY]: since });
-          }
-          const days = Math.floor((Date.now() - since[userId]) / 8.64e7);
-          chips.appendChild(
-            CER.el("span", "cer-psocial-chip cer-psocial-stat", days === 0 ? "Friends (tracked from today)" : `Friendship: ${days} day${days === 1 ? "" : "s"}`)
-          );
+      let since = {};
+      try {
+        ({ [KEY]: since = {} } = await CER.ext.storage.local.get(KEY));
+      } catch {
+        return; // context invalidated
+      }
+      // keep only current friends: bounds the map to the friend list, and an
+      // unfriend + re-friend starts counting again instead of the old date
+      const ids = new Set(list.map((f) => String(f.id)));
+      let changed = false;
+      for (const k of Object.keys(since)) {
+        if (!ids.has(k)) {
+          delete since[k];
+          changed = true;
         }
       }
+      const areFriends = ids.has(userId);
+      if (areFriends && !since[userId]) {
+        since[userId] = Date.now();
+        changed = true;
+      }
+      if (changed) await CER.set({ [KEY]: since });
+      if (!areFriends) return;
+      const days = Math.floor((Date.now() - since[userId]) / 8.64e7);
+      chips.appendChild(
+        CER.el("span", "cer-psocial-chip cer-psocial-stat", days === 0 ? "Friends (tracked from today)" : `Friendship: ${days} day${days === 1 ? "" : "s"}`)
+      );
     });
 
     // mutual friends
     if (me) {
-      Promise.all([
-        j(`https://friends.roblox.com/v1/users/${me.id}/friends`),
-        j(`https://friends.roblox.com/v1/users/${userId}/friends`),
-      ]).then(([mine, theirs]) => {
+      Promise.all([myFriendsP, j(`https://friends.roblox.com/v1/users/${userId}/friends`)]).then(([mine, theirs]) => {
         const mineIds = new Set((mine?.data ?? []).map((f) => f.id));
         const mutuals = (theirs?.data ?? []).filter((f) => mineIds.has(f.id));
         if (mutuals.length === 0) return;
@@ -131,17 +156,23 @@
         // then fill in avatars when the thumbnail call returns — otherwise an
         // empty row flashes in before the images load
         const imgById = {};
+        const nameById = {};
         for (const m of mutuals.slice(0, 20)) {
           const tile = CER.el("a", "cer-bf-tile");
           tile.href = "https://www.roblox.com/users/" + m.id + "/profile";
           const img = CER.el("img", "cer-bf-avatar");
           imgById[m.id] = img;
           tile.appendChild(img);
-          tile.appendChild(CER.el("span", "cer-bf-name", m.displayName || m.name));
+          nameById[m.id] = tile.appendChild(CER.el("span", "cer-bf-name", m.displayName || m.name || ""));
           row.appendChild(tile);
         }
         section.appendChild(row);
         card.appendChild(section);
+        // the friends list now comes back with blank names: backfill them
+        const shown = mutuals.slice(0, 20).map((m) => m.id);
+        j("https://users.roblox.com/v1/users", "POST", { userIds: shown, excludeBannedUsers: false }).then((d) => {
+          for (const u of d?.data ?? []) if (nameById[u.id]) nameById[u.id].textContent = u.displayName || u.name || "";
+        });
         fetch(
           "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" + mutuals.slice(0, 20).map((m) => m.id).join(",") + "&size=150x150&format=Png&isCircular=true",
           { credentials: "include" }
@@ -160,16 +191,27 @@
   notesWrap.appendChild(CER.el("h3", "cer-h3", "Private note (only you see this)"));
   const area = CER.el("textarea", "cer-psocial-note");
   area.placeholder = "Add a note about this user…";
-  const { playerNotes = {} } = await CER.ext.storage.local.get("playerNotes");
+  area.maxLength = 2000; // notes are never pruned, so keep each one small
+  let playerNotes = {};
+  try {
+    ({ playerNotes = {} } = await CER.ext.storage.local.get("playerNotes"));
+  } catch {
+    /* context invalidated: start blank, the card still mounts */
+  }
   area.value = playerNotes[userId] ?? "";
   let saveTimer = null;
   area.addEventListener("input", () => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
-      const { playerNotes: cur = {} } = await CER.ext.storage.local.get("playerNotes");
+      let cur = {};
+      try {
+        ({ playerNotes: cur = {} } = await CER.ext.storage.local.get("playerNotes"));
+      } catch {
+        return; // context invalidated
+      }
       if (area.value.trim()) cur[userId] = area.value.trim();
       else delete cur[userId];
-      await CER.ext.storage.local.set({ playerNotes: cur });
+      await CER.set({ playerNotes: cur });
     }, 500);
   });
   notesWrap.appendChild(area);

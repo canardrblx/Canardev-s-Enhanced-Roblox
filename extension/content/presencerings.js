@@ -30,6 +30,15 @@
     // ring the circular thumbnail container (so the ring follows its shape),
     // falling back to the raw image
     const target = avatar.querySelector(".avatar-card-image, .thumbnail-2d-container, img") || avatar;
+    // Roblox Plus profile frames (2026) paint the frame as a radial-gradient
+    // background on this box and square it off (loading placeholders are round), so a ring there comes out as a square
+    // around the frame. Leave framed avatars alone with Roblox's own dot.
+    const tcs = getComputedStyle(target);
+    if (tcs.borderRadius === "0px" && tcs.backgroundImage.includes("gradient")) {
+      for (const cls of ALL) target.classList.remove(cls);
+      status.classList.remove("cer-status-hidden");
+      return;
+    }
     if (target.classList.contains(RING[state]) && status.classList.contains("cer-status-hidden")) return;
     for (const cls of ALL) target.classList.remove(cls);
     target.classList.add(RING[state]);

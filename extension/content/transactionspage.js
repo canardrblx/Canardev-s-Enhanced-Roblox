@@ -6,16 +6,13 @@
   if (typeof CER === "undefined") return;
   if (!location.pathname.startsWith("/transactions")) return;
 
-  const host = await CER.waitFor(() => document.querySelector("#content, main"), 20000).catch(() => null);
-  if (!host) return;
-
-  let me = null;
-  try {
-    me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
-  } catch {
-    return;
-  }
-  if (!me?.id) return;
+  // page host and our user at the same time (CER.me() is shared, usually
+  // already in flight)
+  const [host, me] = await Promise.all([
+    CER.waitFor(() => document.querySelector("#content, main"), 20000).catch(() => null),
+    CER.me().catch(() => null),
+  ]);
+  if (!host || !me?.id) return;
 
   const root = CER.el("div", "cer-page");
   for (const child of host.children) child.style.display = "none";
@@ -29,8 +26,12 @@
   root.appendChild(head);
 
   const fmt = (n) => Number(n ?? 0).toLocaleString();
-  const j = (url, method, body) =>
-    method ? CER.bgFetch(url, method, body).then((r) => r.data) : fetch(url, { credentials: "include" }).then((r) => r.json()).catch(() => null);
+  // null on any failure: an error body read as data showed "R$ 0" and
+  // "No recent transactions" instead of an error
+  const j = (url) =>
+    fetch(url, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
 
   // ---- summary cards ----
   const cards = CER.el("div", "cer-tx-cards");
@@ -52,9 +53,12 @@
     summaryCard("Pending", pendV)
   );
 
-  j("https://economy.roblox.com/v1/user/currency").then((d) => (balV.textContent = "R$ " + fmt(d?.robux)));
+  j("https://economy.roblox.com/v1/user/currency").then((d) => (balV.textContent = d?.robux != null ? "R$ " + fmt(d.robux) : "—"));
   j(`https://economy.roblox.com/v2/users/${me.id}/transaction-totals?timeFrame=Month&transactionType=summary`).then((d) => {
-    if (!d) return;
+    if (!d) {
+      for (const v of [inV, outV, pendV]) v.textContent = "—";
+      return;
+    }
     const income = (d.salesTotal ?? 0) + (d.affiliateSalesTotal ?? 0) + (d.groupPayoutsTotal ?? 0) + (d.currencyPurchasesTotal ?? 0);
     const spent = Math.abs(d.purchasesTotal ?? 0) + Math.abs(d.tradeRobuxTotal < 0 ? d.tradeRobuxTotal : 0);
     inV.textContent = "R$ " + fmt(income);
@@ -70,6 +74,7 @@
 
   try {
     const data = await j(`https://economy.roblox.com/v2/users/${me.id}/transactions?transactionType=Purchase&limit=25&cursor=`);
+    if (!data) throw new Error("load failed");
     list.textContent = "";
     const items = data?.data ?? [];
     if (items.length === 0) {

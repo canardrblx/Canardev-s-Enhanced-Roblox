@@ -27,6 +27,9 @@
   root.appendChild(body);
 
   let page = 0;
+  // bumps on every view change, so a list load that lands after the user
+  // opened a message (or paged again) is dropped instead of replacing it
+  let viewToken = 0;
 
   // Roblox PM bodies are HTML. Render a safe whitelist (formatting + roblox
   // links only) — never raw innerHTML, messages come from other users.
@@ -68,19 +71,22 @@
   }
 
   async function renderList() {
+    const token = ++viewToken;
     body.textContent = "";
     body.appendChild(CER.el("p", "cer-hint", "Loading…"));
     let data = null;
     try {
-      data = await (
-        await fetch(`https://privatemessages.roblox.com/v1/messages?messageTab=Inbox&pageNumber=${page}&pageSize=20`, {
-          credentials: "include",
-        })
-      ).json();
+      const res = await fetch(`https://privatemessages.roblox.com/v1/messages?messageTab=Inbox&pageNumber=${page}&pageSize=20`, {
+        credentials: "include",
+      });
+      // an error body has no collection and would read as "inbox is empty"
+      if (!res.ok) throw new Error(res.status);
+      data = await res.json();
     } catch {
-      body.textContent = "Couldn't load messages.";
+      if (token === viewToken) body.textContent = "Couldn't load messages.";
       return;
     }
+    if (token !== viewToken) return;
     const messages = data?.collection ?? [];
     body.textContent = "";
     if (messages.length === 0) {
@@ -99,8 +105,13 @@
     markAll.disabled = unreadIds.length === 0;
     markAll.addEventListener("click", async () => {
       markAll.disabled = true;
-      await CER.robloxWrite("https://privatemessages.roblox.com/v1/messages/mark-read", "POST", { messageIds: unreadIds }).catch(() => {});
-      renderList();
+      const res = await CER.robloxWrite("https://privatemessages.roblox.com/v1/messages/mark-read", "POST", { messageIds: unreadIds }).catch(() => null);
+      if (!res?.ok) {
+        markAll.disabled = false;
+        CER.toast("Couldn't mark them as read. Try again.", "error");
+        return;
+      }
+      if (token === viewToken) renderList(); // not if a message was opened meanwhile
     });
     body.appendChild(markAll);
 
@@ -123,7 +134,14 @@
           markBtn.remove();
           row.classList.remove("cer-msg-unread");
           msg.isRead = true;
-          await CER.robloxWrite("https://privatemessages.roblox.com/v1/messages/mark-read", "POST", { messageIds: [msg.id] }).catch(() => {});
+          const res = await CER.robloxWrite("https://privatemessages.roblox.com/v1/messages/mark-read", "POST", { messageIds: [msg.id] }).catch(() => null);
+          if (!res?.ok) {
+            // put it back the way it was
+            msg.isRead = false;
+            row.classList.add("cer-msg-unread");
+            row.appendChild(markBtn);
+            CER.toast("Couldn't mark as read. Try again.", "error");
+          }
         });
         row.appendChild(markBtn);
       }
@@ -152,6 +170,7 @@
   }
 
   function renderReader(msg) {
+    viewToken++;
     body.textContent = "";
     const bar = CER.el("div", "cer-chat-threadbar");
     const back = CER.el("button", "cer-chat-back", "‹ Back");

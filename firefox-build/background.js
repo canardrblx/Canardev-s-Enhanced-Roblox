@@ -33,16 +33,19 @@ async function checkForUpdate() {
     // update_url injected into the runtime manifest; unpacked/git installs do
     // not. This needs no permission, unlike management.getSelf() which Firefox
     // gates behind the "management" permission.
+    // Every branch stamps checkedAt: without it, updatecheck.js saw "never
+    // checked" and woke this worker (and wrote storage) on EVERY page load.
+    const stamp = (extra) => ext.storage.local.set({ cerUpdate: { available: false, ...extra, checkedAt: Date.now() } });
     if (ext.runtime.getManifest().update_url) {
-      await ext.storage.local.set({ cerUpdate: { available: false } });
+      await stamp();
       return;
     }
     const res = await fetch(`https://api.github.com/repos/${CER_REPO}/releases/latest`, {
       headers: { Accept: "application/vnd.github+json" },
     });
-    if (!res.ok) return;
+    if (!res.ok) return void (await stamp());
     const latest = (await res.json())?.tag_name?.replace(/^v/, "");
-    if (!latest) return;
+    if (!latest) return void (await stamp());
     const current = ext.runtime.getManifest().version;
     await ext.storage.local.set({
       cerUpdate: { available: cerVersionOlder(current, latest), current, latest, checkedAt: Date.now() },
@@ -157,11 +160,15 @@ async function tickPlaytimeInner() {
     }
     playtime[uni] = entry;
     state.lastUniverse = uni;
-  } else {
+    state.lastTick = now;
+    await ext.storage.local.set({ playtime, playtimeState: state });
+  } else if (state.lastUniverse !== null || state.lastTick !== null) {
+    // left the game: one write to close the session. Not in a game and
+    // nothing changed = no write at all (it used to write every minute).
     state.lastUniverse = null;
+    state.lastTick = null;
+    await ext.storage.local.set({ playtimeState: state });
   }
-  state.lastTick = now;
-  await ext.storage.local.set({ playtime, playtimeState: state });
 }
 
 // Feedback webhook. The URL lives ONLY here (not in any content script), and
@@ -290,6 +297,10 @@ ext.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.cer === "playtime-tick") {
     tickPlaytime().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
     return true;
+  }
+  if (msg?.cer === "dev-reload" && !ext.runtime.getManifest().update_url) {
+    ext.runtime.reload(); // unpacked/dev installs only
+    return false;
   }
   if (msg?.cer === "check-update") {
     checkForUpdate().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));

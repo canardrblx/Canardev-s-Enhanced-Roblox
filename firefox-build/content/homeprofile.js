@@ -4,29 +4,43 @@
 
 let cerHomeCard = null;
 let cerHomeObserver = null;
+let cerHomeBusy = false; // sync in-flight guard: two overlapping runs used to insert two cards
+
+const cerFindHomeTitle = () => [...document.querySelectorAll("h1")].find((h) => h.textContent.trim().toLowerCase() === "home");
 
 async function cerInitProfileHeader() {
   if (typeof CER === "undefined") return;
   // Roblox reaches /home via client-side navigation too — this re-runs on
   // every URL change (CER.onNavigate below) and must be idempotent
   if (!location.pathname.startsWith("/home")) return;
-  if (document.querySelector(".cer-profile")) return;
+  if (document.querySelector(".cer-profile") || cerHomeBusy) return;
+  cerHomeBusy = true;
+  try {
+    await cerBuildProfileHeader();
+  } finally {
+    cerHomeBusy = false;
+  }
+}
+
+async function cerBuildProfileHeader() {
   const settings = await CER.get();
   if (!settings.features.profileHeader) return;
 
-  const homeTitle = await CER.waitFor(
-    () => [...document.querySelectorAll("h1")].find((h) => h.textContent.trim().toLowerCase() === "home"),
-    20000
-  ).catch(() => null);
-  if (!homeTitle) return;
-
-  let me = null;
-  try {
-    me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
-  } catch {
-    /* leave the page untouched */
+  // wait for the title and our user at the same time (CER.me() is shared and
+  // usually already in flight), so the card lands as early as possible
+  const [homeTitle, me] = await Promise.all([
+    CER.waitFor(cerFindHomeTitle, 20000).catch(() => null),
+    CER.me().catch(() => null),
+  ]);
+  if (!homeTitle || !me?.id) return;
+  if (document.querySelector(".cer-profile")) return;
+  // came back to /home client-side: re-attach the card we already built
+  // instead of building (and fetching) a second one
+  if (cerHomeCard) {
+    homeTitle.parentElement.insertBefore(cerHomeCard, homeTitle);
+    homeTitle.style.display = "none";
+    return;
   }
-  if (!me?.id) return;
 
   const card = CER.el("div", "cer-profile");
   cerHomeCard = card;
@@ -40,7 +54,7 @@ async function cerInitProfileHeader() {
     cerHomeObserver = new MutationObserver(() => {
       if (!location.pathname.startsWith("/home") || !cerHomeCard) return;
       if (cerHomeCard.isConnected) return;
-      const h1 = [...document.querySelectorAll("h1")].find((h) => h.textContent.trim().toLowerCase() === "home");
+      const h1 = cerFindHomeTitle();
       if (h1) {
         h1.parentElement.insertBefore(cerHomeCard, h1);
         h1.style.display = "none";
@@ -104,7 +118,13 @@ async function cerInitProfileHeader() {
 
   // ---- expand/collapse, persisted across sessions ----
 
+  // the details cost 5+ API calls, so they load on first expand (or on hover
+  // of the bar, so the click still feels instant), not on every home visit
+  let detailsP = null;
+  const ensureDetails = () => (detailsP ??= loadDetails());
+
   async function setExpanded(expanded, persist) {
+    if (expanded) ensureDetails();
     details.hidden = !expanded;
     expandBar.textContent = expanded ? "Collapse ▴" : "Expand ▾";
     if (persist) {
@@ -114,21 +134,39 @@ async function cerInitProfileHeader() {
   }
 
   expandBar.addEventListener("click", () => setExpanded(details.hidden, true));
+  expandBar.addEventListener("pointerenter", ensureDetails);
+  expandBar.addEventListener("focus", ensureDetails);
   if (settings.uiState.profileExpanded) setExpanded(true, false);
-  loadDetails(); // preload so expanding is instant
 
   // ---- the expanded content ----
 
   async function loadDetails() {
     details.appendChild(CER.el("p", "cer-hint", "Loading…"));
 
-    const j = (url) => fetch(url, { credentials: "include" }).then((r) => r.json()).catch(() => null);
+    const j = (url) =>
+      fetch(url, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+    // place visits: page through the games list (50 per page, capped) so big
+    // creators aren't undercounted; `more` = still cut off, shown as "+"
+    const gamesP = (async () => {
+      let visits = 0;
+      let cursor = "";
+      for (let i = 0; i < 4; i++) {
+        const d = await j(`https://games.roblox.com/v2/users/${me.id}/games?limit=50&accessFilter=Public` + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""));
+        if (!d) return i ? { visits, more: true } : null;
+        for (const g of d.data ?? []) visits += g.placeVisits ?? 0;
+        cursor = d.nextPageCursor;
+        if (!cursor) return { visits, more: false };
+      }
+      return { visits, more: true };
+    })();
     const [info, friends, followers, following, games] = await Promise.all([
       j(`https://users.roblox.com/v1/users/${me.id}`),
       j(`https://friends.roblox.com/v1/users/${me.id}/friends/count`),
       j(`https://friends.roblox.com/v1/users/${me.id}/followers/count`),
       j(`https://friends.roblox.com/v1/users/${me.id}/followings/count`),
-      j(`https://games.roblox.com/v2/users/${me.id}/games?limit=50&accessFilter=Public`),
+      gamesP,
     ]);
 
     details.textContent = "";
@@ -139,8 +177,7 @@ async function cerInitProfileHeader() {
     chips.appendChild(chip(fmt(followers?.count) + " Followers"));
     chips.appendChild(chip(fmt(following?.count) + " Following"));
 
-    const visits = (games?.data ?? []).reduce((sum, g) => sum + (g.placeVisits ?? 0), 0);
-    chips.appendChild(chip(fmt(visits) + " Place Visits"));
+    chips.appendChild(chip(fmt(games?.visits) + (games?.more ? "+" : "") + " Place Visits"));
 
     if (info?.created) {
       const joined = new Date(info.created).toLocaleDateString(undefined, { month: "short", year: "numeric" });

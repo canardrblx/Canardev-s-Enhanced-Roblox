@@ -9,18 +9,10 @@
   if (!settings.features.customSidebar) return;
   if (document.querySelector(".cer-custom-nav")) return;
 
-  // Hide Roblox's own nav + top bar (they'd otherwise double up / fight).
-  const kill = document.createElement("style");
-  kill.id = "cer-cnav-kill";
-  kill.textContent = `
-    .left-nav, .rbx-header, #header { display: none !important; }
-    body { margin-top: 0 !important; }
-    /* the top bar is hidden, so drop the 40px it used to reserve — otherwise a
-       dark gap sits above the page (cuts off the profile header gradient). */
-    #container-main { margin-top: 0 !important; }
-    #content, .content { padding-top: 12px; }
-  `;
-  document.documentElement.appendChild(kill);
+  // Roblox's own nav + top bar are hidden by styles.css under html.cer-cnav,
+  // which theme.js sets at document_start — so they never paint at all
+  // (injecting a <style> from here, at idle, let them flash first).
+  document.documentElement.classList.add("cer-cnav");
   // Roblox's #wrap reserves 288px for the left-nav via this class. Keep it so
   // content sits beside our nav — but DON'T add extra margin (that double-gaps
   // accounts that already have the class).
@@ -30,9 +22,8 @@
   }
   reserveSpace();
 
-  const me = await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })
-    .then((r) => r.json())
-    .catch(() => null);
+  const meP = CER.me();
+  let navWanted = true;
 
   // ---- build the nav ----
 
@@ -70,21 +61,17 @@
     return { li, a, href };
   }
 
-  // --- username row ---
-  if (me) {
-    const userLi = CER.el("li", "cer-cnav-li cer-cnav-user");
-    const ua = CER.el("a", "content-emphasis text-title-large flex items-center gap-small radius-medium relative clip cer-cnav-item");
-    ua.href = "https://www.roblox.com/users/" + me.id + "/profile";
-    const av = CER.el("img", "cer-cnav-avatar");
-    ua.appendChild(av);
-    ua.appendChild(CER.el("span", "min-width-0 text-truncate-end text-no-wrap", me.displayName || me.name));
-    userLi.appendChild(ua);
-    inner.appendChild(userLi);
-    fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${me.id}&size=48x48&format=Png&isCircular=true`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((d) => (av.src = d.data?.[0]?.imageUrl ?? ""))
-      .catch(() => {});
-  }
+  // --- username row (built now, filled when the user fetch lands; removed
+  //     if logged out) ---
+  const userLi = CER.el("li", "cer-cnav-li cer-cnav-user");
+  const ua = CER.el("a", "content-emphasis text-title-large flex items-center gap-small radius-medium relative clip cer-cnav-item");
+  const av = CER.el("img", "cer-cnav-avatar");
+  av.alt = "";
+  ua.appendChild(av);
+  const uname = CER.el("span", "min-width-0 text-truncate-end text-no-wrap", "");
+  ua.appendChild(uname);
+  userLi.appendChild(ua);
+  inner.appendChild(userLi);
 
   // --- robux (click → transactions / buy dropdown) ---
   const robuxLi = CER.el("li", "cer-cnav-li cer-cnav-robux-li");
@@ -111,10 +98,33 @@
     document.body.appendChild(menu);
     setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
   });
-  fetch("https://economy.roblox.com/v1/user/currency", { credentials: "include" })
-    .then((r) => r.json())
-    .then((d) => (robuxAmt.textContent = Number(d.robux ?? 0).toLocaleString()))
-    .catch(() => (robuxAmt.textContent = ""));
+  // robux + online count are cached for a minute per tab, so clicking around
+  // the site doesn't refetch them (the friends one is a full friend list +
+  // a presence lookup) on every single page
+  const cached = (key, maxAge) => {
+    try {
+      const c = JSON.parse(sessionStorage.getItem("cer-" + key));
+      return c && Date.now() - c.t < maxAge ? c.v : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const cache = (key, v) => {
+    try {
+      sessionStorage.setItem("cer-" + key, JSON.stringify({ t: Date.now(), v }));
+    } catch {}
+  };
+  const showRobux = (n) => (robuxAmt.textContent = Number(n ?? 0).toLocaleString());
+  const robuxCached = cached("robux", 60000);
+  if (robuxCached !== undefined) showRobux(robuxCached);
+  else
+    fetch("https://economy.roblox.com/v1/user/currency", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        showRobux(d.robux);
+        cache("robux", d.robux ?? 0);
+      })
+      .catch(() => (robuxAmt.textContent = ""));
 
   // --- search ---
   const searchLi = CER.el("li", "cer-cnav-li cer-cnav-search-li");
@@ -177,14 +187,14 @@
   const groupsLabel = settings.features.renameGroups ? "Groups" : "Communities";
   const navItems = [
     { label: "Home", href: "https://www.roblox.com/home", icon: "icon-regular-house" },
-    { label: "Profile", href: me ? `https://www.roblox.com/users/${me.id}/profile` : "https://www.roblox.com/users/profile", icon: "icon-regular-person" },
+    { label: "Profile", href: "https://www.roblox.com/users/profile", icon: "icon-regular-person" },
     { label: "Friends", href: "https://www.roblox.com/users/friends", icon: "icon-regular-two-people" },
     { label: "Avatar", href: "https://www.roblox.com/my/avatar", icon: "icon-regular-person-standing" },
     { label: "Catalog", href: "https://www.roblox.com/catalog", icon: "icon-regular-building-store" },
     { label: "Games", href: "https://www.roblox.com/charts", svgName: "controller" },
     { label: groupsLabel, href: "https://www.roblox.com/communities", icon: "icon-regular-three-people" },
     { label: "Create", href: "https://create.roblox.com/", icon: "icon-regular-fountain-pen-nib" },
-    { label: "Inbox", href: "https://www.roblox.com/my/messages", svgName: "mail" },
+    { label: "Messages", href: "https://www.roblox.com/my/messages", svgName: "mail" },
     // optional/hideable ones
     { label: "Inventory", href: "https://www.roblox.com/users/inventory", icon: "icon-regular-backpack", opt: true },
     { label: "Trade", href: "https://www.roblox.com/trades", icon: "icon-regular-hand-two-arrows-horizontal", opt: true },
@@ -232,22 +242,50 @@
   highlight();
   CER.onNavigate?.(highlight);
 
-  // online-friends badge on Friends
+  // fill in everything that needs our user id
   const friendsItem = built.find((b) => b.a.textContent.includes("Friends"));
-  if (friendsItem && me) {
-    (async () => {
+  const profileItem = built.find((b) => b.a.textContent.includes("Profile"));
+  meP.then((me) => {
+    if (!me) {
+      // logged out: Roblox's own header has the Log In / Sign Up buttons, so
+      // hand the page back to it instead of a nav full of login bounces
+      navWanted = false;
+      nav.remove();
+      vtagEl?.remove();
+      document.documentElement.classList.remove("cer-cnav");
+      return;
+    }
+    ua.href = "https://www.roblox.com/users/" + me.id + "/profile";
+    uname.textContent = me.displayName || me.name;
+    if (profileItem) {
+      profileItem.a.href = profileItem.href = ua.href;
+      highlight();
+    }
+    fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${me.id}&size=48x48&format=Png&isCircular=true`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => (av.src = d.data?.[0]?.imageUrl ?? ""))
+      .catch(() => {});
+    if (!friendsItem) return;
+    const showOnline = (online) => {
+      if (online > 0) friendsItem.a.appendChild(CER.el("span", "cer-cnav-badge", String(online)));
+    };
+    const onlineCached = cached("online", 60000);
+    if (onlineCached !== undefined) return showOnline(onlineCached);
+    // not urgent: wait until the page is idle
+    (window.requestIdleCallback ?? ((f) => setTimeout(f, 1500)))(async () => {
       try {
         const friends = (await (await fetch(`https://friends.roblox.com/v1/users/${me.id}/friends`, { credentials: "include" })).json()).data ?? [];
-        if (!friends.length) return;
-        const pres = await CER.bgFetch("https://presence.roblox.com/v1/presence/users", "POST", { userIds: friends.map((f) => f.id) });
-        const online = (pres.data?.userPresences ?? []).filter((p) => p.userPresenceType > 0).length;
-        if (online > 0) {
-          const badge = CER.el("span", "cer-cnav-badge", String(online));
-          friendsItem.a.appendChild(badge);
+        let online = 0;
+        // presence takes at most 100 ids per call
+        for (let i = 0; i < friends.length; i += 100) {
+          const pres = await CER.bgFetch("https://presence.roblox.com/v1/presence/users", "POST", { userIds: friends.slice(i, i + 100).map((f) => f.id) });
+          online += (pres.data?.userPresences ?? []).filter((p) => p.userPresenceType > 0).length;
         }
+        cache("online", online);
+        showOnline(online);
       } catch {}
-    })();
-  }
+    });
+  });
 
   function openSettingsMenu(anchor) {
     document.querySelector(".cer-ctx")?.remove();
@@ -274,26 +312,25 @@
 
   document.body.appendChild(nav);
 
-  // our sidebar is up — signal the skeleton (it also waits on page content)
-  setTimeout(() => (CER.skelDone ? CER.skelDone("sidebar") : CER.dismissSkeleton?.()), 200);
 
   // version tag at the bottom of the page (sidebar.js used to add this, but
   // it's short-circuited when the custom sidebar is on)
+  let vtagEl = null;
   if (!document.querySelector(".cer-version-tag")) {
-    const vtag = CER.el("button", "cer-version-tag", "Canardev's Enhanced Roblox v" + CER.ext.runtime.getManifest().version);
+    const vtag = (vtagEl = CER.el("button", "cer-version-tag", "Canardev's Enhanced Roblox v" + CER.ext.runtime.getManifest().version));
     vtag.addEventListener("click", () => CER.openSettings?.("About"));
     document.body.appendChild(vtag);
   }
 
-  // Roblox re-renders can re-show its own nav/header — keep them down. The
-  // re-attach checks stay immediate (cheap, no flash); only reserveSpace() (a
-  // #wrap query + class write) is debounced so lazy-load mutations don't thrash.
-  let reserveT = null;
+  // Roblox can replace <body> children or drop the #wrap class on re-render.
+  // Only direct children of body matter for the nav, and #wrap only needs a
+  // re-check when it changes — no subtree observer over the whole page.
   new MutationObserver(() => {
     if (!CER.alive?.()) return;
-    if (!document.getElementById("cer-cnav-kill")) document.documentElement.appendChild(kill);
-    if (!document.contains(nav)) document.body.appendChild(nav);
-    clearTimeout(reserveT);
-    reserveT = setTimeout(reserveSpace, 120);
-  }).observe(document.body, { childList: true, subtree: true });
+    if (!navWanted) return;
+    if (!nav.isConnected) document.body.appendChild(nav);
+    reserveSpace();
+  }).observe(document.body, { childList: true });
+  const wrapEl = document.querySelector("#wrap");
+  if (wrapEl) new MutationObserver(reserveSpace).observe(wrapEl, { attributes: true, attributeFilter: ["class"] });
 })();

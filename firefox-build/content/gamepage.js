@@ -3,17 +3,20 @@
 
 (async function () {
   if (typeof CER === "undefined") return;
-  const settings = await CER.get();
 
   const placeId = location.pathname.match(/\/games\/(\d+)/)?.[1];
   if (!placeId) return;
+
+  // the ⚙ button doesn't need the universe id — don't make it wait for one
+  addJoinButton();
 
   // The page embeds the universe id in a meta element; fall back to the API.
   let universeId = document.querySelector("#game-detail-meta-data")?.dataset?.universeId;
   if (!universeId) {
     try {
       const res = await fetch("https://apis.roblox.com/universes/v1/places/" + placeId + "/universe");
-      universeId = String((await res.json()).universeId);
+      const id = res.ok ? (await res.json()).universeId : null;
+      universeId = id ? String(id) : null; // never "undefined" → a bad games call
     } catch {
       universeId = null;
     }
@@ -62,17 +65,19 @@
   // so styles.css forces row direction and uses `order` to keep ⚙ on the right
   // regardless of DOM order.
 
-  const playContainer = await CER.waitFor(
-    () => document.querySelector(".game-details-play-button-container"),
-    15000
-  ).catch(() => null);
-  if (!playContainer) return;
+  async function addJoinButton() {
+    const playContainer = await CER.waitFor(
+      () => document.querySelector(".game-details-play-button-container"),
+      15000
+    ).catch(() => null);
+    if (!playContainer || playContainer.querySelector(".cer-join-btn")) return;
 
-  playContainer.classList.add("cer-play-row");
+    playContainer.classList.add("cer-play-row");
 
-  const joinBtn = CER.el("button", "btn-common-play-game-lg btn-primary-md cer-join-btn");
-  joinBtn.title = "Join options";
-  joinBtn.appendChild(CER.gearIcon()); // currentColor SVG — white on the accent button
-  joinBtn.addEventListener("click", () => CER.openSettings?.("Join"));
-  playContainer.appendChild(joinBtn);
+    const joinBtn = CER.el("button", "btn-common-play-game-lg btn-primary-md cer-join-btn");
+    joinBtn.title = "Join options";
+    joinBtn.appendChild(CER.gearIcon()); // currentColor SVG — white on the accent button
+    joinBtn.addEventListener("click", () => CER.openSettings?.("Join"));
+    playContainer.appendChild(joinBtn);
+  }
 })();

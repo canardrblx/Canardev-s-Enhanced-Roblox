@@ -37,6 +37,9 @@
     // widget, the sidebar) can't get registered as a home section
     for (const header of (feedRoot || document).querySelectorAll(".home-sort-header-container")) {
       const wrapper = header.parentElement;
+      // continue.js hid this one and shows its own row (registered below as a
+      // .cer-section) — touching its display would bring the old row back
+      if (wrapper?.dataset.cerReplaced) continue;
       const raw = header.querySelector('[class*="textIconRowText"]')?.textContent ?? header.textContent;
       const title = cleanSectionTitle(raw);
       if (wrapper && title) found.push({ title, el: wrapper });
@@ -65,10 +68,13 @@
   }
 
   let applying = false;
-  let homeSkelTimer = null;
+  let applyAgain = false;
   async function applyPrefs() {
     if (!location.pathname.startsWith("/home")) return; // SPA-safe guard
-    if (applying) return;
+    if (applying) {
+      applyAgain = true; // a wave landed mid-apply — run once more after
+      return;
+    }
     applying = true;
     try {
       const settings = await CER.get();
@@ -127,16 +133,13 @@
 
       maintainNotice(settings, sections, prefs);
       // prefs are applied — lift the anti-flash veil (see theme.js)
-      if (sections.length) {
-        document.documentElement.classList.remove("cer-sections-pending");
-        // Drop the skeleton only AFTER the feed stops changing — recommendations
-        // and Continue load in waves, so debounce off the last applyPrefs so we
-        // never reveal a half-sorted feed.
-        clearTimeout(homeSkelTimer);
-        homeSkelTimer = setTimeout(() => CER.skelDone?.("home"), 700);
-      }
+      if (sections.length) document.documentElement.classList.remove("cer-sections-pending");
     } finally {
       applying = false;
+      if (applyAgain) {
+        applyAgain = false;
+        schedule();
+      }
     }
   }
 
@@ -169,14 +172,25 @@
     feedRoot.appendChild(notice);
   }
 
-  // re-apply when the feed lazy-loads more sections or settings change
+  // re-apply when the feed lazy-loads more sections or settings change.
+  // Debounced, but capped: a plain 400 ms debounce kept restarting while the
+  // feed streamed in, so the pending veil (and hidden sections) lingered.
   let timer = null;
-  const observer = new MutationObserver(() => {
+  let burstStart = 0;
+  function schedule() {
+    const now = performance.now();
+    if (!timer) burstStart = now;
     clearTimeout(timer);
-    timer = setTimeout(applyPrefs, 400);
+    timer = setTimeout(() => {
+      timer = null;
+      applyPrefs();
+    }, Math.max(0, Math.min(150, burstStart + 400 - now)));
+  }
+  const observer = new MutationObserver(() => {
+    if (location.pathname.startsWith("/home")) schedule();
   });
   observer.observe(document.body, { childList: true, subtree: true });
-  CER.ext.storage.onChanged.addListener(() => applyPrefs());
+  CER.onSettingsChanged(() => applyPrefs());
   CER.onNavigate(() => applyPrefs());
 
   await applyPrefs();

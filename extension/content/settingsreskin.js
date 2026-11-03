@@ -5,57 +5,85 @@
 
 (async function () {
   if (typeof CER === "undefined") return;
-  const p = location.pathname;
-  const onSettings =
-    p.startsWith("/my/account") ||
-    p.startsWith("/my/settings") ||
-    p.includes("/configure") || // group / community configure pages
-    /^\/(communities|groups)\/\d+\/configure/.test(p);
-  if (!onSettings) return;
+  // group / community configure pages count as settings too
+  const isGroupCfgPath = (p) => /^\/(communities|groups)\/(\d+\/)?configure/.test(p);
+  const isSettingsPath = (p) => p.startsWith("/my/account") || p.startsWith("/my/settings") || isGroupCfgPath(p);
+  if (!isSettingsPath(location.pathname)) return;
 
   // the group/community "Configure" page has a different shell (big title,
   // author line, funds, side menu). Treat it specially so it ends up looking
   // exactly like the account settings: no title, one centred pill on top.
-  const isGroupCfg = p.includes("/configure");
+  let isGroupCfg = false;
 
   function tag() {
-    document.body.classList.add("cer-settings-reskin");
-    if (isGroupCfg) document.body.classList.add("cer-group-cfg");
-    // give each settings "section" a consistent hook regardless of its class
-    for (const h of document.querySelectorAll("h2, h3, [class*='section-header'], [class*='SectionHeader']")) {
-      const card = h.closest("[class*='section'], [class*='Section'], .panel, [class*='container']");
-      if (card && card.offsetWidth > 300 && card.offsetHeight < 2000) card.classList.add("cer-set-card");
+    const p = location.pathname;
+    if (!isSettingsPath(p)) {
+      // SPA'd off the settings page: take our hooks with us
+      document.body.classList.remove("cer-settings-reskin", "cer-group-cfg");
+      return;
     }
+    isGroupCfg = isGroupCfgPath(p);
+    document.body.classList.add("cer-settings-reskin");
+    document.body.classList.toggle("cer-group-cfg", isGroupCfg);
+    // give each settings "section" a consistent hook regardless of its class.
+    // Each heading is checked once (data-cer-set); reads first, writes after,
+    // so offsetWidth doesn't force a layout per heading.
+    const cards = [];
+    const done = [];
+    for (const h of document.querySelectorAll(
+      "h2:not([data-cer-set]), h3:not([data-cer-set]), [class*='section-header']:not([data-cer-set]), [class*='SectionHeader']:not([data-cer-set])"
+    )) {
+      const card = h.closest("[class*='section'], [class*='Section'], .panel, [class*='container']");
+      if (card && !card.classList.contains("cer-set-card")) {
+        const w = card.offsetWidth;
+        if (w === 0) continue; // section tab not shown yet: check again later
+        if (w > 300 && card.offsetHeight < 2000) cards.push(card);
+      }
+      done.push(h);
+    }
+    for (const card of cards) card.classList.add("cer-set-card");
+    for (const h of done) h.dataset.cerSet = "1";
     // hide the big "Settings" page title (redundant with the sidebar item)
-    for (const h1 of document.querySelectorAll("h1")) {
+    for (const h1 of document.querySelectorAll("h1:not(.cer-hide-settings-title)")) {
       if (h1.textContent.trim() === "Settings") h1.classList.add("cer-hide-settings-title");
     }
     buildDropdown();
     if (isGroupCfg) cleanGroupShell();
   }
 
+  // first text node matching `re` (a text walk instead of reading textContent
+  // on every a/button/span)
+  function findText(re) {
+    const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (re.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    });
+    return tw.nextNode();
+  }
+
   // Strip the Configure-page chrome and relocate the pill so the page matches
   // account settings: hide title + author + funds + "back" link, then move the
   // dropdown to the top of the content column (was a side menu).
+  let backEl = null;
+  let fundsEl = null;
   function cleanGroupShell() {
     const hdr = document.querySelector(".section.configure-group > .container-header");
     if (hdr) hdr.classList.add("cer-hide-settings-title");
-    for (const a of document.querySelectorAll("a, button")) {
-      if (/^back to (community|group)/i.test(a.textContent.trim())) a.classList.add("cer-hide-settings-title");
+    if (!backEl?.isConnected) {
+      backEl = findText(/^\s*back to (community|group)/i)?.parentElement?.closest("a, button") ?? null;
+      backEl?.classList.add("cer-hide-settings-title");
     }
     // the "Community/Group Funds: N" line — hide the smallest wrapper that is
     // just that line, so we don't nuke a shared container
-    for (const s of document.querySelectorAll("span.ng-binding, span")) {
-      if (!/^(community|group)\s*funds/i.test(s.textContent.trim())) continue;
-      let n = s;
+    if (!fundsEl?.isConnected) {
+      let n = findText(/^\s*(community|group)\s*funds/i)?.parentElement ?? null;
       while (
-        n.parentElement &&
+        n?.parentElement &&
         /funds/i.test(n.parentElement.textContent) &&
         n.parentElement.textContent.trim().length < 40
       )
         n = n.parentElement;
-      n.classList.add("cer-hide-settings-title");
-      break;
+      fundsEl = n;
+      fundsEl?.classList.add("cer-hide-settings-title");
     }
     // move the pill to the top of the content column and drop the old side menu
     const dd = document.querySelector(".cer-set-dd");
@@ -113,8 +141,16 @@
     true
   );
 
+  // throttled: Angular re-renders in bursts, one tag() per burst is plenty
+  let tagTimer = null;
+  const scheduleTag = () => {
+    if (tagTimer) return;
+    tagTimer = setTimeout(() => {
+      tagTimer = null;
+      tag();
+    }, 150);
+  };
   tag();
-  const obs = new MutationObserver(() => tag());
-  obs.observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(scheduleTag).observe(document.body, { childList: true, subtree: true });
   CER.onNavigate?.(tag);
 })();

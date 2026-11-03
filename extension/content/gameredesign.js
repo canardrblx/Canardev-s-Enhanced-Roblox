@@ -12,55 +12,62 @@
   const placeId = location.pathname.match(/\/games\/(\d+)/)?.[1];
   if (!placeId) return;
 
-  document.body.classList.add("cer-game-redesign");
+  // Nothing native is hidden until the hero is built and swapped in (the
+  // body class below hides the native tabs + stats). There's no veil on game
+  // pages, so the stock page stays usable if any step here fails.
+
+  // look for the native top area while the data loads
+  const titleBoxP = CER.waitFor(() => document.querySelector(".game-title-container"), 20000).catch(() => null);
 
   let universeId = document.querySelector("#game-detail-meta-data")?.dataset?.universeId;
   if (!universeId) {
     try {
       const res = await fetch("https://apis.roblox.com/universes/v1/places/" + placeId + "/universe");
-      universeId = String((await res.json()).universeId);
+      if (!res.ok) return;
+      const id = (await res.json()).universeId;
+      if (!id) return;
+      universeId = String(id);
     } catch {
       return;
     }
   }
 
-  // all the data the hero needs, in parallel
-  const j = (url) => fetch(url, { credentials: "include" }).then((r) => r.json()).catch(() => null);
-  const [infoRes, votesRes, thumbs, icons] = await Promise.all([
-    j("https://games.roblox.com/v1/games?universeIds=" + universeId),
-    j("https://games.roblox.com/v1/games/votes?universeIds=" + universeId),
-    CER.getGameThumbs([universeId]),
-    CER.getGameIcons([universeId]),
-  ]);
-  const info = infoRes?.data?.[0];
+  // The hero only needs the info call; votes, banner and icon fill in after
+  // (it used to wait for the slowest of all four).
+  const j = (url) => fetch(url, { credentials: "include" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const votesP = j("https://games.roblox.com/v1/games/votes?universeIds=" + universeId);
+  const thumbsP = CER.getGameThumbs([universeId]).catch(() => ({}));
+  const iconsP = CER.getGameIcons([universeId]).catch(() => ({}));
+  const info = (await j("https://games.roblox.com/v1/games?universeIds=" + universeId))?.data?.[0];
   if (!info) return;
-  const votes = votesRes?.data?.[0];
-  const votesPct =
-    votes && votes.upVotes + votes.downVotes > 0
-      ? Math.round((votes.upVotes / (votes.upVotes + votes.downVotes)) * 100)
-      : null;
 
   // native top area: the row holding the media carousel + info column
-  const titleBox = await CER.waitFor(() => document.querySelector(".game-title-container"), 20000).catch(() => null);
-  if (!titleBox) return;
+  const titleBox = await titleBoxP;
+  if (!titleBox?.parentElement?.parentElement) return;
   const infoCol = titleBox.parentElement;
-  let topRow = infoCol?.parentElement;
+  let topRow = infoCol.parentElement;
   // never hide a container that holds the tab strip OR the tab panes —
   // hiding the panes made the tabs look dead (they switched invisibly)
-  if (topRow?.querySelector(".rbx-tabs-horizontal, .tab-content")) topRow = null;
+  if (topRow.querySelector(".rbx-tabs-horizontal, .tab-content")) topRow = null;
 
   // ---- hero ----
 
   const hero = CER.el("div", "cer-profile cer-gp-hero");
 
   const banner = CER.el("div", "cer-profile-banner cer-gp-banner");
-  if (thumbs[universeId]) banner.style.backgroundImage = `url("${thumbs[universeId]}")`;
+  thumbsP.then((thumbs) => {
+    if (thumbs[universeId]) banner.style.backgroundImage = `url("${thumbs[universeId]}")`;
+  });
   hero.appendChild(banner);
 
   const row = CER.el("div", "cer-profile-row");
   const iconImg = CER.el("img", "cer-gp-icon");
-  iconImg.src = icons[universeId] ?? "";
   iconImg.alt = info.name;
+  iconImg.style.visibility = "hidden"; // no alt text in the icon spot while it loads
+  iconImg.addEventListener("load", () => (iconImg.style.visibility = ""), { once: true });
+  iconsP.then((icons) => {
+    if (icons[universeId]) iconImg.src = icons[universeId];
+  });
   row.appendChild(iconImg);
 
   const names = CER.el("div", "cer-profile-names");
@@ -175,9 +182,10 @@
   // stat chips
   const chips = CER.el("div", "cer-gp-chips");
   const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
+  let ratingValue = null; // filled once the votes call lands
   const stats = [
     [fmt(info.playing), "Active"],
-    [votesPct != null ? votesPct + "%" : "—", "Rating"],
+    ["—", "Rating"],
     [fmt(info.visits), "Visits"],
     [fmt(info.favoritedCount), "Favorites"],
     [fmt(info.maxPlayers), "Server Size"],
@@ -185,7 +193,9 @@
   if (info.genre && info.genre !== "All") stats.push([info.genre, "Genre"]);
   for (const [value, label] of stats) {
     const chip = CER.el("span", "cer-gp-chip");
-    chip.appendChild(CER.el("b", "", String(value)));
+    const b = CER.el("b", "", String(value));
+    if (label === "Rating") ratingValue = b;
+    chip.appendChild(b);
     chip.appendChild(CER.el("span", "", " " + label));
     chips.appendChild(chip);
   }
@@ -197,9 +207,6 @@
   // black strip, and the vote write API rejects the page's CORS preflight.
   const fmtVotes = (n) =>
     n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e3 ? Math.round(n / 1e3) + "K" : String(n || 0);
-  const up = votes?.upVotes ?? 0;
-  const down = votes?.downVotes ?? 0;
-
   // stroke SVG icons that fill + turn the button accent when active
   const svgIcon = (paths) =>
     `<svg class="cer-gp-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
@@ -213,51 +220,72 @@
   const social = CER.el("div", "cer-gp-social2");
   const favBtn = CER.el("button", "cer-gp-sbtn cer-gp-fav");
   favBtn.innerHTML = `<span class="cer-gp-sicon">${IC.star}</span><span class="cer-gp-slabel">Favorite</span>`;
+  // counts + ratio start empty and fill in when the votes call lands
+  const likeCount = CER.el("span", "", "—");
+  const dislikeCount = CER.el("span", "", "—");
   const likeBtn = CER.el("button", "cer-gp-sbtn cer-gp-like");
-  likeBtn.innerHTML = `<span class="cer-gp-sicon">${IC.up}</span><span>${fmtVotes(up)}</span>`;
+  likeBtn.innerHTML = `<span class="cer-gp-sicon">${IC.up}</span>`;
+  likeBtn.appendChild(likeCount);
   const dislikeBtn = CER.el("button", "cer-gp-sbtn cer-gp-dislike");
-  dislikeBtn.innerHTML = `<span class="cer-gp-sicon">${IC.down}</span><span>${fmtVotes(down)}</span>`;
+  dislikeBtn.innerHTML = `<span class="cer-gp-sicon">${IC.down}</span>`;
+  dislikeBtn.appendChild(dislikeCount);
   const notifyBtn = CER.el("button", "cer-gp-sbtn cer-gp-notify");
   notifyBtn.innerHTML = `<span class="cer-gp-sicon">${IC.bell}</span><span>Notify</span>`;
   const ratio = CER.el("div", "cer-gp-ratio");
-  const pct = up + down > 0 ? Math.round((up / (up + down)) * 100) : 0;
-  ratio.innerHTML = `<div class="cer-gp-ratio-fill" style="width:${pct}%"></div>`;
-  ratio.title = pct + "% liked";
+  const ratioFill = CER.el("div", "cer-gp-ratio-fill");
+  ratioFill.style.width = "0%";
+  ratio.appendChild(ratioFill);
   social.append(favBtn, likeBtn, dislikeBtn, ratio, notifyBtn);
   hero.appendChild(social);
 
-  // stash Roblox's real controls off-screen and proxy every click through them
-  const nativeHost = CER.el("div", "cer-gp-native-hide");
-  hero.appendChild(nativeHost);
-  const clickNative = (sel) =>
-    (nativeHost.querySelector(sel) || document.querySelector(".favorite-follow-vote-share " + sel))?.click();
-  CER.waitFor(() => document.querySelector(".favorite-follow-vote-share"), 15000)
-    .then((bar) => bar && nativeHost.appendChild(bar))
-    .catch(() => {});
+  votesP.then((votesRes) => {
+    const votes = votesRes?.data?.[0];
+    const up = votes?.upVotes ?? 0;
+    const down = votes?.downVotes ?? 0;
+    likeCount.textContent = fmtVotes(up);
+    dislikeCount.textContent = fmtVotes(down);
+    const pct = up + down > 0 ? Math.round((up / (up + down)) * 100) : 0;
+    ratioFill.style.width = pct + "%";
+    ratio.title = pct + "% liked";
+    if (ratingValue && up + down > 0) ratingValue.textContent = pct + "%";
+  });
+
+  // Roblox's real controls stay where React put them (inside the native area
+  // we hide) and every click is proxied to them. Moving the React-owned bar
+  // into our own host could throw on its next re-render.
+  const nativeBar = () => document.querySelector(".favorite-follow-vote-share");
+  // click the native control; false when it isn't there (then we don't flip
+  // our button, so it can't show a state that never happened)
+  const clickNative = (sel) => {
+    const el = nativeBar()?.querySelector(sel) ?? document.querySelector(sel);
+    if (!el) return false;
+    el.click();
+    return true;
+  };
 
   // .cer-gp-on = filled icon + accent button
   favBtn.addEventListener("click", () => {
-    clickNative(".favorite-button");
+    if (!clickNative(".favorite-button")) return CER.toast("Try again in a second");
     const on = favBtn.classList.toggle("cer-gp-on");
     favBtn.querySelector(".cer-gp-slabel").textContent = on ? "Favorited" : "Favorite";
   });
   likeBtn.addEventListener("click", () => {
-    clickNative(".upvote");
+    if (!clickNative(".upvote")) return CER.toast("Try again in a second");
     if (likeBtn.classList.toggle("cer-gp-on")) dislikeBtn.classList.remove("cer-gp-on");
   });
   dislikeBtn.addEventListener("click", () => {
-    clickNative(".downvote");
+    if (!clickNative(".downvote")) return CER.toast("Try again in a second");
     if (dislikeBtn.classList.toggle("cer-gp-on")) likeBtn.classList.remove("cer-gp-on");
   });
   notifyBtn.addEventListener("click", () => {
-    clickNative(".game-follow-button-container .foundation-web-button, .game-follow-button-container [role='button'], .game-follow-button-container button, .game-follow-button-container");
+    if (!clickNative(".game-follow-button-container .foundation-web-button, .game-follow-button-container [role='button'], .game-follow-button-container button, .game-follow-button-container")) return CER.toast("Try again in a second");
     notifyBtn.classList.toggle("cer-gp-on");
   });
 
   // initial active states — favorite from the API (reliable); like/dislike/notify
   // from Roblox's own controls once they render (best-effort)
   fetch(`https://games.roblox.com/v1/games/${universeId}/favorites`, { credentials: "include" })
-    .then((r) => r.json())
+    .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (d?.isFavorited) {
         favBtn.classList.add("cer-gp-on");
@@ -265,11 +293,13 @@
       }
     })
     .catch(() => {});
-  CER.waitFor(() => nativeHost.querySelector(".voting-panel, .game-follow-button-container"), 15000)
+  CER.waitFor(() => nativeBar()?.querySelector(".voting-panel, .game-follow-button-container"), 15000)
     .then(() => {
-      if (nativeHost.querySelector(".upvote.selected, .upvote.active, .upvote.voted, .upvote [class*='selected']")) likeBtn.classList.add("cer-gp-on");
-      if (nativeHost.querySelector(".downvote.selected, .downvote.active, .downvote.voted, .downvote [class*='selected']")) dislikeBtn.classList.add("cer-gp-on");
-      if (/notifying|following/i.test(nativeHost.querySelector(".game-follow-button-container")?.textContent || "")) notifyBtn.classList.add("cer-gp-on");
+      const bar = nativeBar();
+      if (!bar) return;
+      if (bar.querySelector(".upvote.selected, .upvote.active, .upvote.voted, .upvote [class*='selected']")) likeBtn.classList.add("cer-gp-on");
+      if (bar.querySelector(".downvote.selected, .downvote.active, .downvote.voted, .downvote [class*='selected']")) dislikeBtn.classList.add("cer-gp-on");
+      if (/notifying|following/i.test(bar.querySelector(".game-follow-button-container")?.textContent || "")) notifyBtn.classList.add("cer-gp-on");
     })
     .catch(() => {});
 
@@ -296,21 +326,57 @@
     datePills.appendChild(chip);
   }
 
+  // tab bar row: pills on the left, the created/updated date pills on the right
+  // (filled in below; built now so the swap can place it in one go)
+  const tabRow = CER.el("div", "cer-gp-tabrow");
+  const tabBar = CER.el("div", "cer-gp-tabs");
+  tabRow.appendChild(tabBar);
+  tabRow.appendChild(datePills);
+
   // ---- swap it in ----
+  // All-or-nothing: the body class (which hides the native tab headers and
+  // stats) only goes on together with our replacement, and a failure puts the
+  // native page back exactly as it was.
 
-  if (topRow) {
-    topRow.parentElement.insertBefore(hero, topRow);
-    topRow.style.display = "none";
-  } else {
-    infoCol.parentElement.insertBefore(hero, infoCol);
-    infoCol.style.display = "none";
-    const media = document.querySelector('[class*="carousel"], [class*="game-media"]');
-    if (media && !media.contains(hero)) media.style.display = "none";
+  // the native favorite/vote bar must stay mounted for the click proxies, but
+  // never show next to ours (it may sit outside the area we hide)
+  if (!document.getElementById("cer-gp-native-bar")) {
+    const st = document.createElement("style");
+    st.id = "cer-gp-native-bar";
+    st.textContent = `.cer-game-redesign .favorite-follow-vote-share { position: absolute !important; left: -9999px !important; top: 0 !important; width: 1px !important; height: 1px !important; overflow: hidden !important; }`;
+    document.documentElement.appendChild(st);
   }
+  const hiddenNative = [];
+  const hideNative = (el) => {
+    hiddenNative.push([el, el.style.display]);
+    el.style.display = "none";
+  };
+  let nativeDescBox = null;
+  try {
+    if (topRow) {
+      topRow.parentElement.insertBefore(hero, topRow);
+      hideNative(topRow);
+    } else {
+      infoCol.parentElement.insertBefore(hero, infoCol);
+      hideNative(infoCol);
+      const media = document.querySelector('[class*="carousel"], [class*="game-media"]');
+      if (media && !media.contains(hero)) hideNative(media);
+    }
+    hero.insertAdjacentElement("afterend", tabRow);
+    document.body.classList.add("cer-game-redesign");
 
-  // native description would be a duplicate now
-  const nativeDesc = document.querySelector('[class*="game-description"], .description-content');
-  if (nativeDesc) nativeDesc.closest(".section-content")?.classList.add("cer-native-desc-hidden");
+    // native description would be a duplicate now
+    const nativeDesc = document.querySelector('[class*="game-description"], .description-content');
+    nativeDescBox = nativeDesc?.closest(".section-content") ?? null;
+    nativeDescBox?.classList.add("cer-native-desc-hidden");
+  } catch {
+    document.body.classList.remove("cer-game-redesign");
+    hero.remove();
+    tabRow.remove();
+    for (const [el, display] of hiddenNative) el.style.display = display;
+    nativeDescBox?.classList.remove("cer-native-desc-hidden");
+    return;
+  }
 
   // ---- our pill tab bar (About / Store / Servers / Events) ----
   // Native panes keep working — the native tab strip is hidden and switched
@@ -326,13 +392,6 @@
     }
     return el;
   }
-
-  // tab bar row: pills on the left, the created/updated date pills on the right
-  const tabRow = CER.el("div", "cer-gp-tabrow");
-  const tabBar = CER.el("div", "cer-gp-tabs");
-  tabRow.appendChild(tabBar);
-  tabRow.appendChild(datePills);
-  hero.insertAdjacentElement("afterend", tabRow);
 
   // switching tabs = clicking the real (hidden) native tab link — the hash
   // alone doesn't wake their router
@@ -428,10 +487,27 @@
       if (/report abuse/i.test(el.textContent.trim())) el.closest("div,li,span")?.classList.add("cer-gp-report");
     }
   }
+  // Watch for the lazy re-renders only for a while: 30 s after load, then a
+  // few seconds after each tab switch (it used to observe the body forever).
   tidyAbout();
   let tidyTimer = null;
-  new MutationObserver(() => {
+  let tidyStop = null;
+  let tidyUntil = 0;
+  const tidyObs = new MutationObserver(() => {
     clearTimeout(tidyTimer);
     tidyTimer = setTimeout(tidyAbout, 300);
-  }).observe(document.body, { childList: true, subtree: true });
+  });
+  function watchTidy(ms) {
+    tidyObs.observe(document.body, { childList: true, subtree: true }); // re-observe is a no-op
+    // never shorten a longer window that's already running
+    tidyUntil = Math.max(tidyUntil, Date.now() + ms);
+    clearTimeout(tidyStop);
+    tidyStop = setTimeout(() => {
+      tidyObs.disconnect();
+      tidyAbout();
+    }, tidyUntil - Date.now());
+  }
+  watchTidy(30000);
+  tabBar.addEventListener("click", () => watchTidy(5000));
+  window.addEventListener("hashchange", () => watchTidy(5000));
 })();

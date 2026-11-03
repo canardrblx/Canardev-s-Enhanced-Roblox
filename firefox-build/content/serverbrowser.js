@@ -18,17 +18,47 @@
   const pane = await CER.waitFor(() => document.querySelector("#game-instances"), 20000).catch(() => null);
   if (!pane) return;
 
-  // local first-seen tracking → server age
-  const AGE_KEY = "serverFirstSeen";
+  // local first-seen tracking → server age. Stored per place (one small key
+  // each, plus an index of when each place was last seen) — it used to read
+  // and rewrite one map of every server of every game on every load.
+  const AGE_KEY = "serverFirstSeen:" + placeId;
+  const AGE_INDEX = "serverFirstSeenIdx";
+  const WEEK = 6.048e8;
+  async function readSeen() {
+    try {
+      const { [AGE_KEY]: seen = {} } = await CER.ext.storage.local.get(AGE_KEY);
+      return seen;
+    } catch {
+      return {}; // context invalidated
+    }
+  }
   async function markSeen(ids) {
-    const { [AGE_KEY]: seen = {} } = await CER.ext.storage.local.get(AGE_KEY);
-    const now = Date.now();
-    let changed = false;
-    for (const id of ids) if (!seen[id]) { seen[id] = now; changed = true; }
-    // prune anything older than 7 days so storage doesn't grow forever
-    for (const [id, t] of Object.entries(seen)) if (now - t > 6.048e8) { delete seen[id]; changed = true; }
-    if (changed) await CER.ext.storage.local.set({ [AGE_KEY]: seen });
-    return seen;
+    try {
+      const got = await CER.ext.storage.local.get([AGE_KEY, AGE_INDEX, "serverFirstSeen"]);
+      const seen = got[AGE_KEY] ?? {};
+      const now = Date.now();
+      for (const id of ids) if (!seen[id]) seen[id] = now;
+      // prune anything older than 7 days, and cap the map so it can't grow forever
+      let entries = Object.entries(seen).filter(([, t]) => now - t <= WEEK);
+      if (entries.length > 1000) entries = entries.sort((a, b) => b[1] - a[1]).slice(0, 1000);
+      const fresh = Object.fromEntries(entries);
+      // places not opened for a week lose their map entirely
+      const index = got[AGE_INDEX] ?? {};
+      index[placeId] = now;
+      const drop = [];
+      for (const [pid, t] of Object.entries(index)) {
+        if (now - t > WEEK) {
+          delete index[pid];
+          drop.push("serverFirstSeen:" + pid);
+        }
+      }
+      if (got.serverFirstSeen) drop.push("serverFirstSeen"); // old one-big-map format
+      await CER.ext.storage.local.set({ [AGE_KEY]: fresh, [AGE_INDEX]: index });
+      if (drop.length) await CER.ext.storage.local.remove(drop);
+      return fresh;
+    } catch {
+      return null; // context invalidated — keep what we had
+    }
   }
 
   function ageText(ms) {
@@ -113,25 +143,65 @@
   let servers = [];
   let firstSeen = {};
   let visibleCount = 10; // how many public servers to show before "Load more"
+  let loadSeq = 0;
+  let loaded = null; // promise of the current load (joinBest waits on it)
 
-  async function load() {
-    visibleCount = 10;
+  function hint(text, retry) {
     list.textContent = "";
-    list.appendChild(CER.el("p", "cer-hint", "Loading servers…"));
-    let all = [];
-    let cursor = "";
-    // pull up to ~500 servers (5 pages) so sorting/filtering is meaningful
-    for (let page = 0; page < 5; page++) {
-      const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
-      const res = await fetch(url, { credentials: "include" }).then((r) => r.json()).catch(() => null);
-      if (!res?.data) break;
-      all = all.concat(res.data);
-      cursor = res.nextPageCursor;
-      if (!cursor) break;
+    list.appendChild(CER.el("p", "cer-hint", text));
+    if (retry) {
+      const again = CER.el("button", "cer-profile-btn", "Try again");
+      again.addEventListener("click", () => load());
+      list.appendChild(again);
     }
-    servers = all;
-    firstSeen = await markSeen(all.map((s) => s.id));
-    render();
+  }
+
+  // Page 1 renders as soon as it lands; the rest (up to ~500 servers, so
+  // sorting/filtering is meaningful) keeps paging in the background. A newer
+  // load (Refresh) cancels an older one mid-way.
+  function load() {
+    const seq = ++loadSeq;
+    loaded = (async () => {
+      visibleCount = 10;
+      servers = [];
+      hint("Loading servers…");
+      firstSeen = await readSeen();
+      let cursor = "";
+      for (let page = 0; page < 5; page++) {
+        if (seq !== loadSeq) return;
+        const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
+        let res = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          res = await fetch(url, { credentials: "include" }).catch(() => null);
+          if (res?.status !== 429 || page === 0) break;
+          await new Promise((r) => setTimeout(r, 2000)); // later pages: one quiet retry
+        }
+        if (seq !== loadSeq) return;
+        if (!res || !res.ok) {
+          // page 1 failing means we have nothing to show — say why, offer a retry
+          if (page === 0) {
+            hint(res?.status === 429 ? "Too many tries. Wait a moment, then try again." : "Could not load servers.", true);
+            return;
+          }
+          break; // keep what we already have
+        }
+        const body = await res.json().catch(() => null);
+        if (!body?.data) break;
+        servers = servers.concat(body.data);
+        render();
+        cursor = body.nextPageCursor;
+        if (!cursor) break;
+        await new Promise((r) => setTimeout(r, 250)); // spread the pages out a bit
+      }
+      if (seq !== loadSeq) return;
+      if (!servers.length) return render(); // empty/odd answer: never leave "Loading" up
+      const seen = await markSeen(servers.map((s) => s.id));
+      if (seen && seq === loadSeq) {
+        firstSeen = seen;
+        render();
+      }
+    })();
+    return loaded;
   }
 
   function render() {
@@ -151,7 +221,7 @@
 
     list.textContent = "";
     if (rows.length === 0) {
-      list.appendChild(CER.el("p", "cer-hint", "No servers match."));
+      list.appendChild(CER.el("p", "cer-hint", servers.length ? "No servers match." : "No servers right now."));
       return;
     }
     list.appendChild(CER.el("p", "cer-sb-count", `${rows.length} servers`));
@@ -200,12 +270,15 @@
   async function joinBest() {
     // most-populated server that still has room (fullest lobbies feel alive
     // but aren't locked) — respects "avoid friends" from the Join tab
+    if (!loaded) load();
+    await loaded;
     const settings = await CER.get();
     let open = servers.filter((s) => s.playing < s.maxPlayers);
     if (settings.joinPrefs.avoidFriends) {
       try {
-        const me = await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json();
-        const friends = (await (await fetch(`https://friends.roblox.com/v1/users/${me.id}/friends`, { credentials: "include" })).json()).data ?? [];
+        const me = await CER.me();
+        const fr = me ? await fetch(`https://friends.roblox.com/v1/users/${me.id}/friends`, { credentials: "include" }) : null;
+        const friends = fr?.ok ? (await fr.json()).data ?? [] : [];
         if (friends.length) {
           const pres = await CER.bgFetch("https://presence.roblox.com/v1/presence/users", "POST", { userIds: friends.map((f) => f.id) });
           const inServers = new Set((pres.data?.userPresences ?? []).filter((p) => p.userPresenceType === 2 && p.gameId).map((p) => p.gameId));
@@ -221,5 +294,17 @@
     window.postMessage({ cer: "join-instance", placeId, jobId: open[0].id }, location.origin);
   }
 
-  await load();
+  // Load lazily: only once the Servers panel is actually on screen. Loading on
+  // every game page view fired 5 server-list calls even if Servers was never
+  // opened, and the 429s that caused showed up as "No servers match".
+  hint("Loading servers…");
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      if (!loaded) load();
+    },
+    { rootMargin: "200px" }
+  );
+  io.observe(panel);
 })();
