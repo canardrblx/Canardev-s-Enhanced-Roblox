@@ -222,6 +222,12 @@
       if (!messages.length) log.appendChild(h("p", { class: "cer-chat-note", text: "No messages yet. Say hi!" }));
       let prevMine = null;
       for (const msg of messages.slice().reverse()) {
+        if (msg.type === "system") {
+          // Roblox notices ("You unlocked chat ...") are not from either person
+          log.appendChild(h("p", { class: "cer-chat-sys", text: msg.content ?? "" }));
+          prevMine = null;
+          continue;
+        }
         const mine = msg.sender_user_id === me.id;
         log.appendChild(h("div", { class: "cer-chat-bubble" + (mine ? " is-mine" : "") + (prevMine === mine ? " is-cont" : ""), text: msg.content ?? "" }));
         prevMine = mine;
