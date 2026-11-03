@@ -115,7 +115,7 @@
 }
 [data-page="catalog"] .ct-hero-art {
   display: block;
-  width: clamp(200px, 26cqw, 330px);
+  width: clamp(200px, 27cqw, 380px);
   aspect-ratio: 1;
   border-radius: var(--cer-r-l);
   transition: transform 0.3s var(--cer-ease);
@@ -612,7 +612,7 @@
   overflow-wrap: anywhere;
 }
 [data-page="catalog"] .ct-info-desc .cer-clamp-more {
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.9) !important;
 }
 [data-page="catalog"] .ct-info .cer-empty {
   color: rgba(255, 255, 255, 0.8);
@@ -671,15 +671,19 @@
     height: 50px;
   }
   [data-page="catalog"] .ct-item-top {
-    grid-template-columns: minmax(0, 1fr);
     padding: 24px;
-    gap: 24px;
-  }
-  [data-page="catalog"] .ct-stage {
-    max-width: 440px;
+    gap: 26px;
   }
   [data-page="catalog"] .ct-shelf-title {
     font-size: 28px;
+  }
+}
+@container (max-width: 560px) {
+  [data-page="catalog"] .ct-item-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-page="catalog"] .ct-stage {
+    max-width: 420px;
   }
 }
 @container (max-width: 640px) {
@@ -689,4 +693,12 @@
   [data-page="catalog"] .ct-hero-picks {
     display: none;
   }
+}
+
+/* white text over the art panels: badges follow that text, not the theme */
+[data-page="catalog"] :is(.ct-hero, .ct-item-top) .cer-vb-plate {
+  fill: var(--cer-accent, #fff);
+}
+[data-page="catalog"] :is(.ct-hero, .ct-item-top) .cer-vb-check {
+  fill: var(--cer-accent-ink, #0b0c12);
 }

@@ -203,19 +203,7 @@
     // brings the friends column back when it is hidden (tiny, end of the chips)
     const showFriends = ui.button("", { icon: "users", variant: "soft", size: "sm", class: "dc-fg-show", title: "Show friends", onClick: () => setFriendsHidden(false) });
     const chipWrap = h("div", { class: "dc-chips" }, h("div", { class: "dc-chips-clip" }, chipRow), showFriends);
-    // vertical wheel scrolls the chip row sideways; edge fades follow scroll
-    chipRow.addEventListener(
-      "wheel",
-      (e) => {
-        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-        const max = chipRow.scrollWidth - chipRow.clientWidth;
-        const canMove = e.deltaY > 0 ? chipRow.scrollLeft < max - 1 : chipRow.scrollLeft > 1;
-        if (!canMove) return; // at the end: let the page scroll
-        chipRow.scrollLeft += e.deltaY;
-        e.preventDefault();
-      },
-      { passive: false }
-    );
+    // vertical wheel always scrolls the page (owner: rows must never trap it)
     const syncFade = () => {
       chipWrap.classList.toggle("fade-l", chipRow.scrollLeft > 4);
       chipWrap.classList.toggle("fade-r", chipRow.scrollLeft + chipRow.clientWidth < chipRow.scrollWidth - 4);

@@ -649,7 +649,7 @@
 
     // Popular feeds the spotlight AND its rail: one call
     let popP = null;
-    const popular = () => (popP ??= search({ ...blank(), mode: "popular" }, null, { limit: 30, alive, paid: true }).then((r) => (r === undefined && (popP = null), r)));
+    const popular = () => (popP ??= search({ ...blank(), mode: "popular" }, null, { limit: 60, alive, paid: true }).then((r) => (r === undefined && (popP = null), r)));
     const spot = () =>
       popular().then((res) => {
         if (res === undefined) return void ui.whenVisible(hero, spot);
@@ -661,9 +661,10 @@
         const p = r.mode === "popular" ? popular() : search({ ...blank(), mode: r.mode }, null, { limit: 30, alive });
         p.then((res) => {
           if (res === undefined) return void ui.whenVisible(r.sec, load); // skipped while away: try when back
-          // Popular: what the spotlight did not take
+          // Popular: things you can see (emotes have their own tile), minus
+          // what the spotlight took
           const shown = r.mode === "popular" ? new Set(spotPicks(res?.data)) : null;
-          fillRail(r.sec, shown ? res?.data?.filter((x) => !shown.has(x)) : res?.data);
+          fillRail(r.sec, shown ? res?.data?.filter((x) => !shown.has(x) && stillArt(x)).slice(0, 30) : res?.data);
         });
       };
       r.mode === "popular" ? load() : ui.whenVisible(r.sec, load);
@@ -672,7 +673,8 @@
   // the spotlight shows things you can see on a still picture (no emotes,
   // no animations: those are grey stick figures)
   const MOVES = new Set([24, 48, 50, 51, 52, 53, 54, 55, 56, 61]);
-  const spotPicks = (list) => (list ?? []).filter((x) => (kindOf(x) === "Bundle" ? Number(x.bundleType) !== 2 : !MOVES.has(x.assetType))).slice(0, 5);
+  const stillArt = (x) => (kindOf(x) === "Bundle" ? Number(x.bundleType) !== 2 : !MOVES.has(x.assetType));
+  const spotPicks = (list) => (list ?? []).filter(stillArt).slice(0, 5);
   function fillRail(sec, items) {
     if (!items) return void sec.body.replaceChildren(ui.empty("The shop is busy. Try again soon.", { icon: "refresh" }));
     if (!items.length) return void sec.remove();
@@ -974,8 +976,13 @@
         assetType: a.AssetTypeId,
         creator: { id: a.Creator?.CreatorTargetId ?? a.Creator?.Id, name: a.Creator?.Name ?? "", type: a.Creator?.CreatorType, verified: !!a.Creator?.HasVerifiedBadge },
       });
-      const lim = a.IsLimitedUnique ? "Unique" : a.IsLimited || col?.IsLimited ? "Limited" : null;
-      const forSale = col ? col.IsForSale || a.IsForSale : a.IsForSale;
+      // new-style limiteds (collectibles) say Limited, like the shop lists
+      const lim = col?.IsLimited ? "Limited" : a.IsLimitedUnique ? "Unique" : a.IsLimited ? "Limited" : null;
+      // sold out, or only sold inside a game: the web shop can't sell it
+      const soldOut = !!lim && col?.TotalQuantity > 0 && !(a.Remaining > 0);
+      const where = a.SaleLocation?.SaleLocationType;
+      const webShop = where == null || [1, 3, 5, 7].includes(where);
+      const forSale = !soldOut && webShop && (col ? col.IsForSale || a.IsForSale : a.IsForSale);
       const resale = col?.CollectibleLowestResalePrice || null;
       it.p = {
         limited: lim,
