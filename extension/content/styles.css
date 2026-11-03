@@ -3957,6 +3957,8 @@ label.cer-sp-row:hover {
 }
 .cer-sp-pt-time {
   flex: none;
+  min-width: 64px;
+  text-align: right;
   font-size: 14px;
   font-weight: 800;
   color: var(--cer-text-2);
