@@ -38,11 +38,7 @@
   width: 100%;
   border-radius: var(--cer-r-xl);
   overflow: hidden;
-  background:
-    radial-gradient(70% 60% at 50% 38%, color-mix(in srgb, var(--cer-acc) 26%, transparent), transparent 72%),
-    linear-gradient(180deg, var(--cer-surface-2), var(--cer-surface));
-  border: 1px solid var(--cer-line);
-  box-shadow: var(--cer-shadow);
+  background: var(--cer-raise);
 }
 .cer-avatar-inline.cer-ui .cer-avatar-preview::after {
   /* soft floor shadow under the character */
@@ -84,24 +80,20 @@
   right: 12px;
   width: 38px;
   height: 38px;
-  border: 1px solid var(--cer-line-2);
+  border: 0;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--cer-surface) 80%, transparent);
-  backdrop-filter: blur(8px);
-  color: var(--cer-text);
-  box-shadow: var(--cer-shadow);
+  background: transparent;
+  color: var(--cer-text-3);
 }
 .cer-avatar-inline.cer-ui .cer-avatar-refresh:hover {
-  background: var(--cer-surface-2);
+  background: var(--cer-hover);
+  color: var(--cer-text);
   transform: rotate(-30deg);
 }
 
 /* wearing */
 .cer-avatar-inline.cer-ui .cer-avatar-wearing {
-  padding: 16px;
-  border-radius: var(--cer-r-l);
-  background: var(--cer-surface);
-  border: 1px solid var(--cer-line);
+  padding: 4px 0 0;
 }
 .cer-avatar-inline.cer-ui .cer-avatar-wearing .cer-h3 {
   margin: 0 0 12px;
@@ -133,7 +125,7 @@
   max-width: 100%;
   padding: 0 12px 0 3px;
   gap: 8px;
-  border: 1px solid var(--cer-line);
+  border: 0;
   border-radius: 999px;
   background: var(--cer-raise);
   color: var(--cer-text-2);
@@ -148,7 +140,6 @@
 }
 .cer-avatar-inline.cer-ui .cer-avatar-wornchip:hover {
   background: color-mix(in srgb, var(--cer-bad) 16%, transparent);
-  border-color: color-mix(in srgb, var(--cer-bad) 35%, transparent);
   color: var(--cer-text);
 }
 
@@ -159,36 +150,46 @@
   gap: 14px;
   min-width: 0;
 }
-/* categories: pill chips like ui.chips (they wrap, so every tab shows) */
+/* categories: plain bold words (launcher style); the active one is ink + bar */
 .cer-avatar-inline.cer-ui .cer-avatar-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px 22px;
   padding: 0;
   overflow: visible;
 }
 .cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab {
+  position: relative;
   flex: none;
-  height: 38px;
-  padding: 0 18px;
-  border: 1px solid var(--cer-line);
-  border-radius: 999px;
-  background: var(--cer-raise);
-  color: var(--cer-text-2);
-  font-size: 14px;
-  font-weight: 700;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--cer-text-3);
+  font-size: 16px;
+  font-weight: 800;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: color 0.15s;
 }
 .cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab:hover {
-  background: var(--cer-hover);
-  color: var(--cer-text);
+  background: none;
+  color: var(--cer-text-2);
 }
 .cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab-active,
 .cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab-active:hover {
-  background: var(--cer-text);
-  border-color: transparent;
-  color: var(--cer-bg);
+  background: none;
+  color: var(--cer-text);
+}
+.cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--cer-acc);
 }
 /* sub categories: ui.chips */
 .cer-avatar-inline.cer-ui .cer-avatar-subrow {
@@ -202,6 +203,8 @@
 }
 .cer-avatar-inline.cer-ui .cer-avatar-subrow .cer-chips {
   min-width: 0;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 .cer-avatar-inline.cer-ui .cer-avatar-subrow .cer-chip {
   height: 32px;
@@ -251,16 +254,16 @@
   padding: 8px 8px 10px;
   border: 2px solid transparent;
   border-radius: var(--cer-r-m);
-  background: var(--cer-surface);
-  box-shadow: inset 0 0 0 1px var(--cer-line);
+  background: var(--cer-raise);
+  box-shadow: none;
   color: var(--cer-text);
   font-size: 13px;
   transition: background 0.15s, transform 0.18s var(--cer-ease), box-shadow 0.18s, border-color 0.15s;
 }
 .cer-avatar-inline.cer-ui .cer-avatar-item:hover {
-  background: var(--cer-surface-2);
+  background: var(--cer-hover);
   transform: translateY(-2px);
-  box-shadow: inset 0 0 0 1px var(--cer-line-2), var(--cer-shadow);
+  box-shadow: none;
 }
 .cer-avatar-inline.cer-ui .cer-avatar-item:focus-visible {
   outline: 2px solid var(--cer-acc);
@@ -268,28 +271,40 @@
 }
 .cer-avatar-inline.cer-ui .cer-avatar-item img {
   border-radius: var(--cer-r-s);
-  background: var(--cer-raise);
+  background: none;
 }
 .cer-avatar-inline.cer-ui .cer-avatar-item span {
   font-weight: 700;
   color: var(--cer-text-2);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-item-worn {
+.cer-avatar-inline.cer-ui .cer-avatar-item-worn,
+.cer-avatar-inline.cer-ui .cer-avatar-item-worn:hover {
   border-color: var(--cer-acc);
-  background: color-mix(in srgb, var(--cer-acc) 10%, var(--cer-surface));
-  box-shadow: 0 0 0 3px var(--cer-acc-soft);
 }
 .cer-avatar-inline.cer-ui .cer-avatar-item-worn span {
   color: var(--cer-text);
 }
+/* worn check: accent dot + a check drawn in the accent's ink (the old
+   styles.css badge had a white check, invisible on the white Default ink) */
 .cer-avatar-inline.cer-ui .cer-avatar-item-worn::after {
   top: 8px;
   right: 8px;
   width: 22px;
   height: 22px;
-  background-color: var(--cer-acc);
-  background-size: 14px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  background: var(--cer-acc);
+  box-shadow: none;
+}
+.cer-avatar-inline.cer-ui .cer-avatar-item-worn::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  right: 12px;
+  width: 14px;
+  height: 14px;
+  background: var(--cer-acc-ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 /* outfit tile buttons */
@@ -300,20 +315,18 @@
 .cer-avatar-inline.cer-ui .cer-outfit-btn {
   width: 30px;
   height: 30px;
-  border: 1px solid var(--cer-line-2);
+  border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--cer-surface) 85%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--cer-surface-2);
   color: var(--cer-text);
-  box-shadow: var(--cer-shadow);
 }
 .cer-avatar-inline.cer-ui .cer-outfit-btn:hover {
   background: var(--cer-acc);
-  border-color: transparent;
-  color: #fff;
+  color: var(--cer-acc-ink);
 }
 .cer-avatar-inline.cer-ui .cer-outfit-del:hover {
   background: var(--cer-bad);
+  color: #fff;
 }
 
 /* body tab */
@@ -322,8 +335,8 @@
   max-width: 620px;
   padding: 22px;
   border-radius: var(--cer-r-l);
-  background: var(--cer-surface);
-  border: 1px solid var(--cer-line);
+  background: var(--cer-raise);
+  border: 0;
 }
 .cer-avatar-inline.cer-ui .cer-scale-sliders {
   gap: 16px;
@@ -351,8 +364,8 @@
   gap: 2px;
   padding: 4px;
   border-radius: 999px;
-  background: var(--cer-raise);
-  border: 1px solid var(--cer-line);
+  background: var(--cer-hover);
+  border: 0;
 }
 .cer-avatar-inline.cer-ui .cer-avatar-typebtn {
   height: 32px;
@@ -382,7 +395,7 @@
   padding: 14px;
   border-radius: var(--cer-r-m);
   background: var(--cer-surface-2);
-  border: 1px solid var(--cer-line-2);
+  border: 0;
   color: var(--cer-text);
   box-shadow: var(--cer-shadow-lg);
 }

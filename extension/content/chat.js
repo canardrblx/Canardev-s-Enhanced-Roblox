@@ -155,12 +155,12 @@
     const res = await CER.bgFetch(API + "/get-user-conversations?include_user_data=true&pageSize=30");
     if (!panel || panel.querySelector(".cer-chat-body") !== body) return;
     if (!res?.ok) {
-      body.replaceChildren(CER.ui.empty("Could not load your chats. Try again soon.", { icon: "chat" }));
+      body.replaceChildren(CER.ui.empty("Could not load chats.", { icon: "chat" }));
       return;
     }
     const convos = res.data?.conversations ?? [];
     if (!convos.length) {
-      body.replaceChildren(CER.ui.empty("No chats yet. Say hi to a friend!", { icon: "chat" }));
+      body.replaceChildren(CER.ui.empty("No chats yet.", { icon: "chat" }));
       return;
     }
     const list = h("div", { class: "cer-chat-list" });
@@ -169,13 +169,12 @@
       const ud = convo.user_data?.[partnerId];
       const isGroup = (convo.participant_user_ids?.length ?? 0) > 2;
       const name = convo.name || ud?.display_name || ud?.name || "Chat";
-      const sub = isGroup ? (convo.participant_user_ids.length + " people") : ud?.name ? "@" + ud.name : "";
       const pic = partnerId && !isGroup ? CER.ui.avatar(partnerId, { size: 44 }) : h("span", { class: "cer-chat-groupic" }, icon("users", 20));
       const row = h(
         "button",
         { type: "button", class: "cer-chat-row" + (convo.has_unread_messages ? " is-unread" : "") },
         pic,
-        h("span", { class: "cer-chat-row-text" }, h("span", { class: "cer-chat-row-name", text: name }), sub && h("span", { class: "cer-chat-row-sub", text: sub })),
+        h("span", { class: "cer-chat-row-name", text: name }),
         convo.has_unread_messages && h("span", { class: "cer-chat-unread", title: "New messages" })
       );
       row.addEventListener("click", () => showThread(body, convo, name, isGroup ? null : partnerId));

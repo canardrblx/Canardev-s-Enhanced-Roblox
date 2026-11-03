@@ -1,18 +1,17 @@
-/* CER messages page. Scope every rule under [data-page="messages"]. */
+/* CER messages page. Scope every rule under [data-page="messages"].
+   Minimal inbox: a quiet list on the left, the open message on the right. */
 [data-page="messages"] .ms-view {
   gap: 22px;
-}
-[data-page="messages"] .ms-sub {
-  min-height: 20px;
 }
 [data-page="messages"] .ms-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   min-height: 44px;
 }
 [data-page="messages"] .ms-sk-tabs {
-  width: 360px;
+  width: 300px;
   max-width: 100%;
   height: 44px;
   border-radius: 999px;
@@ -21,21 +20,17 @@
 /* two panes */
 [data-page="messages"] .ms-split {
   display: grid;
-  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
   min-width: 0;
 }
 [data-page="messages"] .ms-pane {
   min-width: 0;
-  background: var(--cer-surface);
-  border: 1px solid var(--cer-line);
-  border-radius: var(--cer-r-l);
 }
 [data-page="messages"] .ms-list {
   display: flex;
   flex-direction: column;
-  padding: 8px;
   max-height: calc(100vh - 150px);
   position: sticky;
   top: 20px;
@@ -49,19 +44,14 @@
   gap: 2px;
   scrollbar-width: thin;
 }
-[data-page="messages"] .ms-list {
-  min-height: 420px;
-}
 [data-page="messages"] .ms-list .cer-empty {
   border: 0;
-  padding: 56px 16px;
-  flex: 1;
-}
-[data-page="messages"] .ms-split:not(.is-narrow) .ms-read-bar:has(.ms-tools:empty) {
-  display: none;
+  padding: 64px 16px;
 }
 [data-page="messages"] .ms-reader {
-  min-height: 420px;
+  min-height: 460px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-raise);
 }
 
 /* one pane on narrow columns */
@@ -71,7 +61,6 @@
 [data-page="messages"] .ms-split.is-narrow .ms-list {
   position: static;
   max-height: none;
-  min-height: 0;
 }
 [data-page="messages"] .ms-split.is-narrow .ms-list-body {
   overflow: visible;
@@ -87,14 +76,14 @@
   display: inline-flex;
 }
 
-/* rows */
+/* rows: face, name, date, subject */
 [data-page="messages"] .ms-row {
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 12px 12px 12px 18px;
+  padding: 10px 12px 10px 20px;
   border: 0;
   border-radius: var(--cer-r-m);
   background: transparent;
@@ -106,30 +95,26 @@
   background: var(--cer-raise);
 }
 [data-page="messages"] .ms-row.is-active {
-  background: var(--cer-acc-soft);
+  background: var(--cer-hover);
 }
 [data-page="messages"] .ms-dot {
   position: absolute;
-  left: 6px;
-  top: 28px;
-  width: 8px;
-  height: 8px;
+  left: 7px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
   border-radius: 50%;
-  background: transparent;
 }
 [data-page="messages"] .ms-row.is-unread .ms-dot {
   background: var(--cer-acc);
-  box-shadow: 0 0 0 3px var(--cer-acc-soft);
-}
-[data-page="messages"] .ms-row .cer-avatar {
-  margin-top: 2px;
 }
 [data-page="messages"] .ms-row-main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 [data-page="messages"] .ms-row-top {
   display: flex;
@@ -139,16 +124,16 @@
 [data-page="messages"] .ms-from {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--cer-text-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cer-text-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 [data-page="messages"] .ms-date {
   flex: none;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--cer-text-3);
 }
@@ -160,36 +145,29 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-[data-page="messages"] .ms-row.is-unread .ms-from,
-[data-page="messages"] .ms-row.is-unread .ms-subj {
+[data-page="messages"] .ms-row.is-unread .ms-subj,
+[data-page="messages"] .ms-row.is-active .ms-subj {
   color: var(--cer-text);
+}
+[data-page="messages"] .ms-row.is-unread .ms-subj,
+[data-page="messages"] .ms-row.is-unread .ms-from {
   font-weight: 800;
-}
-[data-page="messages"] .ms-row.is-unread .ms-date {
-  color: var(--cer-acc);
-}
-[data-page="messages"] .ms-preview {
-  font-size: 13px;
-  color: var(--cer-text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* pager */
 [data-page="messages"] .ms-pager {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 4px 2px;
-  margin-top: 6px;
-  border-top: 1px solid var(--cer-line);
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 0 2px;
 }
 [data-page="messages"] .ms-pager:empty {
   display: none;
 }
 [data-page="messages"] .ms-pager-text {
+  min-width: 56px;
+  text-align: center;
   font-size: 13px;
   font-weight: 700;
   color: var(--cer-text-3);
@@ -197,33 +175,66 @@
 
 /* reader */
 [data-page="messages"] .ms-idle {
-  min-height: 420px;
+  min-height: 460px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   color: var(--cer-text-3);
   font-weight: 600;
   font-size: 15px;
 }
+[data-page="messages"] .ms-idle .cer-icon {
+  opacity: 0.6;
+}
 [data-page="messages"] .ms-read {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 22px 28px 32px;
+  gap: 20px;
+  padding: 24px 32px 36px;
   min-width: 0;
 }
-[data-page="messages"] .ms-read-bar {
+[data-page="messages"] .ms-read-top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 32px;
+  gap: 12px;
+  min-width: 0;
+}
+[data-page="messages"] .ms-read-av {
+  display: inline-flex;
+  border-radius: 50%;
+}
+[data-page="messages"] .ms-read-who {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+[data-page="messages"] .ms-read-name {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-page="messages"] .ms-name-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-page="messages"] .ms-read-date {
+  font-size: 12.5px;
+  color: var(--cer-text-3);
 }
 [data-page="messages"] .ms-tools {
-  margin-left: auto;
   display: flex;
-  gap: 8px;
+  gap: 6px;
+}
+[data-page="messages"] .ms-muted {
+  color: var(--cer-text-3);
+  font-weight: 600;
 }
 [data-page="messages"] .ms-read-subject {
   font-size: 26px;
@@ -232,87 +243,40 @@
   letter-spacing: -0.015em;
   overflow-wrap: anywhere;
 }
-[data-page="messages"] .ms-read-meta {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--cer-line);
-  min-width: 0;
-}
-[data-page="messages"] .ms-read-av {
-  display: inline-flex;
-  border-radius: 50%;
-}
-[data-page="messages"] .ms-read-who {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-[data-page="messages"] .ms-read-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-size: 15.5px;
-  font-weight: 800;
-  flex-wrap: wrap;
-}
-[data-page="messages"] .ms-name-link:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-[data-page="messages"] .ms-verified {
-  color: var(--cer-acc);
-}
-[data-page="messages"] .ms-handle {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--cer-text-3);
-}
-[data-page="messages"] .ms-read-date {
-  font-size: 13px;
-  color: var(--cer-text-3);
-}
-[data-page="messages"] .ms-muted {
-  color: var(--cer-text-3);
-  font-weight: 600;
-}
 [data-page="messages"] .ms-body {
   font-size: 15.5px;
   line-height: 1.65;
   color: var(--cer-text-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-width: 760px;
+  max-width: 720px;
 }
 [data-page="messages"] .ms-link {
-  color: var(--cer-acc) !important;
+  color: var(--cer-text) !important;
   text-decoration: underline !important;
-  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent) !important;
+  text-underline-offset: 3px;
 }
 [data-page="messages"] .ms-link:hover {
-  opacity: 0.85;
+  text-decoration-color: currentColor !important;
 }
 
 /* skeleton rows */
 [data-page="messages"] .ms-sk-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 4px;
+  gap: 4px;
 }
 [data-page="messages"] .ms-sk-row {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 10px 8px 10px 14px;
+  padding: 10px 12px 10px 20px;
 }
 [data-page="messages"] .ms-sk-av {
   flex: none;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
 }
 [data-page="messages"] .ms-sk-lines {

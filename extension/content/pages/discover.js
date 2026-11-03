@@ -198,7 +198,7 @@
     const side = friendsColumn(root);
     page.append(
       chipWrap,
-      ui.cols(main, side, { side: 340 })
+      ui.cols(main, side, { side: 300 })
     );
     // the hero spans the main column; on wide screens it sits beside friends
     S.heroSlot = heroSlot;
@@ -539,8 +539,9 @@
 
   function picksSection(root, trending) {
     const s = ui.section("Canardev's picks", { class: "dc-section dc-picks" });
-    const grid = ui.grid(ui.skeleton("card", 3), { min: 240, gap: 20, class: "dc-picks-grid" });
-    s.body.append(grid);
+    const rail = ui.rail(ui.skeleton("card", 3), { item: 320 });
+    const grid = rail.track;
+    s.body.append(rail);
     (async () => {
       const [salt, uni] = await Promise.all([pickSalt(), CER.getUniverseIds(PICK_PLACES).catch(() => ({}))]);
       const rng = mulberry32(salt + dateKey());
@@ -557,7 +558,7 @@
       await ui.hydrateGames(games);
       if (!s.isConnected) return;
       const ready = games.filter((g) => g.universeId && g.name);
-      if (!ready.length) s.remove();
+      if (!ready.length) return s.remove();
       else grid.replaceChildren(...ready.map((g) => ui.gameCard(g, { size: "lg" })));
     })();
     return s;

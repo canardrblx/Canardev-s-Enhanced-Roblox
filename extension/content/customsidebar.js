@@ -92,27 +92,24 @@
       avatarImg.src = url;
     };
     const nameEl = h("span", { class: "cer-cnav-me-name" });
-    const userEl = h("span", { class: "cer-cnav-me-user" });
     const meLink = h(
       "a",
       { class: "cer-cnav-me", href: "https://www.roblox.com/users/profile", title: "Your profile" },
       h("span", { class: "cer-cnav-avatar" }, avatarImg),
-      h("span", { class: "cer-cnav-me-text" }, nameEl, userEl)
+      nameEl
     );
     const showMe = (me) => {
       if (!me) return;
       nameEl.textContent = me.displayName || me.name || "";
-      userEl.textContent = me.name ? "@" + me.name : "";
       meLink.href = "https://www.roblox.com/users/" + me.id + "/profile";
     };
 
     const robuxAmt = h("span", { class: "cer-cnav-robux-amt", text: "" });
     const robuxBtn = h(
       "button",
-      { type: "button", class: "cer-cnav-robux", title: "Your Robux", "aria-haspopup": "menu" },
-      h("span", { class: "cer-cnav-robux-ic" }, ic("robux", 18)),
-      robuxAmt,
-      h("span", { class: "cer-cnav-robux-more" }, ic("down", 16))
+      { type: "button", class: "cer-cnav-robux", title: "Robux", "aria-haspopup": "menu" },
+      ic("robux", 16),
+      robuxAmt
     );
     const showRobux = (n) => {
       robuxAmt.textContent = n == null ? "" : Number(n).toLocaleString();
@@ -125,7 +122,7 @@
         { label: "Transactions", icon: "list", href: "https://www.roblox.com/transactions" },
       ]);
     });
-    inner.appendChild(h("div", { class: "cer-cnav-card" }, meLink, robuxBtn));
+    inner.appendChild(h("div", { class: "cer-cnav-top" }, meLink, robuxBtn));
 
     showMe(snap.me);
     showHead(snap.head);
@@ -154,15 +151,12 @@
       const open = !!q && document.activeElement === input;
       menu.classList.toggle("is-open", open);
       if (!open) return;
-      menu.appendChild(h("div", { class: "cer-cnav-menu-head", text: "Search in" }));
       SEARCH_TARGETS.forEach((t, i) => {
         const row = h(
           "button",
           { type: "button", role: "option", class: "cer-cnav-opt" + (i === activeIdx ? " is-active" : ""), "aria-selected": i === activeIdx ? "true" : "false" },
-          h("span", { class: "cer-cnav-opt-ic" }, ic(t.icon, 17)),
-          h("span", { class: "cer-cnav-opt-label", text: t.label }),
-          h("span", { class: "cer-cnav-opt-q", text: q }),
-          h("span", { class: "cer-cnav-opt-go" }, ic("arrowRight", 15))
+          ic(t.icon, 18),
+          h("span", { text: t.label })
         );
         // mousedown fires before the input's blur closes the menu
         row.addEventListener("mousedown", (e) => {
@@ -204,13 +198,11 @@
     let myId = snap.me?.id ?? null;
     const NAV = () => [
       { id: "home", label: "Home", icon: "home", href: "https://www.roblox.com/home", match: (p) => /^\/(home\/?)?$/i.test(p) },
-      { id: "profile", label: "Profile", icon: "user", href: myId ? `https://www.roblox.com/users/${myId}/profile` : "https://www.roblox.com/users/profile", match: (p) => (myId ? p.toLowerCase().startsWith(`/users/${myId}/profile`) : false) },
-      { id: "friends", label: "Friends", icon: "users", href: "https://www.roblox.com/users/friends", match: (p) => /^\/users\/(\d+\/)?friends/i.test(p) },
+      { id: "games", label: "Games", icon: "gamepad", href: "https://www.roblox.com/charts", match: (p) => /^\/(charts|discover|games)(\/|$)/i.test(p) },
       { id: "avatar", label: "Avatar", icon: "shirt", href: "https://www.roblox.com/my/avatar", match: (p) => /^\/my\/avatar/i.test(p) },
       { id: "catalog", label: "Catalog", icon: "bag", href: "https://www.roblox.com/catalog", match: (p) => /^\/(catalog|bundles)(\/|$)/i.test(p) },
-      { id: "games", label: "Games", icon: "gamepad", href: "https://www.roblox.com/charts", match: (p) => /^\/(charts|discover|games)(\/|$)/i.test(p) },
+      { id: "friends", label: "Friends", icon: "users", href: "https://www.roblox.com/users/friends", match: (p) => /^\/users\/(\d+\/)?friends/i.test(p) },
       { id: "groups", label: prefs.groupsLabel, icon: "shield", href: "https://www.roblox.com/communities", match: (p) => /^\/(communities|groups)(\/|$)/i.test(p) },
-      { id: "create", label: "Create", icon: "pen", href: "https://create.roblox.com/", match: () => false },
       { id: "messages", label: "Messages", icon: "mail", href: "https://www.roblox.com/my/messages", match: (p) => /^\/my\/messages/i.test(p) },
       // optional ones: hidden unless turned on (sidebarPrefs[label] === "show")
       { id: "inventory", label: "Inventory", icon: "box", href: "https://www.roblox.com/users/inventory", opt: true, match: (p) => /^\/users\/(\d+\/)?inventory/i.test(p) },
@@ -258,6 +250,7 @@
 
     function highlight() {
       const p = location.pathname;
+      meLink.classList.toggle("is-active", !!myId && p.toLowerCase().startsWith(`/users/${myId}/profile`));
       for (const b of built) {
         const on = !!b.def.match(p);
         b.a.classList.toggle("is-active", on);
@@ -269,9 +262,7 @@
     function showOnline(n) {
       onlineCount = n;
       if (!friendsBadge) return;
-      friendsBadge.replaceChildren();
-      friendsBadge.classList.toggle("is-on", n > 0);
-      if (n > 0) friendsBadge.append(h("span", { class: "cer-cnav-badge-dot" }), String(n > 99 ? "99+" : n));
+      friendsBadge.textContent = n > 0 ? String(n > 99 ? "99+" : n) : "";
       friendsBadge.title = n === 1 ? "1 friend online" : n + " friends online";
     }
 
@@ -328,6 +319,7 @@
             },
           },
           { label: "Roblox settings", icon: "gear", href: "https://www.roblox.com/my/account" },
+          { label: "Create", icon: "pen", href: "https://create.roblox.com/" },
           { label: "Quick sign in", icon: "phone", href: "https://www.roblox.com/crossdevicelogin/ConfirmCode" },
           {
             label: "Log out",

@@ -28,13 +28,14 @@
     { id: "hair", label: "Hair", tax: "d6a7M7r9MMrpf7z7VxW9ZS" },
     { id: "heads", label: "Heads", tax: "s5NLP7BS9PRLKvUVca4XKg" },
     { id: "bodies", label: "Bodies", tax: "kfHzJwaNYM8s2CWRqYUhRa" },
-    { id: "hats", label: "Hats", tax: "thukPQUFe5EHxRrtsgq43u" },
+    { id: "hats", label: "Hats", tax: "thukPQUFe5EHxRrtsgq43u", hidden: true },
     { id: "shoes", label: "Shoes", tax: "uLRgNoJ1awZkhpVw9WyvKo" },
     { id: "animations", label: "Animations", tax: "whf6kUVBwk2xdwKUmRYN6G" },
     { id: "emotes", label: "Emotes", tax: "ioNxAT977DFP2hMnAJbsbF" },
     { id: "makeup", label: "Makeup", tax: "dBM565GC3YYTdi9UKvr87Z", subs: true },
-    { id: "backgrounds", label: "Backgrounds", tax: "ijFKKMZq6jV4gkJQC4v7L1" },
-    { id: "gear", label: "Gear", tax: "gUtxkR951g3VPgRkb5ay8u" },
+    // reachable by URL (old links), not shown as chips: kept the row short
+    { id: "backgrounds", label: "Backgrounds", tax: "ijFKKMZq6jV4gkJQC4v7L1", hidden: true },
+    { id: "gear", label: "Gear", tax: "gUtxkR951g3VPgRkb5ay8u", hidden: true },
   ];
   const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
   // Roblox's old ?Category= numbers, so links from elsewhere still land right
@@ -367,7 +368,7 @@
 
     // --- category chips + sub chips
     const catRow = ui.chips(
-      CATS.map((c) => ({ id: c.id, label: c.label })),
+      CATS.filter((c) => !c.hidden || c.id === st.cat).map((c) => ({ id: c.id, label: c.label })),
       st.cat,
       (id) => update({ cat: id, sub: "" }),
       { wrap: true }
@@ -605,7 +606,10 @@
       ui.clear(info, ui.empty("We could not load this item.", { icon: "box", action: ui.button("Open on Roblox", { variant: "soft", icon: "external", href: ui.nativeUrl() }) }));
       return;
     }
-    document.title = it.name + " - Catalog";
+    // Roblox's hidden app renames the tab a moment later; say it once more
+    const title = it.name + " - Catalog";
+    document.title = title;
+    setTimeout(() => !stale() && (document.title = title), 1500);
     // canonical slug, without a reload
     const want = new URL(itemHref(kind, id, it.name)).pathname;
     if (location.pathname !== want && !location.search) {

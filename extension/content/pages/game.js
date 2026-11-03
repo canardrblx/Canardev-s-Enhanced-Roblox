@@ -1,7 +1,7 @@
 // CER game page (/games/{placeId}/...). Built on CER.ui (content/ui.js).
-// Original layout: a cinematic hero (blurred art backdrop, thumbnail gallery,
-// title, creator, a huge Play button, favorite / vote / notify / share), a
-// glass stat bar, then tabs: About, Servers, Store, Badges, More like this.
+// A game-launcher page, art first: the game's own pictures fill a big stage
+// with the title, one huge Play button and a few quiet icon buttons on top.
+// Under it: a short description, then Servers / Store / Badges / More.
 // Roblox is used for DATA (web APIs) and ACTIONS (its launcher, its purchase
 // pages) only. Replaces gameredesign.js, serverbrowser.js and the Roblox-page
 // parts of gamepage.js on pages we own.
@@ -11,8 +11,8 @@
   const { ui, api, fmt } = CER;
   const h = ui.h;
 
-  // things the previous page left running (gallery timer, listeners)
-  let cleanups = [];
+  // things the previous page left running (gallery timer, observers)
+  const cleanups = [];
   const onCleanup = (fn) => cleanups.push(fn);
   const runCleanups = () => {
     for (const fn of cleanups.splice(0)) {
@@ -24,12 +24,12 @@
     }
   };
 
-  // Tab id <-> the hash Roblox uses (so shared links like #!/game-instances work)
-  const TAB_HASH = { about: "about", servers: "game-instances", store: "store", badges: "badges", more: "recommended" };
+  // Tab id <-> the hash Roblox uses (shared links like #!/game-instances keep working)
+  const TAB_HASH = { servers: "game-instances", store: "store", badges: "badges", more: "recommended" };
   const tabFromHash = () => {
     const key = location.hash.replace(/^#!?\/?/, "").toLowerCase();
-    for (const [id, hash] of Object.entries(TAB_HASH)) if (hash === key) return id;
-    return key === "servers" ? "servers" : "about";
+    for (const [id, hash] of Object.entries(TAB_HASH)) if (hash === key || id === key) return id;
+    return "servers";
   };
 
   // ------------------------------------------------------------ helpers
@@ -43,20 +43,14 @@
     const b = await CER.bgFetch(url, method, body ?? {});
     return !!b?.ok;
   }
-  const safeUrl = (u) => {
-    try {
-      const x = new URL(u);
-      return x.protocol === "https:" ? x.toString() : null;
-    } catch {
-      return null;
-    }
-  };
   const robux = (n) => h("span", { class: "gx-robux" }, ui.icon("robux", 15), h("span", { text: fmt.full(n) }));
   const genreOf = (info) => {
     const g = info?.genre_l1 || (info?.genre && info.genre !== "All" ? info.genre : "");
     return g ? g.replace(/\b\w/g, (c) => c.toUpperCase()) : "";
   };
-  const avatarType = (t) => ({ MorphToR6: "R6 only", MorphToR15: "R15 only", PlayerChoice: "Player choice" })[t] ?? "";
+  const thumbsUrl = (U) => `https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${U}&countPerUniverse=25&defaults=true&size=768x432&format=Webp&isCircular=false`;
+  // plain bold title, no icon / count / subtitle
+  const section = (title, opts = {}) => ui.section(title, { action: opts.action, tools: opts.tools, class: opts.class });
 
   // ------------------------------------------------------------ route
   ui.route("game", async () => {
@@ -65,63 +59,53 @@
     if (!placeId) return ui.release();
 
     const { page } = ui.page("game", "gx");
-    const feats = (await CER.get()).features ?? {};
     const mePromise = api.me().catch(() => null);
 
-    // ---- shell first (skeleton look), filled as data lands ----
-    const hero = buildHeroShell(placeId);
-    const statBar = h("div", { class: "gx-stats is-loading" }, Array.from({ length: 8 }, () => h("div", { class: "gx-stat" }, h("span", { class: "gx-stat-label cer-sk" }), h("span", { class: "gx-stat-value cer-sk" }))));
-    hero.el.append(statBar);
+    // shell first (shimmer), filled as data lands
+    const stage = buildStage(placeId);
+    const about = h("div", { class: "gx-about" });
     const tabsHost = h("div", { class: "gx-tabbar" });
-    const panes = h("div", { class: "gx-panes" }, h("div", { class: "gx-pane" }, ui.skeleton("row", 4)));
-    page.append(hero.el, tabsHost, panes);
+    const panes = h("div", { class: "gx-panes" });
+    page.append(stage.el, about, tabsHost, panes);
 
+    const feats = (await CER.get()).features ?? {};
     const universeId = await api.universeOf(placeId);
     if (!universeId) {
-      hero.fail();
-      statBar.remove();
-      panes.replaceChildren(ui.empty("We could not find this game.", { icon: "gamepad", action: ui.button("Open Roblox's page", { variant: "soft", href: ui.nativeUrl() }) }));
+      stage.fail("We could not find this game.");
       return;
     }
     const U = String(universeId);
 
-    // fire everything the first screen needs at once
     const infoP = api.game(U);
-    const galleryP = api.json(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${U}&countPerUniverse=25&defaults=true&size=768x432&format=Webp&isCircular=false`, { ttl: 600000 });
     const playP = api.json(`https://games.roblox.com/v1/games/multiget-playability-status?universeIds=${U}`, { ttl: 60000 });
-    hero.setIcon(api.thumb("gameIcon", U));
-    galleryP.then((j) => hero.setGallery(j, U));
+    api.json(thumbsUrl(U), { ttl: 600000 }).then((j) => stage.setGallery(j, U));
 
     const info = await infoP;
     if (!info) {
-      hero.fail();
-      statBar.remove();
-      panes.replaceChildren(ui.empty("This game did not load. Try again soon.", { icon: "refresh", action: ui.button("Try again", { variant: "soft", onClick: () => location.reload() }) }));
+      stage.fail("This game did not load. Try again soon.");
       return;
     }
-    const ctx = { placeId, universeId: U, info, feats, mePromise, hero };
-    hero.fill(info, feats);
-    fillStats(statBar, info);
-    playP.then((p) => hero.setPlayability(Array.isArray(p) ? p[0] : null, info));
-    mePromise.then((me) => hero.wireSocial(me, U, info));
+    const ctx = { placeId, universeId: U, info, feats, mePromise };
+    stage.fill(info, feats);
+    playP.then((p) => stage.setPlayability(Array.isArray(p) ? p[0] : null, info));
+    mePromise.then((me) => stage.wireSocial(me, U, info));
+    friendsHere(ctx).then((list) => stage.setFriends(list));
+
+    // short description, no card, no title
+    const desc = (info.description ?? "").trim();
+    if (desc) about.append(ui.clamp(desc, 3));
+    else about.remove();
 
     // ---- tabs ----
-    const counts = {};
-    const built = {};
-    const TABS = () => [
-      { id: "about", label: "About", icon: "info" },
-      { id: "servers", label: "Servers", icon: "server" },
-      { id: "store", label: "Store", icon: "bag", count: counts.store },
-      { id: "badges", label: "Badges", icon: "medal", count: counts.badges },
-      { id: "more", label: "More like this", icon: "sparkle" },
+    const TABS = [
+      { id: "servers", label: "Servers" },
+      { id: "store", label: "Store" },
+      { id: "badges", label: "Badges" },
+      { id: "more", label: "More like this" },
     ];
+    const builders = { servers: buildServers, store: buildStore, badges: buildBadges, more: buildMore };
+    const built = {};
     let active = tabFromHash();
-    let tabs = null;
-    const renderTabs = () => {
-      tabs = ui.tabs(TABS(), active, (id) => show(id, true));
-      tabsHost.replaceChildren(tabs);
-    };
-    const builders = { about: buildAbout, servers: buildServers, store: buildStore, badges: buildBadges, more: buildMore };
     const show = (id, fromClick) => {
       active = id;
       if (!built[id]) {
@@ -131,96 +115,62 @@
           builders[id](built[id], ctx);
         } catch (e) {
           console.warn("[CER] game tab failed", id, e);
-          built[id].replaceChildren(ui.empty("This part did not load.", { icon: "info" }));
+          built[id].replaceChildren(ui.empty("This part did not load."));
         }
       }
       for (const [k, el] of Object.entries(built)) el.hidden = k !== id;
-      if (fromClick) {
-        history.replaceState(history.state, "", location.pathname + location.search + "#!/" + TAB_HASH[id]);
-      }
+      if (fromClick) history.replaceState(history.state, "", location.pathname + location.search + "#!/" + TAB_HASH[id]);
     };
-    panes.replaceChildren();
-    renderTabs();
+    const tabs = ui.tabs(TABS, active, (id) => show(id, true));
+    tabsHost.append(tabs);
     show(active);
-    // back/forward or a pasted #!/store link
     const onHash = () => {
       const id = tabFromHash();
       if (id !== active) {
-        tabs?.set(id);
+        tabs.set(id);
         show(id);
       }
     };
     window.addEventListener("hashchange", onHash);
     onCleanup(() => window.removeEventListener("hashchange", onHash));
-    ctx.openTab = (id) => {
-      tabs?.set(id);
-      show(id, true);
-      tabsHost.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
-
-    // counts for the Store / Badges tabs, once the first screen is idle
-    const idle = window.requestIdleCallback ?? ((fn) => setTimeout(fn, 900));
-    idle(async () => {
-      const [passes, badges] = await Promise.all([loadPasses(U), loadBadges(U)]);
-      let changed = false;
-      if (passes?.items) {
-        counts.store = passes.items.length;
-        changed = true;
-      }
-      if (badges?.items) {
-        counts.badges = badges.items.length;
-        changed = true;
-      }
-      if (changed && page.isConnected) renderTabs();
-    });
   });
 
-  // ------------------------------------------------------------ hero
-  function buildHeroShell(placeId) {
-    const bgA = h("div", { class: "gx-bg" });
-    const bgB = h("div", { class: "gx-bg" });
-    let bgFront = bgA;
-    const setBackdrop = (url) => {
-      if (!url) return;
-      const back = bgFront === bgA ? bgB : bgA;
-      back.style.backgroundImage = `url("${String(url).replace(/"/g, "")}")`;
-      back.classList.add("is-on");
-      bgFront.classList.remove("is-on");
-      bgFront = back;
-    };
+  // ------------------------------------------------------------ stage (hero)
+  // The art is the hero: the game's pictures fill the stage, slowly
+  // crossfading. Title, Play and the quiet buttons sit on the art.
+  function buildStage(placeId) {
+    const ambient = h("div", { class: "gx-ambient" });
+    const slides = h("div", { class: "gx-slides" });
+    const strip = h("div", { class: "gx-strip" });
+    const prev = h("button", { type: "button", class: "gx-arrow is-prev", "aria-label": "Back" }, ui.icon("left", 22));
+    const next = h("button", { type: "button", class: "gx-arrow is-next", "aria-label": "Next" }, ui.icon("right", 22));
 
-    const icon = h("div", { class: "gx-icon cer-sk" });
-    const creator = h("div", { class: "gx-creator" }, h("span", { class: "gx-sk-line cer-sk", style: { width: "160px" } }));
-    const title = h("h1", { class: "gx-title" }, h("span", { class: "gx-sk-line gx-sk-title cer-sk" }));
-    const live = h("div", { class: "gx-live" }, h("span", { class: "gx-sk-line cer-sk", style: { width: "220px" } }));
+    const creator = h("div", { class: "gx-creator" });
+    const title = h("h1", { class: "gx-title" }, h("span", { class: "gx-sk gx-sk-title" }));
+    const meta = h("div", { class: "gx-meta" }, h("span", { class: "gx-sk gx-sk-line" }));
     const note = h("p", { class: "gx-note", hidden: true });
 
     const playBtn = ui.button("Play", { icon: "play", variant: "light", size: "lg", class: "gx-play" });
     playBtn.addEventListener("click", () => playNow(placeId));
     const playSlot = h("div", { class: "gx-play-slot" }, playBtn);
-    const optsBtn = ui.button("", { icon: "sliders", variant: "glass", size: "lg", title: "Join options", class: "gx-round", onClick: () => CER.openSettings?.("Join") });
-    const social = h("div", { class: "gx-social" });
-    const shareBtn = ui.button("", { icon: "link", variant: "glass", size: "lg", title: "Copy link", class: "gx-round", onClick: () => ui.copy(`https://www.roblox.com/games/${placeId}`, "Link copied!") });
+    const social = h("div", { class: "gx-quiet" });
+    const quiet = (icon, title, onClick) => ui.button("", { icon, variant: "glass", title, class: "gx-qbtn", onClick });
+    const share = quiet("link", "Copy link", () => ui.copy(`https://www.roblox.com/games/${placeId}`, "Link copied!"));
+    const opts = quiet("sliders", "Join options", () => CER.openSettings?.("Join"));
 
-    // gallery
-    const slides = h("div", { class: "gx-slides" });
-    const dots = h("div", { class: "gx-dots" });
-    const prev = h("button", { type: "button", class: "gx-arrow is-prev", "aria-label": "Back" }, ui.icon("left", 22));
-    const next = h("button", { type: "button", class: "gx-arrow is-next", "aria-label": "Next" }, ui.icon("right", 22));
-    const counter = h("span", { class: "gx-counter" });
-    const gallery = h("div", { class: "gx-gallery is-loading" }, slides, prev, next, dots, counter);
-
-    const info = h(
+    const overlay = h(
       "div",
-      { class: "gx-info" },
-      h("div", { class: "gx-id" }, icon, h("div", { class: "gx-id-text" }, creator, title)),
-      live,
-      h("div", { class: "gx-actions" }, playSlot, social, shareBtn, optsBtn),
+      { class: "gx-overlay" },
+      creator,
+      title,
+      meta,
+      h("div", { class: "gx-actions" }, playSlot, social, share, opts),
       note
     );
-    const el = h("section", { class: "gx-hero" }, bgA, bgB, h("div", { class: "gx-shade" }), h("div", { class: "gx-hero-grid" }, info, gallery));
+    const stageEl = h("div", { class: "gx-stage is-loading", tabindex: "0" }, slides, h("div", { class: "gx-shade" }), prev, next, overlay, strip);
+    const el = h("section", { class: "gx-hero" }, ambient, stageEl);
 
-    // ---- gallery behaviour ----
+    // ---- gallery ----
     let urls = [];
     let idx = 0;
     let timer = null;
@@ -228,63 +178,48 @@
       if (!urls.length) return;
       idx = (i + urls.length) % urls.length;
       [...slides.children].forEach((s, k) => s.classList.toggle("is-on", k === idx));
-      [...dots.children].forEach((d, k) => d.classList.toggle("is-on", k === idx));
-      counter.textContent = urls.length > 1 ? `${idx + 1} / ${urls.length}` : "";
-      // load the next slide early so the swap never shows a blank
-      const nx = slides.children[(idx + 1) % urls.length]?.querySelector("img");
-      if (nx && !nx.src) nx.src = nx.dataset.src;
-      const cur = slides.children[idx]?.querySelector("img");
-      if (cur && !cur.src) cur.src = cur.dataset.src;
-      setBackdrop(urls[idx]);
+      [...strip.children].forEach((s, k) => s.classList.toggle("is-on", k === idx));
+      for (const k of [idx, (idx + 1) % urls.length]) {
+        const img = slides.children[k]?.querySelector("img");
+        if (img && !img.src) img.src = img.dataset.src; // next one loads early, no blank swap
+      }
+      ambient.style.backgroundImage = `url("${String(urls[idx]).replace(/"/g, "")}")`;
       if (user) restart();
     };
     const restart = () => {
       clearInterval(timer);
       if (urls.length > 1 && !matchMedia("(prefers-reduced-motion: reduce)").matches)
         timer = setInterval(() => {
-          if (!document.hidden && !gallery.matches(":hover") && el.isConnected) go(idx + 1);
+          if (!document.hidden && !stageEl.matches(":hover") && el.isConnected) go(idx + 1);
         }, 7000);
     };
     prev.addEventListener("click", () => go(idx - 1, true));
     next.addEventListener("click", () => go(idx + 1, true));
-    gallery.tabIndex = 0;
-    gallery.addEventListener("keydown", (e) => {
+    stageEl.addEventListener("keydown", (e) => {
+      if (e.target !== stageEl) return;
       if (e.key === "ArrowLeft") go(idx - 1, true);
       if (e.key === "ArrowRight") go(idx + 1, true);
     });
-    // swipe on touch screens
-    let sx = null;
-    gallery.addEventListener("pointerdown", (e) => (sx = e.pointerType === "mouse" ? null : e.clientX));
-    gallery.addEventListener("pointerup", (e) => {
+    let sx = null; // swipe on touch screens
+    stageEl.addEventListener("pointerdown", (e) => (sx = e.pointerType === "mouse" ? null : e.clientX));
+    stageEl.addEventListener("pointerup", (e) => {
       if (sx != null && Math.abs(e.clientX - sx) > 40) go(idx + (e.clientX < sx ? 1 : -1), true);
       sx = null;
     });
     onCleanup(() => clearInterval(timer));
 
-    const api_ = {
+    return {
       el,
-      setIcon(p) {
-        Promise.resolve(p).then((url) => {
-          icon.classList.remove("cer-sk");
-          if (url) icon.replaceChildren(ui.img(url, { alt: "" }));
-          else icon.classList.add("is-empty");
-        });
-      },
       async setGallery(j, U) {
-        let list = (j?.data?.[0]?.thumbnails ?? []).filter((t) => t.state === "Completed" && t.imageUrl).map((t) => t.imageUrl);
-        // a brand new upload can still be rendering; one quiet retry
+        const pick = (r) => (r?.data?.[0]?.thumbnails ?? []).filter((t) => t.state === "Completed" && t.imageUrl).map((t) => t.imageUrl);
+        let list = pick(j);
         if (!list.length && j?.data?.[0]?.thumbnails?.some((t) => t.state === "Pending")) {
-          await api.sleep(1500);
-          const again = await api.json(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${U}&countPerUniverse=25&defaults=true&size=768x432&format=Webp&isCircular=false`);
-          list = (again?.data?.[0]?.thumbnails ?? []).filter((t) => t.state === "Completed" && t.imageUrl).map((t) => t.imageUrl);
+          await api.sleep(1500); // fresh upload still rendering: one quiet retry
+          list = pick(await api.json(thumbsUrl(U)));
         }
         urls = [...new Set(list)];
-        gallery.classList.remove("is-loading");
-        if (!urls.length) {
-          gallery.classList.add("is-empty");
-          slides.replaceChildren(h("div", { class: "gx-slide is-on gx-slide-empty" }, ui.icon("image", 40)));
-          return;
-        }
+        stageEl.classList.remove("is-loading");
+        if (!urls.length) return stageEl.classList.add("is-empty");
         slides.replaceChildren(
           ...urls.map((u, i) => {
             const img = h("img", { alt: "", draggable: "false", decoding: "async", "data-src": u });
@@ -293,53 +228,59 @@
             return h("div", { class: "gx-slide" }, img);
           })
         );
-        dots.replaceChildren(...urls.map((_, i) => h("button", { type: "button", class: "gx-dot", "aria-label": "Picture " + (i + 1), onClick: () => go(i, true) })));
-        gallery.classList.toggle("is-single", urls.length < 2);
+        stageEl.classList.toggle("is-single", urls.length < 2);
+        if (urls.length > 1)
+          strip.replaceChildren(
+            ...urls.map((u, i) =>
+              h("button", { type: "button", class: "gx-thumb", "aria-label": "Picture " + (i + 1), onClick: () => go(i, true) }, h("img", { src: u, alt: "", loading: "lazy", draggable: "false" }))
+            )
+          );
         go(0);
         restart();
       },
       fill(info, feats) {
-        el.classList.add("is-ready");
         const c = info.creator ?? {};
-        const isGroup = c.type === "Group";
-        const href = isGroup ? `https://www.roblox.com/communities/${c.id}` : `https://www.roblox.com/users/${c.id}/profile`;
-        const cIcon = h("span", { class: "gx-creator-pic" + (isGroup ? " is-group" : "") }, ui.thumb(isGroup ? "groupIcon" : "headshot", c.id, { alt: "" }));
+        const href = c.type === "Group" ? `https://www.roblox.com/communities/${c.id}` : `https://www.roblox.com/users/${c.id}/profile`;
         creator.replaceChildren(
+          h("a", { class: "gx-creator-link", href }, h("span", { text: c.name ?? "" }), c.hasVerifiedBadge && h("span", { class: "gx-verified", title: "Verified" }, ui.icon("verified", 15)))
+        );
+        title.replaceChildren(CER.cleanTitle(info.name ?? "", feats));
+        title.title = info.name ?? "";
+        // one quiet line of real info: playing, rating, server size, genre
+        const bits = [h("span", { class: "gx-live" }, h("i", { class: "gx-dot" }), h("b", { text: fmt.full(info.playing ?? 0) }), " playing")];
+        if (info.rating != null) bits.push(h("span", { title: `${fmt.full(info.up)} likes, ${fmt.full(info.down)} dislikes` }, ui.icon("like", 15), h("b", { text: info.rating + "%" })));
+        if (info.maxPlayers) bits.push(h("span", {}, ui.icon("users", 15), h("b", { text: info.maxPlayers }), " per server"));
+        const g = genreOf(info);
+        if (g) bits.push(h("span", { text: g }));
+        meta.replaceChildren(...bits);
+      },
+      fail(text) {
+        stageEl.classList.remove("is-loading");
+        stageEl.classList.add("is-empty");
+        title.replaceChildren(text);
+        meta.replaceChildren();
+        playBtn.remove();
+        share.remove();
+        opts.remove();
+      },
+      setFriends(list) {
+        if (!list.length) return;
+        meta.append(
           h(
-            "a",
-            { class: "gx-creator-link", href, title: c.name },
-            cIcon,
-            h("span", { class: "gx-creator-by", text: "By" }),
-            h("span", { class: "gx-creator-name", text: c.name ?? "Unknown" }),
-            c.hasVerifiedBadge && h("span", { class: "gx-verified", title: "Verified" }, ui.icon("verified", 16))
+            "span",
+            { class: "gx-friends", title: list.map((x) => x.friend.displayName).join(", ") },
+            h("span", { class: "gx-faces" }, list.slice(0, 3).map((x) => ui.avatar(x.friend.id, { size: 22 }))),
+            h("b", { text: list.length }),
+            list.length === 1 ? " friend here" : " friends here"
           )
         );
-        const name = CER.cleanTitle(info.name ?? "", feats);
-        title.replaceChildren(name);
-        title.title = info.name ?? "";
-        const kids = [];
-        kids.push(h("span", { class: "gx-live-dot" }), h("b", { text: fmt.full(info.playing ?? 0) }), h("span", { text: "playing now" }));
-        if (info.rating != null) kids.push(h("span", { class: "gx-live-sep" }), ui.icon("like", 15), h("b", { text: info.rating + "%" }), h("span", { text: "like it" }));
-        const g = genreOf(info);
-        if (g) kids.push(h("span", { class: "gx-live-sep" }), h("span", { class: "gx-genre", text: g }));
-        live.replaceChildren(...kids);
       },
-      fail() {
-        el.classList.add("is-failed");
-        title.replaceChildren("Game not found");
-        creator.replaceChildren();
-        live.replaceChildren();
-        icon.classList.remove("cer-sk");
-        gallery.classList.remove("is-loading");
-        gallery.classList.add("is-empty");
-        playBtn.remove();
-      },
-      // Paid access / not playable: swap the Play button for the right action
+      // Paid access / not playable: swap Play for the right action
       setPlayability(p, info) {
         if (!p || p.isPlayable) return;
         const s = p.playabilityStatus;
         if (s === "PurchaseRequired") {
-          const buy = ui.button(info.price ? "Buy to play" : "Buy access", { icon: "robux", variant: "light", size: "lg", class: "gx-play", href: ui.nativeUrl(location.href) });
+          const buy = ui.button("Buy to play", { icon: "robux", variant: "light", size: "lg", class: "gx-play", href: ui.nativeUrl(location.href) });
           if (info.price) buy.append(h("span", { class: "gx-play-price", text: fmt.full(info.price) }));
           playSlot.replaceChildren(buy);
           return;
@@ -361,46 +302,33 @@
           ContextualPlayabilityUnverifiedSeventeenPlusUser: "You need to verify your age.",
         }[s];
         note.hidden = false;
-        note.replaceChildren(ui.icon("info", 15), h("span", { text: msg ?? p.unplayableDisplayText ?? "You may not be able to play this." }));
+        note.textContent = msg ?? p.unplayableDisplayText ?? "You may not be able to play this.";
       },
-      // Favorite / Like / Dislike / Notify. Real API writes, only on click.
+      // Favorite / Like / Dislike / Notify: small icon buttons, real API
+      // writes, only ever on click.
       async wireSocial(me, U, info) {
-        if (!me) return; // logged out: only Play + Share
+        if (!me) return; // logged out: Play + Share only
         let fav = !!info.isFavoritedByUser;
-        let favCount = info.favoritedCount ?? 0;
         let vote = null; // true up, false down, null none
-        let up = info.up ?? 0;
-        let down = info.down ?? 0;
         let canVote = true;
         let voteWhy = "";
         let following = false;
         let canFollow = true;
-
-        const favBtn = ui.button("", { icon: "star", variant: "glass", size: "lg", class: "gx-pill gx-fav", title: "Favorite" });
-        const upBtn = ui.button("", { icon: "like", variant: "glass", size: "lg", class: "gx-pill gx-up", title: "Like" });
-        const downBtn = ui.button("", { icon: "dislike", variant: "glass", size: "lg", class: "gx-pill gx-down", title: "Dislike" });
-        const bellBtn = ui.button("", { icon: "bell", variant: "glass", size: "lg", class: "gx-round gx-bell", title: "Get updates" });
-        const voteBox = h("div", { class: "gx-vote" }, upBtn, h("span", { class: "gx-vote-split" }), downBtn);
-        const setCount = (btn, n) => {
-          let s = btn.querySelector(".gx-count");
-          if (!s) btn.append((s = h("span", { class: "gx-count" })));
-          s.textContent = fmt.num(n);
-        };
+        const favBtn = quiet("star", "Favorite");
+        const upBtn = quiet("like", "Like");
+        const downBtn = quiet("dislike", "Dislike");
+        const bellBtn = quiet("bell", "Get updates");
         const paint = () => {
           favBtn.classList.toggle("is-on", fav);
           favBtn.title = fav ? "Remove from favorites" : "Add to favorites";
-          setCount(favBtn, favCount);
           upBtn.classList.toggle("is-on", vote === true);
           downBtn.classList.toggle("is-on", vote === false);
-          setCount(upBtn, up);
-          setCount(downBtn, down);
           bellBtn.classList.toggle("is-on", following);
           bellBtn.title = following ? "Stop updates" : "Get updates";
         };
         paint();
-        social.replaceChildren(favBtn, voteBox, bellBtn);
+        social.replaceChildren(favBtn, upBtn, downBtn, bellBtn);
 
-        // current states (reads only)
         const [favNow, voteNow, followNow] = await Promise.all([
           api.json(`https://games.roblox.com/v1/games/${U}/favorites`),
           api.json(`https://games.roblox.com/v1/games/${U}/votes/user`),
@@ -425,25 +353,17 @@
           favBtn.busy(false);
           if (!ok) return CER.toast("Could not save. Try again.", "error");
           fav = to;
-          favCount += to ? 1 : -1;
           paint();
           CER.toast(to ? "Added to favorites" : "Removed from favorites");
         });
         const castVote = async (want) => {
-          if (!canVote) {
-            const why = /play/i.test(voteWhy) ? "Play this game first, then you can vote." : "You can not vote on this game yet.";
-            return CER.toast(why);
-          }
+          if (!canVote) return CER.toast(/play/i.test(voteWhy) ? "Play this game first, then you can vote." : "You can not vote on this game yet.");
           const to = vote === want ? null : want;
           const btn = want ? upBtn : downBtn;
           btn.busy(true);
           const ok = await write(`https://games.roblox.com/v1/games/${U}/user-votes`, "PATCH", { vote: to }, { bgFirst: true });
           btn.busy(false);
           if (!ok) return CER.toast("Could not vote. Try again.", "error");
-          if (vote === true) up--;
-          if (vote === false) down--;
-          if (to === true) up++;
-          if (to === false) down++;
           vote = to;
           paint();
         };
@@ -462,34 +382,6 @@
         });
       },
     };
-    return api_;
-  }
-
-  // Glass stat bar at the bottom of the hero
-  function fillStats(bar, info) {
-    const pct = info.rating;
-    const tot = (info.up ?? 0) + (info.down ?? 0);
-    const stat = (label, value, opts = {}) =>
-      h("div", { class: "gx-stat" + (opts.cls ? " " + opts.cls : ""), title: opts.title ?? null }, h("span", { class: "gx-stat-label", text: label }), h("span", { class: "gx-stat-value" }, value), opts.extra);
-    const ratingBar =
-      tot > 0
-        ? h(
-            "span",
-            { class: "gx-ratio", title: `${fmt.full(info.up)} likes, ${fmt.full(info.down)} dislikes` },
-            h("span", { class: "gx-ratio-up", style: { width: pct + "%" } })
-          )
-        : null;
-    bar.classList.remove("is-loading");
-    bar.replaceChildren(
-      stat("Playing", fmt.num(info.playing ?? 0), { title: fmt.full(info.playing), cls: "is-live" }),
-      stat("Visits", fmt.num(info.visits), { title: fmt.full(info.visits) }),
-      stat("Favorites", fmt.num(info.favoritedCount), { title: fmt.full(info.favoritedCount) }),
-      stat("Rating", pct != null ? pct + "%" : "New", { extra: ratingBar, cls: "is-rating", title: tot ? `${fmt.full(info.up)} likes, ${fmt.full(info.down)} dislikes` : null }),
-      stat("Server size", fmt.full(info.maxPlayers)),
-      stat("Genre", genreOf(info) || "All"),
-      stat("Created", fmt.date(info.created), { title: new Date(info.created).toLocaleString() }),
-      stat("Updated", fmt.ago(info.updated), { title: new Date(info.updated).toLocaleString() })
-    );
   }
 
   // ------------------------------------------------------------ play
@@ -508,12 +400,14 @@
     const bar = h("div", { class: "gx-region-bar" }, h("span", { style: { width: "0%" } }));
     let port = null;
     let settled = false;
+    let timeout = null;
     const m = ui.modal({
       title: "Finding a " + regionName + " server",
       body: h("div", { class: "gx-region" }, status, bar),
       actions: [{ label: "Cancel", variant: "ghost", onClick: (close) => close() }],
       onClose: () => {
         settled = true;
+        clearTimeout(timeout);
         try {
           port?.disconnect();
         } catch {
@@ -528,8 +422,7 @@
       m.el.querySelector(".cer-modal-head h3").textContent = titleText;
       status.textContent = subText;
       bar.remove();
-      const acts = m.el.querySelector(".cer-modal-actions");
-      acts.replaceChildren(
+      m.el.querySelector(".cer-modal-actions").replaceChildren(
         ui.button("Cancel", { variant: "ghost", onClick: m.close }),
         ui.button("Join any server", { variant: "primary", icon: "play", onClick: () => (m.close(), ui.play(placeId)) })
       );
@@ -543,7 +436,7 @@
       m.close();
       return ui.play(placeId);
     }
-    const timeout = setTimeout(() => fail("Search took too long", "You are NOT joining " + regionName + "."), 22000);
+    timeout = setTimeout(() => fail("Search took too long", "You are NOT joining " + regionName + "."), 22000);
     port.onDisconnect?.addListener?.(() => fail("Search stopped", "You are NOT joining " + regionName + "."));
     port.onMessage.addListener((msg) => {
       if (settled) return;
@@ -573,63 +466,7 @@
     port.postMessage({ cer: "start", placeId, region });
   }
 
-  // ------------------------------------------------------------ About
-  function buildAbout(pane, ctx) {
-    const { info, universeId: U, placeId } = ctx;
-    const desc = (info.description ?? "").trim();
-    const aboutCard = ui.card([h("h2", { class: "gx-h2", text: "About this game" }), desc ? ui.clamp(desc, 8) : h("p", { class: "gx-muted", text: "No description yet." })], { class: "gx-about" });
-    const links = h("div", { class: "gx-links" });
-    const linksCard = ui.card([h("h2", { class: "gx-h2", text: "Links" }), links], { class: "gx-links-card" });
-    linksCard.hidden = true;
-
-    const row = (label, value, extra) => h("div", { class: "gx-dl-row" }, h("dt", { text: label }), h("dd", {}, value, extra));
-    const copyBtn = (text, msg) => ui.button("", { icon: "copy", variant: "ghost", size: "sm", title: "Copy", class: "gx-copy", onClick: () => ui.copy(text, msg) });
-    const details = ui.card(
-      [
-        h("h2", { class: "gx-h2", text: "Details" }),
-        h(
-          "dl",
-          { class: "gx-dl" },
-          row("Made by", h("a", { class: "gx-a", href: info.creator?.type === "Group" ? `https://www.roblox.com/communities/${info.creator.id}` : `https://www.roblox.com/users/${info.creator?.id}/profile`, text: info.creator?.name ?? "" })),
-          row("Genre", genreOf(info) || "All"),
-          row("Server size", fmt.full(info.maxPlayers) + " players"),
-          avatarType(info.universeAvatarType) && row("Avatars", avatarType(info.universeAvatarType)),
-          info.price ? row("Price", robux(info.price)) : null,
-          row("Created", fmt.date(info.created)),
-          row("Updated", h("span", { title: new Date(info.updated).toLocaleString(), text: fmt.date(info.updated) + " (" + fmt.ago(info.updated) + ")" })),
-          row("Place ID", h("span", { class: "gx-mono", text: placeId }), copyBtn(placeId, "Place ID copied!")),
-          row("Universe ID", h("span", { class: "gx-mono", text: U }), copyBtn(U, "Universe ID copied!"))
-        ),
-      ],
-      { class: "gx-details" }
-    );
-    const friendsBox = ui.card([h("h2", { class: "gx-h2" }, h("span", { class: "gx-live-dot" }), "Friends here")], { class: "gx-friends-card" });
-    friendsBox.hidden = true;
-    pane.append(ui.cols([aboutCard, linksCard], [friendsBox, details], { side: 360 }));
-
-    // social links (needs login on Roblox's side; just hide when it fails)
-    api.json(`https://games.roblox.com/v1/games/${U}/social-links/list`, { ttl: 600000 }).then((j) => {
-      const items = (j?.data ?? []).map((l) => ({ ...l, url: safeUrl(l.url) })).filter((l) => l.url);
-      if (!items.length) return;
-      links.replaceChildren(...items.map((l) => h("a", { class: "gx-link-pill", href: l.url, target: "_blank", rel: "noopener noreferrer" }, ui.icon("external", 15), h("span", { text: l.title || l.type || "Link" }))));
-      linksCard.hidden = false;
-    });
-
-    friendsHere(ctx).then((list) => {
-      if (!list.length) return;
-      friendsBox.append(
-        h(
-          "div",
-          { class: "gx-friends" },
-          list.slice(0, 8).map(({ friend, presence }) => ui.userTile(friend, { row: true, presence, sub: "Playing now" }))
-        ),
-        list.length > 8 && ui.link(`See all ${list.length}`, { onClick: () => ctx.openTab("servers") })
-      );
-      friendsBox.hidden = false;
-    });
-  }
-
-  // Friends in this game right now: [{ friend, presence }] (shared promise per page)
+  // Friends in this game right now: [{ friend, presence }] (one promise per page)
   function friendsHere(ctx) {
     if (ctx._friendsP) return ctx._friendsP;
     ctx._friendsP = (async () => {
@@ -649,9 +486,9 @@
   }
 
   // ------------------------------------------------------------ Servers
-  // Public server browser, ported from serverbrowser.js: sorting, filters,
-  // locally tracked "first seen" age per place, join best / by id, plus
-  // ping, fps, player headshots (when Roblox sends tokens) and friends first.
+  // Public server browser, ported from serverbrowser.js: sorting, locally
+  // tracked "first seen" per place (Newest / Oldest sort), join best / by id,
+  // plus ping, player headshots (when Roblox sends tokens) and friends first.
   const WEEK = 6.048e8;
   const AGE_INDEX = "serverFirstSeenIdx";
   async function readSeen(placeId) {
@@ -690,14 +527,6 @@
       return null;
     }
   }
-  const short = (ms) => {
-    const m = Math.floor(ms / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return m + " min ago";
-    const hr = Math.floor(m / 60);
-    if (hr < 24) return hr + " hr ago";
-    return Math.floor(hr / 24) + " d ago";
-  };
 
   // player token -> headshot url, batched through thumbnails/v1/batch
   const tokenCache = new Map();
@@ -712,25 +541,20 @@
       for (const it of res?.data ?? []) if (it.imageUrl) tokenCache.set(it.requestId, it.imageUrl);
       for (const t of chunk) if (!tokenCache.has(t)) tokenCache.set(t, null);
     }
-    return tokens.map((t) => tokenCache.get(t)).filter(Boolean);
   }
 
   function buildServers(pane, ctx) {
     const { placeId } = ctx;
     let servers = [];
     let seen = {};
-    let hadHistory = false; // first visit: every server is "new", so don't say it
     let sort = "most";
-    let filter = "all";
     let order = "Desc"; // API order: Desc = fullest first, Asc = emptiest first
     let shown = 12;
     let seq = 0;
-    let more = false; // more pages exist beyond what we loaded
     let loading = false;
     let loaded = null;
-    let friendJobs = new Map(); // jobId -> [{friend, presence}]
+    let friendJobs = new Map(); // jobId -> [{ friend, presence }]
 
-    const count = h("span", { class: "cer-block-count", hidden: true });
     const sortSel = ui.select(
       [
         { id: "most", label: "Most players" },
@@ -743,62 +567,32 @@
       (v) => {
         sort = v;
         shown = 12;
-        // big games have thousands of servers: ask Roblox for the right end of the list
-        const want = v === "least" || filter === "empty" ? "Asc" : "Desc";
+        // big games have thousands of servers: ask Roblox for the right end
+        const want = v === "least" ? "Asc" : "Desc";
         if (want !== order) {
           order = want;
           load();
         } else render();
       }
     );
-    const filters = ui.chips(
-      [
-        { id: "all", label: "All servers" },
-        { id: "empty", label: "Almost empty" },
-        { id: "full", label: "Almost full" },
-      ],
-      filter,
-      (v) => {
-        filter = v;
-        shown = 12;
-        const want = sort === "least" || v === "empty" ? "Asc" : "Desc";
-        if (want !== order) {
-          order = want;
-          load();
-        } else render();
-      }
-    );
-    const refresh = ui.button("", { icon: "refresh", variant: "soft", title: "Refresh", onClick: () => load() });
-    const best = ui.button("Join best server", { icon: "zap", variant: "primary", onClick: () => joinBest() });
+    const byId = ui.button("", { icon: "hash", variant: "ghost", title: "Join by server ID", onClick: () => joinByIdModal(placeId) });
+    const refresh = ui.button("", { icon: "refresh", variant: "ghost", title: "Refresh", onClick: () => load() });
+    const best = ui.button("Join best", { variant: "soft", title: "Join the fullest server with room", onClick: () => joinBest() });
 
-    const idInput = h("input", { class: "cer-input-el", placeholder: "Paste a server ID to join", spellcheck: "false", autocomplete: "off" });
-    const idJoin = () => {
-      const id = idInput.value.trim();
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return CER.toast("That server ID does not look right.", "error");
-      ui.play(placeId, id);
-    };
-    idInput.addEventListener("keydown", (e) => e.key === "Enter" && idJoin());
-    const idRow = h("div", { class: "gx-idrow" }, h("label", { class: "cer-input gx-idinput" }, ui.icon("server", 17), idInput), ui.button("Join", { variant: "soft", onClick: idJoin }));
-
-    const friendsSec = ui.section("Friends' servers", { icon: "users", class: "gx-friend-servers" });
+    const friendsSec = section("Friends here");
     friendsSec.hidden = true;
-    const privSec = h("div", { class: "gx-private-host" });
+    const privHost = h("div", { class: "gx-private-host" });
     const list = h("div", { class: "gx-servers" });
+    const footer = h("div", { class: "gx-foot" });
     const sentinel = h("div", { class: "gx-sentinel" });
-    const footer = h("div", { class: "gx-servers-foot" });
+    const main = section("Servers", { tools: [sortSel, byId, refresh, best] });
+    main.body.append(list, footer, sentinel);
+    pane.append(friendsSec, main, privHost);
 
-    const head = h(
-      "div",
-      { class: "gx-sv-head" },
-      h("h2", { class: "cer-block-title" }, ui.icon("server", 20), h("span", { text: "Servers" }), count),
-      h("div", { class: "gx-sv-tools" }, sortSel, refresh, best)
-    );
-    pane.append(friendsSec, privSec, h("section", { class: "cer-block" }, head, h("div", { class: "gx-sv-bar" }, filters, idRow), list, footer, sentinel));
-
-    // auto "show more" when the bottom comes into view
+    // show more when the bottom comes into view
     const io = new IntersectionObserver(
       (es) => {
-        if (es.some((e) => e.isIntersecting) && !pane.hidden && servers.length && shown < filtered().length) {
+        if (es.some((e) => e.isIntersecting) && !pane.hidden && shown < servers.length) {
           shown += 12;
           render();
         }
@@ -808,10 +602,8 @@
     io.observe(sentinel);
     onCleanup(() => io.disconnect());
 
-    function filtered() {
-      let rows = servers.slice();
-      if (filter === "empty") rows = rows.filter((s) => s.playing <= Math.max(1, s.maxPlayers * 0.25));
-      else if (filter === "full") rows = rows.filter((s) => s.playing >= s.maxPlayers * 0.75 && s.playing < s.maxPlayers);
+    function sorted() {
+      const rows = servers.slice();
       const age = (s) => seen[s.id] ?? Date.now();
       if (sort === "most") rows.sort((a, b) => b.playing - a.playing);
       else if (sort === "least") rows.sort((a, b) => a.playing - b.playing);
@@ -823,79 +615,51 @@
 
     function render() {
       if (!servers.length) return;
-      const rows = filtered();
-      count.hidden = false;
-      count.textContent = fmt.num(servers.length) + (more ? "+" : "");
-      if (!rows.length) {
-        list.replaceChildren(ui.empty("No servers match. Try another filter.", { icon: "filter" }));
-        footer.replaceChildren();
-        return;
-      }
+      const rows = sorted();
       const visible = rows.slice(0, shown);
-      list.replaceChildren(...visible.map(serverCard));
-      footer.replaceChildren(
-        shown < rows.length
-          ? ui.button(`Show more (${fmt.full(rows.length - shown)})`, { variant: "soft", onClick: () => ((shown += 12), render()) })
-          : h("span", { class: "gx-muted", text: loading ? "Loading more servers..." : `That is all ${fmt.full(rows.length)}.` })
-      );
+      list.replaceChildren(...visible.map((s) => serverCard(s)));
+      footer.replaceChildren(shown < rows.length ? ui.button("Show more", { variant: "soft", onClick: () => ((shown += 12), render()) }) : loading ? h("span", { class: "gx-muted", text: "Loading more..." }) : "");
       fillHeads(visible);
     }
 
     async function fillHeads(visible) {
       const want = visible.filter((s) => s.playerTokens?.length);
       if (!want.length) return;
-      await headshotsFor(want.flatMap((s) => s.playerTokens.slice(0, 6)));
+      await headshotsFor(want.flatMap((s) => s.playerTokens.slice(0, 5)));
       for (const s of want) {
         const host = list.querySelector(`[data-job="${s.id}"] .gx-heads`);
         if (!host) continue;
-        const urls = s.playerTokens.slice(0, 6).map((t) => tokenCache.get(t)).filter(Boolean);
-        host.replaceChildren(...urls.map((u) => h("span", { class: "gx-head" }, ui.img(u, { alt: "" }))), s.playing > urls.length && h("span", { class: "gx-head is-more", text: "+" + (s.playing - urls.length) }));
+        const urls = s.playerTokens.slice(0, 5).map((t) => tokenCache.get(t)).filter(Boolean);
+        host.replaceChildren(...urls.map((u) => h("span", { class: "gx-head" }, ui.img(u, { alt: "" }))));
       }
     }
 
-    function serverCard(s, opts = {}) {
+    function serverCard(s, friendsIn = friendJobs.get(s.id)) {
       const pct = s.maxPlayers > 0 ? Math.min(100, Math.round((s.playing / s.maxPlayers) * 100)) : 0;
       const full = s.playing >= s.maxPlayers;
       const ping = s.ping != null ? Math.round(s.ping) : null;
       const tone = ping == null ? "" : ping <= 90 ? "good" : ping <= 180 ? "warn" : "bad";
-      const friendsIn = opts.friends ?? friendJobs.get(s.id);
-      const join = ui.button(full ? "Full" : "Join", { variant: full ? "soft" : "primary", size: "sm", icon: full ? null : "play", disabled: full, onClick: () => ui.play(placeId, s.id) });
-      const copy = ui.button("", { icon: "copy", variant: "ghost", size: "sm", title: "Copy server ID", onClick: () => ui.copy(s.id, "Server ID copied!") });
       const heads = h("div", { class: "gx-heads" });
-      if (friendsIn?.length) heads.append(...friendsIn.slice(0, 6).map(({ friend }) => h("a", { class: "gx-head is-friend", href: `https://www.roblox.com/users/${friend.id}/profile`, title: friend.displayName }, ui.thumb("headshot", friend.id, { alt: "" }))));
+      if (friendsIn?.length)
+        heads.append(...friendsIn.slice(0, 5).map(({ friend }) => h("a", { class: "gx-head is-friend", href: `https://www.roblox.com/users/${friend.id}/profile`, title: friend.displayName }, ui.thumb("headshot", friend.id, { alt: "" }))));
       return h(
         "div",
         { class: "gx-server" + (full ? " is-full" : "") + (friendsIn?.length ? " has-friends" : ""), "data-job": s.id },
         h(
           "div",
           { class: "gx-sv-top" },
-          h("div", { class: "gx-sv-count" }, h("b", { text: s.playing ?? "?" }), h("span", { text: " / " + (s.maxPlayers ?? "?") })),
-          h(
-            "div",
-            { class: "gx-sv-pills" },
-            ping != null && h("span", { class: "gx-sv-pill is-" + tone, title: "Server ping" }, h("i", { class: "gx-signal" }), ping + " ms"),
-            s.fps != null && h("span", { class: "gx-sv-pill", title: "Server speed" }, Math.round(s.fps) + " fps")
-          )
+          h("span", { class: "gx-sv-count" }, h("b", { text: s.playing ?? "?" }), "/" + (s.maxPlayers ?? "?")),
+          ping != null && h("span", { class: "gx-ping is-" + tone, title: "Ping" }, ping + " ms")
         ),
-        h("div", { class: "gx-sv-bar-track" }, h("span", { class: "gx-sv-fill", style: { width: pct + "%" } })),
-        heads,
+        h("div", { class: "gx-sv-track" }, h("span", { style: { width: pct + "%" } })),
         h(
           "div",
           { class: "gx-sv-foot" },
-          friendsIn?.length
-            ? h("span", { class: "gx-sv-age" }, ui.icon("users", 14), friendsIn.map((x) => x.friend.displayName).slice(0, 2).join(", ") + (friendsIn.length > 2 ? ` +${friendsIn.length - 2}` : ""))
-            : seen[s.id]
-              ? h("span", { class: "gx-sv-age", title: "When you first saw this server" }, ui.icon("clock", 14), "Seen " + short(Date.now() - seen[s.id]))
-              : h("span", { class: "gx-sv-age", title: "A server you have not seen before" }, hadHistory && h("span", { class: "gx-new", text: "New" })),
-          copy,
-          join
+          heads,
+          ui.button("", { icon: "copy", variant: "ghost", size: "sm", title: "Copy server ID", class: "gx-sv-copy", onClick: () => ui.copy(s.id, "Server ID copied!") }),
+          ui.button(full ? "Full" : "Join", { variant: full ? "soft" : "primary", size: "sm", disabled: full, onClick: () => ui.play(placeId, s.id) })
         )
       );
-    }
-
-    function hint(node) {
-      list.replaceChildren(node);
-      footer.replaceChildren();
     }
 
     // Page 1 renders as soon as it lands; up to 5 pages (500 servers) keep
@@ -906,12 +670,9 @@
       loaded = (async () => {
         shown = 12;
         servers = [];
-        more = false;
-        count.hidden = true;
-        list.replaceChildren(...ui.skeleton("row", 10).map((x) => (x.classList.add("gx-sv-sk"), x)));
+        list.replaceChildren(...ui.skeleton("row", 8).map((x) => (x.classList.add("gx-sv-sk"), x)));
         footer.replaceChildren();
         seen = await readSeen(placeId);
-        hadHistory = Object.keys(seen).length > 0;
         let cursor = "";
         for (let pg = 0; pg < 5; pg++) {
           if (my !== seq) return;
@@ -926,10 +687,9 @@
           if (!res || !res.ok) {
             if (pg === 0) {
               loading = false;
-              hint(ui.empty(res?.status === 429 ? "Too many tries. Wait a moment." : "Servers did not load.", { icon: "server", action: ui.button("Try again", { variant: "soft", onClick: () => load() }) }));
+              list.replaceChildren(ui.empty(res?.status === 429 ? "Too many tries. Wait a moment." : "Servers did not load.", { icon: "server", action: ui.button("Try again", { variant: "soft", onClick: () => load() }) }));
               return;
             }
-            more = true;
             break;
           }
           const body = await res.json().catch(() => null);
@@ -937,7 +697,6 @@
           const known = new Set(servers.map((s) => s.id));
           servers = servers.concat(body.data.filter((s) => !known.has(s.id)));
           cursor = body.nextPageCursor;
-          more = !!cursor && pg === 4;
           if (!cursor) loading = false;
           render();
           if (!cursor) break;
@@ -946,15 +705,13 @@
         loading = false;
         if (my !== seq) return;
         if (!servers.length) {
-          hint(ui.empty("Nobody is playing right now. Press Play to start a server!", { icon: "server" }));
+          list.replaceChildren(ui.empty("Nobody is playing. Press Play to start a server!", { icon: "server" }));
+          footer.replaceChildren();
           return;
         }
         render();
         const fresh = await markSeen(placeId, servers.map((s) => s.id));
-        if (fresh && my === seq) {
-          seen = fresh;
-          render();
-        }
+        if (fresh && my === seq) seen = fresh;
       })();
       return loaded;
     }
@@ -970,38 +727,58 @@
         const away = open.filter((s) => !friendJobs.has(s.id));
         if (away.length) open = away;
       }
-      if (!open.length) return ui.play(placeId); // nothing open: let Roblox pick or start one
+      if (!open.length) return ui.play(placeId); // nothing open: Roblox picks or starts one
       // fullest server that still has room, then the lowest ping
       open.sort((a, b) => b.playing / b.maxPlayers - a.playing / a.maxPlayers || (a.ping ?? 999) - (b.ping ?? 999));
       ui.play(placeId, open[0].id);
     }
 
-    // friends first: their servers from presence (jobId = presence.gameId)
-    friendsHere(ctx).then((list_) => {
+    // friends first: their servers come from presence (presence.gameId = jobId)
+    friendsHere(ctx).then((fr) => {
       friendJobs = new Map();
-      for (const x of list_) {
+      for (const x of fr) {
         if (!x.presence.gameId || String(x.presence.placeId) !== String(placeId)) continue;
         if (!friendJobs.has(x.presence.gameId)) friendJobs.set(x.presence.gameId, []);
         friendJobs.get(x.presence.gameId).push(x);
       }
       if (!friendJobs.size) return;
-      const cards = [...friendJobs.entries()].map(([job, fr]) => {
-        const s = servers.find((x) => x.id === job) ?? { id: job, playing: null, maxPlayers: ctx.info.maxPlayers };
-        return serverCard(s, { friends: fr });
-      });
-      friendsSec.body.append(h("div", { class: "gx-servers" }, cards));
+      friendsSec.body.append(
+        h(
+          "div",
+          { class: "gx-servers" },
+          [...friendJobs.entries()].map(([job, f]) => serverCard(servers.find((x) => x.id === job) ?? { id: job, playing: null, maxPlayers: ctx.info.maxPlayers }, f))
+        )
+      );
       friendsSec.hidden = false;
       render();
     });
 
-    // private servers, only when the game allows them
-    buildPrivate(privSec, ctx);
-
+    buildPrivate(privHost, ctx);
     load();
   }
 
-  // Private (VIP) servers: only shown when the game has them. Buying,
-  // creating and settings stay on Roblox's own page (ui.nativeUrl).
+  function joinByIdModal(placeId) {
+    const input = h("input", { class: "cer-input-el", placeholder: "Server ID", spellcheck: "false", autocomplete: "off" });
+    const go = (close) => {
+      const id = input.value.trim();
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return CER.toast("That server ID does not look right.", "error");
+      close();
+      ui.play(placeId, id);
+    };
+    const m = ui.modal({
+      title: "Join a server",
+      body: h("label", { class: "cer-input" }, ui.icon("server", 17), input),
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        { label: "Join", variant: "primary", onClick: go },
+      ],
+    });
+    input.addEventListener("keydown", (e) => e.key === "Enter" && go(m.close));
+    requestAnimationFrame(() => input.focus());
+  }
+
+  // Private (VIP) servers: one quiet row, only when the game has them.
+  // Buying, creating and settings stay on Roblox's own page.
   async function buildPrivate(host, ctx) {
     const { placeId, universeId: U } = ctx;
     const me = await ctx.mePromise;
@@ -1011,30 +788,25 @@
     ]);
     const rows = mine?.data ?? [];
     if (!enabled?.privateServersEnabled && !ctx.info.createVipServersAllowed && !rows.length) return;
-    ctx.hasPrivate = true;
     const native = ui.nativeUrl(`https://www.roblox.com/games/${placeId}#!/game-instances`);
-    const card = h(
-      "div",
-      { class: "gx-private" },
-      h("span", { class: "gx-private-icon" }, ui.icon("lock", 22)),
-      h("div", { class: "gx-private-text" }, h("b", { text: "Private servers" }), h("span", { text: "Play with only the people you pick." })),
-      ui.button(rows.length ? "Manage" : "Get one", { icon: "external", variant: "soft", href: native })
-    );
-    const body = h(
-      "div",
-      { class: "gx-private-list" },
-      rows.map((s) =>
+    const sec = section("Private servers", { action: { label: rows.length ? "Manage" : "Get one", href: native } });
+    if (rows.length)
+      sec.body.append(
         h(
-          "a",
-          { class: "gx-private-row", href: native },
-          s.owner?.id ? ui.avatar(s.owner.id, { size: 36 }) : h("span", { class: "gx-private-icon is-sm" }, ui.icon("lock", 16)),
-          h("span", { class: "gx-private-name" }, h("b", { text: s.name || "Private server" }), h("span", { text: s.owner?.displayName ? "By " + s.owner.displayName : "" })),
-          h("span", { class: "gx-muted", text: s.playing ? `${s.playing} / ${s.maxPlayers} playing` : "Nobody inside" }),
-          ui.icon("right", 16)
+          "div",
+          { class: "gx-private" },
+          rows.map((s) =>
+            h(
+              "a",
+              { class: "gx-private-row", href: native },
+              s.owner?.id ? ui.avatar(s.owner.id, { size: 32 }) : null,
+              h("b", { text: s.name || "Private server" }),
+              h("span", { class: "gx-muted", text: s.playing ? `${s.playing}/${s.maxPlayers}` : "" })
+            )
+          )
         )
-      )
-    );
-    host.append(h("section", { class: "cer-block" }, card, body));
+      );
+    host.append(sec);
   }
 
   // ------------------------------------------------------------ Store
@@ -1047,186 +819,114 @@
         (async () => {
           const j = await api.json(`https://apis.roblox.com/game-passes/v1/universes/${U}/game-passes?passView=Full&pageSize=50${token ? "&pageToken=" + encodeURIComponent(token) : ""}`, { ttl: 120000 });
           if (j?.gamePasses) return { items: j.gamePasses, next: j.nextPageToken || null };
-          // older endpoint (background: its CORS refuses the page)
           if (token) return null;
+          // older endpoint (background: its CORS refuses the page)
           const old = await api.json(`https://games.roblox.com/v1/games/${U}/game-passes?limit=100&sortOrder=Asc`, { ttl: 120000, bg: true });
           if (!old?.data) return null;
-          return { items: old.data.map((p) => ({ id: p.id, name: p.name, displayName: p.displayName ?? p.name, price: p.price, isForSale: p.price != null, isOwned: false })), next: null };
+          return { items: old.data.map((p) => ({ id: p.id, name: p.name, displayName: p.displayName ?? p.name, price: p.price, isForSale: p.price != null })), next: null };
         })()
       );
     return passCache.get(key);
   }
   function buildStore(pane, ctx) {
-    const sec = ui.section("Game passes", { icon: "ticket", sub: "Extra powers and items for this game." });
-    const grid = ui.grid([], { min: 190, gap: 16, class: "gx-passes" });
-    grid.append(...ui.skeleton("card", 6));
-    const foot = h("div", { class: "gx-servers-foot" });
-    sec.body.append(grid, foot);
-    pane.append(sec);
+    const grid = ui.grid(ui.skeleton("card", 6), { min: 170, gap: 22, class: "gx-passes" });
+    const foot = h("div", { class: "gx-foot" });
+    pane.append(grid, foot);
     let first = true;
-    const page_ = async (token) => {
+    const more = async (token) => {
       const r = await loadPasses(ctx.universeId, token);
       if (first) grid.replaceChildren();
       first = false;
-      if (!r) {
-        if (!grid.children.length) sec.body.replaceChildren(ui.empty("The store did not load.", { icon: "bag" }));
+      if (!r || (!r.items.length && !grid.children.length)) {
+        pane.replaceChildren(ui.empty(r ? "No passes in this game." : "The store did not load.", { icon: "bag" }));
         return;
       }
-      if (!r.items.length && !grid.children.length) {
-        sec.body.replaceChildren(ui.empty("This game has no passes.", { icon: "ticket" }));
-        return;
-      }
-      grid.append(...r.items.map(passCard));
-      foot.replaceChildren(r.next ? ui.button("Show more", { variant: "soft", onClick: (e) => (e.currentTarget.busy?.(true), page_(r.next)) }) : "");
+      // things you can buy first, then owned, then off sale
+      const rank = (p) => (p.isOwned ? 1 : p.isForSale !== false && p.price != null ? 0 : 2);
+      grid.append(...r.items.slice().sort((a, b) => rank(a) - rank(b)).map(passCard));
+      foot.replaceChildren(r.next ? ui.button("Show more", { variant: "soft", onClick: (e) => (e.currentTarget.busy?.(true), more(r.next)) }) : "");
     };
-    page_("");
+    more("");
   }
   function passCard(p) {
     const forSale = p.isForSale !== false && p.price != null;
-    const base = p.userBasePriceInRobux && p.userBasePriceInRobux > p.price ? p.userBasePriceInRobux : null;
     return h(
       "a",
-      { class: "gx-pass", href: `https://www.roblox.com/game-pass/${p.id}`, title: p.displayName ?? p.name },
-      h("div", { class: "gx-pass-art" }, ui.thumb("pass", p.id, { alt: "" }), p.isOwned && h("span", { class: "gx-owned" }, ui.icon("check", 13), "Owned")),
+      { class: "gx-pass" + (forSale || p.isOwned ? "" : " is-off"), href: `https://www.roblox.com/game-pass/${p.id}`, title: p.displayName ?? p.name },
+      h("div", { class: "gx-pass-art" }, ui.thumb("pass", p.id, { alt: "" })),
       h("div", { class: "gx-pass-name", text: p.displayName ?? p.name }),
-      h(
-        "div",
-        { class: "gx-pass-price" },
-        forSale ? robux(p.price) : h("span", { class: "gx-muted", text: "Not for sale" }),
-        forSale && base && h("s", { class: "gx-muted", text: fmt.full(base) })
-      )
+      p.isOwned ? h("div", { class: "gx-owned" }, ui.icon("check", 15), "Owned") : forSale ? robux(p.price) : h("div", { class: "gx-muted", text: "Not for sale" })
     );
   }
 
   // ------------------------------------------------------------ Badges
-  const badgeCache = new Map();
   function loadBadges(U, cursor = "") {
-    const key = U + "|" + cursor;
-    if (!badgeCache.has(key))
-      badgeCache.set(
-        key,
-        api.json(`https://badges.roblox.com/v1/universes/${U}/badges?limit=50&sortOrder=Asc${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`, { ttl: 300000 }).then((j) => (j?.data ? { items: j.data, next: j.nextPageCursor || null } : null))
-      );
-    return badgeCache.get(key);
+    return api.json(`https://badges.roblox.com/v1/universes/${U}/badges?limit=50&sortOrder=Asc${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`, { ttl: 300000 }).then((j) => (j?.data ? { items: j.data, next: j.nextPageCursor || null } : null));
   }
-  const difficulty = (r) => {
-    if (r == null) return ["", "plain"];
-    if (r >= 0.9) return ["Super easy", "good"];
-    if (r >= 0.5) return ["Easy", "good"];
-    if (r >= 0.2) return ["Medium", "accent"];
-    if (r >= 0.05) return ["Hard", "warn"];
-    if (r >= 0.01) return ["Very hard", "bad"];
-    return ["Super rare", "bad"];
-  };
   function buildBadges(pane, ctx) {
-    const sec = ui.section("Badges", { icon: "medal", sub: "Win these by playing." });
     const list = h("div", { class: "gx-badges" }, ui.skeleton("row", 6));
-    const foot = h("div", { class: "gx-servers-foot" });
-    sec.body.append(list, foot);
-    pane.append(sec);
+    const foot = h("div", { class: "gx-foot" });
+    pane.append(list, foot);
     let first = true;
-    let ownedTotal = 0;
-    const ownedTag = h("span", { class: "cer-block-count", hidden: true });
-    sec.head.querySelector(".cer-block-title").append(ownedTag);
-    const page_ = async (cursor) => {
+    const more = async (cursor) => {
       const r = await loadBadges(ctx.universeId, cursor);
       if (first) list.replaceChildren();
       first = false;
-      if (!r) {
-        if (!list.children.length) sec.body.replaceChildren(ui.empty("Badges did not load.", { icon: "medal" }));
+      if (!r || (!r.items.length && !list.children.length)) {
+        pane.replaceChildren(ui.empty(r ? "No badges in this game." : "Badges did not load.", { icon: "medal" }));
         return;
       }
-      if (!r.items.length && !list.children.length) {
-        sec.body.replaceChildren(ui.empty("This game has no badges.", { icon: "medal" }));
-        return;
-      }
-      const cards = r.items.map(badgeCard);
-      list.append(...cards);
-      foot.replaceChildren(r.next ? ui.button("Show more", { variant: "soft", onClick: (e) => (e.currentTarget.busy?.(true), page_(r.next)) }) : "");
-      // which of these you own: one call per 50 badges
+      list.append(...r.items.filter((b) => b.enabled !== false).map(badgeRow));
+      foot.replaceChildren(r.next ? ui.button("Show more", { variant: "soft", onClick: (e) => (e.currentTarget.busy?.(true), more(r.next)) }) : "");
+      // which of these you have: one call per 50 badges
       const me = await ctx.mePromise;
       if (!me) return;
-      const ids = r.items.map((b) => b.id);
-      const own = await api.json(`https://badges.roblox.com/v1/users/${me.id}/badges/awarded-dates?badgeIds=${ids.join(",")}`);
+      const own = await api.json(`https://badges.roblox.com/v1/users/${me.id}/badges/awarded-dates?badgeIds=${r.items.map((b) => b.id).join(",")}`);
       for (const o of own?.data ?? []) {
         const el = list.querySelector(`[data-badge="${o.badgeId}"]`);
         if (!el) continue;
         el.classList.add("is-owned");
-        el.querySelector(".gx-badge-tags").prepend(h("span", { class: "cer-badge is-good", title: new Date(o.awardedDate).toLocaleString() }, ui.icon("check", 13), h("span", { text: "You have it" })));
-        ownedTotal++;
-      }
-      if (ownedTotal) {
-        ownedTag.hidden = false;
-        ownedTag.textContent = `${ownedTotal} owned`;
+        el.querySelector(".gx-badge-side").replaceChildren(h("span", { class: "gx-owned", title: new Date(o.awardedDate).toLocaleDateString() }, ui.icon("check", 15), "You have it"));
       }
     };
-    page_("");
+    more("");
   }
-  function badgeCard(b) {
+  function badgeRow(b) {
     const r = b.statistics?.winRatePercentage;
-    const [label, tone] = difficulty(r);
     const pct = r == null ? "" : r * 100 < 0.1 ? "<0.1%" : (r * 100).toFixed(r * 100 < 10 ? 1 : 0) + "%";
     return h(
       "a",
-      { class: "gx-badge" + (b.enabled === false ? " is-off" : ""), href: `https://www.roblox.com/badges/${b.id}`, "data-badge": b.id, title: b.displayName ?? b.name },
+      { class: "gx-badge", href: `https://www.roblox.com/badges/${b.id}`, "data-badge": b.id, title: b.displayName ?? b.name },
       h("div", { class: "gx-badge-art" }, ui.thumb("badge", b.id, { alt: "" })),
-      h(
-        "div",
-        { class: "gx-badge-main" },
-        h("div", { class: "gx-badge-name", text: b.displayName ?? b.name }),
-        (b.displayDescription ?? b.description) && h("div", { class: "gx-badge-desc", text: b.displayDescription ?? b.description }),
-        h(
-          "div",
-          { class: "gx-badge-tags" },
-          label && h("span", { class: "cer-badge is-" + tone, title: "Players who won it" }, h("span", { text: `${label} · ${pct}` })),
-          b.statistics?.awardedCount != null && h("span", { class: "gx-muted", text: fmt.num(b.statistics.awardedCount) + " won" }),
-          b.statistics?.pastDayAwardedCount ? h("span", { class: "gx-muted", text: fmt.num(b.statistics.pastDayAwardedCount) + " today" }) : null,
-          b.enabled === false && h("span", { class: "cer-badge", text: "Turned off" })
-        )
-      )
+      h("div", { class: "gx-badge-main" }, h("div", { class: "gx-badge-name", text: b.displayName ?? b.name }), (b.displayDescription ?? b.description) && h("div", { class: "gx-badge-desc", text: b.displayDescription ?? b.description })),
+      h("div", { class: "gx-badge-side" }, pct && h("span", { class: "gx-rarity", title: "Players who have it" }, pct))
     );
   }
 
   // ------------------------------------------------------------ More like this
+  // Roblox's picks; that endpoint sometimes answers with an empty list, so
+  // the maker's other games fill in.
   function buildMore(pane, ctx) {
     const { info } = ctx;
-    const card = (g, sub) => ui.gameCard(g, { features: ctx.feats, sub });
-    const recSec = ui.section("More like this", { icon: "sparkle", sub: "Games people also play." });
-    const recGrid = ui.grid(ui.skeleton("card", 8), { min: 220, gap: 18 });
-    recSec.body.append(recGrid);
-    const c = info.creator ?? {};
-    const byGroup = c.type === "Group";
-    const makerSec = ui.section("More from " + (c.name ?? "this maker"), {
-      icon: byGroup ? "users" : "user",
-      action: { label: "See maker", href: byGroup ? `https://www.roblox.com/communities/${c.id}` : `https://www.roblox.com/users/${c.id}/profile` },
-    });
-    const makerGrid = ui.grid(ui.skeleton("card", 4), { min: 220, gap: 18 });
-    makerSec.body.append(makerGrid);
-    pane.append(recSec, makerSec);
-
-    // Roblox's picks (this endpoint sometimes answers with an empty list)
-    const recP = api.json(`https://games.roblox.com/v1/games/recommendations/game/${ctx.universeId}?maxRows=12`, { ttl: 600000 }).then((j) => {
-      const games = (j?.games ?? []).filter((g) => String(g.universeId) !== ctx.universeId);
-      if (!games.length) return (recSec.hidden = true), 0;
-      recGrid.replaceChildren(...games.map((g) => card({ placeId: g.placeId, universeId: g.universeId, name: g.name, playing: g.playerCount, rating: fmt.pct(g.totalUpVotes, g.totalDownVotes) }, g.creatorName)));
-      return games.length;
-    });
-
-    // the maker's other public games, busiest first
-    const listUrl = byGroup
-      ? `https://games.roblox.com/v2/groups/${c.id}/gamesV2?accessFilter=Public&limit=50&sortOrder=Desc`
-      : `https://games.roblox.com/v2/users/${c.id}/games?accessFilter=Public&limit=50&sortOrder=Desc`;
-    const makerP = (c.id ? api.json(listUrl, { ttl: 600000 }) : Promise.resolve(null)).then(async (j) => {
-      const games = (j?.data ?? []).filter((g) => String(g.id) !== ctx.universeId).map((g) => ({ universeId: g.id, placeId: g.rootPlace?.id, name: g.name, visits: g.placeVisits }));
-      if (!games.length) return (makerSec.hidden = true), 0;
-      await ui.hydrateGames(games);
-      games.sort((a, b) => (b.playing ?? 0) - (a.playing ?? 0) || (b.visits ?? 0) - (a.visits ?? 0));
-      makerGrid.replaceChildren(...games.slice(0, 12).map((g) => card(g)));
-      return games.length;
-    });
-
-    Promise.all([recP, makerP]).then(([a, b]) => {
-      if (!a && !b) pane.append(ui.empty("No other games to show yet.", { icon: "sparkle" }));
-    });
+    const grid = ui.grid(ui.skeleton("card", 8), { min: 230, gap: 20 });
+    pane.append(grid);
+    const card = (g) => ui.gameCard(g, { features: ctx.feats });
+    (async () => {
+      const j = await api.json(`https://games.roblox.com/v1/games/recommendations/game/${ctx.universeId}?maxRows=12`, { ttl: 600000 });
+      let games = (j?.games ?? []).filter((g) => String(g.universeId) !== ctx.universeId).map((g) => ({ placeId: g.placeId, universeId: g.universeId, name: g.name, playing: g.playerCount, rating: fmt.pct(g.totalUpVotes, g.totalDownVotes) }));
+      if (!games.length && info.creator?.id) {
+        const c = info.creator;
+        const url = c.type === "Group" ? `https://games.roblox.com/v2/groups/${c.id}/gamesV2?accessFilter=Public&limit=50&sortOrder=Desc` : `https://games.roblox.com/v2/users/${c.id}/games?accessFilter=Public&limit=50&sortOrder=Desc`;
+        const mine = await api.json(url, { ttl: 600000 });
+        games = (mine?.data ?? []).filter((g) => String(g.id) !== ctx.universeId).map((g) => ({ universeId: g.id, placeId: g.rootPlace?.id, name: g.name }));
+        if (games.length) {
+          await ui.hydrateGames(games);
+          games.sort((a, b) => (b.playing ?? 0) - (a.playing ?? 0));
+          games = games.slice(0, 12);
+        }
+      }
+      if (!games.length) return pane.replaceChildren(ui.empty("Nothing to show yet.", { icon: "sparkle" }));
+      grid.replaceChildren(...games.map(card));
+    })();
   }
 })();

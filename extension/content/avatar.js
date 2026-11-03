@@ -91,9 +91,9 @@
     ui ? ui.chips(options.map(([id, label]) => ({ id, label })), initial, onChange) : CER.dropdown(options, initial, onChange);
 
   const root = CER.el("div", "cer-avatar-inline cer-ui");
-  const classic = ui ? ui.button("Use classic editor", { variant: "outline", size: "sm" }) : CER.el("button", "cer-profile-btn", "Use classic editor");
+  const classic = ui ? ui.button("Classic editor", { variant: "ghost", size: "sm" }) : CER.el("button", "cer-profile-btn", "Use classic editor");
   let head;
-  if (ui) head = ui.header({ title: "Avatar", icon: "shirt", sub: "Tap an item to put it on or take it off.", actions: [classic] });
+  if (ui) head = ui.header({ title: "Avatar", actions: [classic] });
   else {
     head = CER.el("div", "cer-avatar-head");
     head.appendChild(CER.el("h1", "cer-avatar-title", "Avatar Editor"));

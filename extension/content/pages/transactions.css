@@ -1,7 +1,7 @@
 /* CER transactions page. Scope every rule under [data-page="transactions"]. */
 
 [data-page="transactions"] .cer-trx {
-  max-width: 1240px;
+  max-width: 980px;
   gap: 32px;
 }
 [data-page="transactions"] {
@@ -9,7 +9,6 @@
   --tx-out: var(--cer-bad);
 }
 
-/* Robux amount: icon + number */
 [data-page="transactions"] .cer-trx-rbx {
   display: inline-flex;
   align-items: center;
@@ -17,19 +16,19 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+[data-page="transactions"] .cer-trx-rbx .cer-icon {
+  opacity: 0.8;
+}
 [data-page="transactions"] .cer-trx-rbx.is-in {
   color: var(--tx-in);
 }
 [data-page="transactions"] .cer-trx-rbx.is-out {
   color: var(--tx-out);
 }
-[data-page="transactions"] .cer-trx-muted {
-  color: var(--cer-text-3);
-}
 [data-page="transactions"] .cer-trx-sk {
   display: inline-block;
-  width: 90px;
-  height: 18px;
+  width: 110px;
+  height: 22px;
   border-radius: 6px;
   vertical-align: middle;
   background: linear-gradient(90deg, var(--cer-raise) 0%, var(--cer-hover) 50%, var(--cer-raise) 100%);
@@ -37,209 +36,84 @@
   animation: cer-shimmer 1.3s ease-in-out infinite;
 }
 [data-page="transactions"] .cer-trx-sk.w-l {
-  width: 70px;
+  width: 140px;
+  height: 30px;
 }
 
-/* header balance pill */
-[data-page="transactions"] .cer-trx-balance {
+/* top: title + balance */
+[data-page="transactions"] .cer-trx-top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 999px;
-  background: var(--cer-surface);
-  border: 1px solid var(--cer-line);
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
-[data-page="transactions"] .cer-trx-balance-label {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--cer-text-3);
-}
-[data-page="transactions"] .cer-trx-balance-val {
-  font-size: 16px;
+[data-page="transactions"] .cer-trx-title {
+  font-size: 30px;
   font-weight: 800;
+  letter-spacing: -0.02em;
 }
-
-/* section head: frame tabs + note */
-[data-page="transactions"] .cer-block-head {
-  align-items: center;
-}
-[data-page="transactions"] .cer-trx-frame-note {
-  order: 1;
-  color: var(--cer-text-3);
-  font-size: 14px;
-  font-weight: 600;
-}
-[data-page="transactions"] .cer-block-tools {
-  order: 2;
-}
-
-/* summary stats */
-[data-page="transactions"] .cer-trx-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-[data-page="transactions"] .cer-trx-stat {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 18px 20px;
-  border-radius: var(--cer-r-l);
-  background: var(--cer-surface);
-  border: 1px solid var(--cer-line);
-  overflow: hidden;
-}
-[data-page="transactions"] .cer-trx-stat-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--cer-raise);
-  color: var(--cer-text-2);
-  margin-bottom: 4px;
-}
-[data-page="transactions"] .cer-trx-stat.is-in .cer-trx-stat-icon {
-  background: color-mix(in srgb, var(--tx-in) 15%, transparent);
-  color: var(--tx-in);
-}
-[data-page="transactions"] .cer-trx-stat.is-out .cer-trx-stat-icon {
-  background: color-mix(in srgb, var(--tx-out) 15%, transparent);
-  color: var(--tx-out);
-}
-[data-page="transactions"] .cer-trx-stat.is-pend .cer-trx-stat-icon {
-  background: color-mix(in srgb, var(--cer-warn) 15%, transparent);
-  color: var(--cer-warn);
-}
-[data-page="transactions"] .cer-trx-stat-label {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--cer-text-3);
-}
-[data-page="transactions"] .cer-trx-stat-val {
-  font-size: 24px;
+[data-page="transactions"] .cer-trx-balance {
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.01em;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-}
-[data-page="transactions"] .cer-trx-stat-val .cer-icon {
-  opacity: 0.75;
 }
 
-/* breakdown bars */
-[data-page="transactions"] .cer-trx-break {
-  margin-top: 14px;
+/* period: in / out + picker */
+[data-page="transactions"] .cer-trx-period {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+}
+[data-page="transactions"] .cer-trx-flow {
+  display: flex;
+  gap: 40px;
+}
+[data-page="transactions"] .cer-trx-flow-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 14px 20px;
-  border-radius: var(--cer-r-l);
-  background: var(--cer-surface);
-  border: 1px solid var(--cer-line);
 }
-[data-page="transactions"] .cer-trx-break .cer-sk-line {
-  height: 16px;
-  margin: 8px 0;
-}
-[data-page="transactions"] .cer-trx-break .cer-empty {
-  border: 0;
-  padding: 24px 12px;
-}
-[data-page="transactions"] .cer-trx-break-empty {
-  padding: 10px 0;
-  color: var(--cer-text-3);
-  font-size: 14px;
-  font-weight: 600;
-  text-align: center;
-}
-[data-page="transactions"] .cer-trx-bar {
-  display: grid;
-  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) minmax(90px, auto);
-  align-items: center;
-  gap: 16px;
-  min-height: 38px;
-  font-size: 14px;
+[data-page="transactions"] .cer-trx-flow-label {
+  font-size: 13px;
   font-weight: 700;
+  color: var(--cer-text-3);
 }
-[data-page="transactions"] .cer-trx-bar-label {
+[data-page="transactions"] .cer-trx-big {
+  font-size: 22px;
+  font-weight: 800;
+  min-height: 28px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--cer-text-2);
-}
-[data-page="transactions"] .cer-trx-bar-label span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-[data-page="transactions"] .cer-trx-bar-label .cer-icon {
-  flex: none;
-  color: var(--cer-text-3);
-}
-[data-page="transactions"] .cer-trx-bar-track {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--cer-raise);
-  overflow: hidden;
-}
-[data-page="transactions"] .cer-trx-bar-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--tx-in);
-  transition: width 0.4s var(--cer-ease);
-}
-[data-page="transactions"] .cer-trx-bar.is-out .cer-trx-bar-fill {
-  background: var(--tx-out);
-}
-[data-page="transactions"] .cer-trx-bar > .cer-trx-rbx {
-  justify-content: flex-end;
 }
 
-/* history list */
-[data-page="transactions"] .cer-trx-listbox {
-  margin-top: 14px;
-  padding: 6px;
-  border-radius: var(--cer-r-l);
-  background: var(--cer-surface);
-  border: 1px solid var(--cer-line);
+/* history */
+[data-page="transactions"] .cer-block-head {
+  align-items: center;
 }
 [data-page="transactions"] .cer-trx-list {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 [data-page="transactions"] .cer-trx-list > .cer-sk-row {
   height: 60px;
-  margin: 4px;
-}
-[data-page="transactions"] .cer-trx-list > .cer-empty {
-  border: 0;
+  margin-bottom: 4px;
 }
 [data-page="transactions"] .cer-trx-row {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
-  padding: 10px 14px;
+  gap: 14px;
+  padding: 8px 12px;
+  margin: 0 -12px;
   border-radius: var(--cer-r-m);
   transition: background 0.15s;
 }
 [data-page="transactions"] .cer-trx-row:hover {
   background: var(--cer-raise);
-}
-[data-page="transactions"] .cer-trx-row + .cer-trx-row {
-  box-shadow: 0 -1px 0 var(--cer-line);
-}
-[data-page="transactions"] .cer-trx-row:hover,
-[data-page="transactions"] .cer-trx-row:hover + .cer-trx-row {
-  box-shadow: none;
 }
 [data-page="transactions"] .cer-trx-thumb {
   width: 48px;
@@ -257,7 +131,7 @@
 [data-page="transactions"] .cer-trx-main {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 [data-page="transactions"] .cer-trx-name {
@@ -268,67 +142,38 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-[data-page="transactions"] a.cer-trx-name:hover,
-[data-page="transactions"] .cer-trx-agent:hover {
+[data-page="transactions"] a.cer-trx-name:hover {
   text-decoration: underline !important;
 }
 [data-page="transactions"] .cer-trx-sub {
-  display: flex;
-  gap: 6px;
-  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--cer-text-3);
   white-space: nowrap;
-  overflow: hidden;
-}
-[data-page="transactions"] .cer-trx-sub > span {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-[data-page="transactions"] .cer-trx-agent {
-  color: var(--cer-text-2) !important;
-}
-[data-page="transactions"] .cer-trx-end {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  min-width: 0;
-}
-[data-page="transactions"] .cer-trx-date {
-  text-align: right;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cer-text-3);
-  white-space: nowrap;
 }
 [data-page="transactions"] .cer-trx-amt {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 8px;
   font-size: 15px;
   font-weight: 800;
+}
+[data-page="transactions"] .cer-trx-pend {
+  display: inline-flex;
+  color: var(--cer-warn);
 }
 [data-page="transactions"] .cer-trx-more {
   display: flex;
   justify-content: center;
 }
 [data-page="transactions"] .cer-trx-more:not(:empty) {
-  padding: 10px 0 8px;
+  padding-top: 16px;
 }
 
-@media (max-width: 1100px) {
-  [data-page="transactions"] .cer-trx-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 @media (max-width: 760px) {
-  [data-page="transactions"] .cer-trx-row {
-    gap: 12px;
-  }
-  [data-page="transactions"] .cer-trx-bar {
-    grid-template-columns: minmax(110px, 1fr) minmax(60px, 1fr) auto;
+  [data-page="transactions"] .cer-trx-flow {
+    gap: 24px;
   }
 }

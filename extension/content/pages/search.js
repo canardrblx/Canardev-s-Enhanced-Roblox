@@ -23,10 +23,10 @@
   })();
 
   const TABS = [
-    { id: "games", label: "Games", icon: "gamepad" },
-    { id: "people", label: "People", icon: "user" },
-    { id: "groups", label: "Groups", icon: "users" },
-    { id: "catalog", label: "Catalog", icon: "shirt" },
+    { id: "games", label: "Games" },
+    { id: "people", label: "People" },
+    { id: "groups", label: "Groups" },
+    { id: "catalog", label: "Catalog" },
   ];
 
   // ------------------------------------------------------------ url <-> state
@@ -74,7 +74,7 @@
     field.input.setAttribute("aria-label", "Search");
     field.input.setAttribute("enterkeyhint", "search");
     const tabs = ui.tabs(
-      TABS.map((t) => ({ id: t.id, label: t.label, icon: t.icon })),
+      TABS,
       st.tab,
       (id) => {
         if (id === "catalog") {
@@ -88,10 +88,9 @@
       }
     );
     tabs.classList.add("sr-tabs");
-    const status = h("div", { class: "sr-status", "aria-live": "polite" });
-    const results = h("div", { class: "sr-results" });
-    page.append(h("div", { class: "sr-top" }, h("h1", { class: "sr-title", text: "Search" }), field, h("div", { class: "sr-bar" }, tabs, status)), results);
-    Object.assign(S, { field, tabs, status, results });
+    const results = h("div", { class: "sr-results", "aria-live": "polite" });
+    page.append(h("div", { class: "sr-top" }, field, tabs), results);
+    Object.assign(S, { field, tabs, results });
     if (!st.q) requestAnimationFrame(() => field.input.focus());
     run();
   }
@@ -117,15 +116,8 @@
     const seq = ++S.seq;
     const { tab, q } = S;
     const ok = () => seq === S.seq && alive(S.root);
-    S.status.textContent = "";
-    if (!q) {
-      ui.clear(S.results, ui.empty(tab === "people" ? "Type a name to find people." : tab === "groups" ? "Type a name to find groups." : "Type a game name to search.", { icon: "search" }));
-      return;
-    }
-    if (tab === "people" && q.length < 3) {
-      ui.clear(S.results, ui.empty("Type 3 or more letters.", { icon: "user" }));
-      return;
-    }
+    if (!q) return ui.clear(S.results); // the focused field says it all
+    if (tab === "people" && q.length < 3) return ui.clear(S.results, note("Type 3 or more letters."));
     ui.clear(S.results, skeleton(tab));
     const load = tab === "people" ? searchPeople : tab === "groups" ? searchGroups : searchGames;
     load(q, ok);
@@ -137,23 +129,22 @@
     return ui.grid(ui.skeleton("row", 8).map((x) => (x.classList.add("sr-sk-group"), x)), { min: 360, gap: 14 });
   }
 
-  function failed(retry) {
-    return ui.empty("Search is not working right now.", { icon: "refresh", action: ui.button("Try again", { icon: "refresh", onClick: retry }) });
-  }
-  function nothing(q, what) {
-    return ui.empty(`No ${what} found for "${q}". Try other words.`, { icon: "search" });
-  }
+  const note = (text, action) => h("div", { class: "sr-note" }, h("p", { text }), action);
+  const failed = (retry) => note("Search is not working right now.", ui.button("Try again", { onClick: retry }));
+  const nothing = () => note("Nothing found. Try other words.");
 
-  // "Show more" button that loads the next page into `grid`
+  // Next page loads by itself when the end of the list scrolls near view.
   function moreButton(onMore) {
-    const b = ui.button("Show more", { icon: "down", variant: "soft", class: "sr-more" });
-    b.addEventListener("click", async () => {
-      b.busy(true);
-      const done = await onMore();
-      b.busy(false);
-      if (done) b.remove();
-    });
-    return b;
+    const spot = h("div", { class: "sr-more" }, ui.skeleton("line"));
+    const arm = () =>
+      ui.whenVisible(spot, async () => {
+        if (!spot.isConnected) return;
+        const done = await onMore();
+        if (done) spot.remove();
+        else requestAnimationFrame(arm);
+      });
+    arm();
+    return spot;
   }
 
   // ---- games
@@ -174,7 +165,7 @@
         .map(normGame)
         .filter((g) => g && !seen.has(g.universeId) && seen.add(g.universeId));
     const games = take(j.searchResults);
-    if (!games.length) return ui.clear(S.results, nothing(q, "games"));
+    if (!games.length) return ui.clear(S.results, nothing());
     const grid = ui.grid(
       games.map((g) => ui.gameCard(g)),
       { min: 220, gap: 20, class: "sr-games" }
@@ -201,7 +192,7 @@
     const j = await api.json(usersUrl(q), { ttl: 120000 });
     if (!ok()) return;
     if (!j?.data) return ui.clear(S.results, failed(run));
-    if (!j.data.length) return ui.clear(S.results, nothing(q, "people"));
+    if (!j.data.length) return ui.clear(S.results, nothing());
     const grid = ui.grid([], { min: 170, gap: 16, class: "sr-people" });
     const addUsers = (list) => {
       const tiles = list.map((u) => personTile(u, q));
@@ -229,7 +220,7 @@
 
   function personTile(u, q) {
     const href = `https://www.roblox.com/users/${u.id}/profile`;
-    const av = ui.avatar(u.id, { size: 96 });
+    const av = ui.avatar(u.id, { size: 120 });
     const status = h("span", { class: "sr-person-status" });
     // say why a result matched when it was an old name
     const lower = q.toLowerCase();
@@ -263,7 +254,7 @@
     const j = await api.json(groupsUrl(q), { ttl: 120000 });
     if (!ok()) return;
     if (!j?.data) return ui.clear(S.results, failed(run));
-    if (!j.data.length) return ui.clear(S.results, nothing(q, "groups"));
+    if (!j.data.length) return ui.clear(S.results, nothing());
     const grid = ui.grid(
       j.data.map(groupCard),
       { min: 360, gap: 14, class: "sr-groups" }
@@ -284,7 +275,6 @@
   }
 
   function groupCard(g) {
-    const desc = (g.description ?? "").replace(/\s+/g, " ").trim();
     return h(
       "a",
       { class: "sr-group", href: `https://www.roblox.com/communities/${g.id}`, title: g.name },
@@ -293,8 +283,7 @@
         "span",
         { class: "sr-group-main" },
         h("span", { class: "sr-group-name" }, h("span", { class: "sr-group-title", text: g.name }), g.hasVerifiedBadge && h("span", { class: "sr-verified", title: "Verified" }, ui.icon("verified", 15))),
-        h("span", { class: "sr-group-members" }, ui.icon("users", 14), h("span", { text: fmt.num(g.memberCount) + (g.memberCount === 1 ? " member" : " members") })),
-        desc && h("span", { class: "sr-group-desc", text: desc })
+        h("span", { class: "sr-group-members", text: fmt.num(g.memberCount) + (g.memberCount === 1 ? " member" : " members") })
       )
     );
   }

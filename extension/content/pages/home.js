@@ -1,11 +1,11 @@
-// CER home page (/home). Built only from CER.ui pieces + Roblox web APIs.
+// CER home page (/home). A game launcher, not a website: art first, little text.
 //
-//   greeting      avatar bust, "Hi, name", friends online, Robux, quick links
-//   jump back in  big hero for the last game + a rail of the rest (Continue)
-//   friends       strip: in game first, presence rings, game name, Join
-//   pinned        the user's own pinned games (storage key "pinnedGames")
-//   playing       games friends are in right now, stacked friend avatars
-//   favorites / recommended / more   lazy rails (ui.whenVisible)
+//   hero      the last game played, big art, one Play button
+//   continue  the rest of Continue, as a rail right under the hero
+//   friends   online first, presence rings, game name, small Join button
+//   pinned    the user's own pinned games (storage key "pinnedGames")
+//   playing   games friends are in now, friend faces on the art
+//   favorites / recommended   lazy rails (ui.whenVisible)
 //
 // Speed: the shell + skeletons mount synchronously; the last Continue list
 // (and its hero art URL) is cached in extension storage so a repeat visit
@@ -20,15 +20,7 @@
   const PIN_KEY = "pinnedGames"; // [{ universeId, placeId, name, at }]
   const CACHE_KEY = "cerHomeCache"; // { uid, t, cont: [game], heroImg }
   const MAX_PINS = 40;
-  const SECTIONS = [
-    { id: "continue", label: "Jump back in" },
-    { id: "friends", label: "Friends" },
-    { id: "pinned", label: "Pinned games" },
-    { id: "playing", label: "Friends are playing" },
-    { id: "favorites", label: "Favorites" },
-    { id: "recommended", label: "Recommended" },
-    { id: "more", label: "More games" },
-  ];
+  const MAX_FRIENDS = 40;
 
   let gen = 0; // bumps on every (re)start; stale async work checks it
   let refreshTimer = null;
@@ -52,7 +44,6 @@
       rating: up != null ? fmt.pct(up, down) : null,
     };
   }
-  // keep only what the cache / pins need
   const slim = (g) => ({ universeId: g.universeId, placeId: g.placeId, name: g.name, playing: g.playing, rating: g.rating });
 
   // omni-recommendation → [{ topic, games }] (game sorts only, no ads)
@@ -75,6 +66,8 @@
     }
     return out;
   }
+  const findSort = (sorts, re) => sorts?.find((s) => re.test(s.topic));
+  const recSort = (sorts) => findSort(sorts, /recommended/i) ?? sorts?.find((s) => !/continue|favorit|friend|sponsor/i.test(s.topic));
 
   // fill missing name / placeId / playing / rating
   async function fill(games) {
@@ -111,14 +104,13 @@
     async toggle(g) {
       await this.load();
       const on = !this.has(g.universeId);
-      if (on && this.list.length >= MAX_PINS) return CER.toast?.("You have too many pins", "error");
+      if (on && this.list.length >= MAX_PINS) return CER.toast?.("Too many pins", "error");
       this.list = on ? [{ universeId: g.universeId, placeId: g.placeId, name: g.name, at: Date.now() }, ...this.list] : this.list.filter((p) => String(p.universeId) !== String(g.universeId));
       try {
         await store.set({ [PIN_KEY]: this.list });
       } catch {
         /* extension reloaded */
       }
-      CER.toast?.(on ? "Pinned!" : "Unpinned");
       onPinsChanged();
     },
   };
@@ -140,7 +132,7 @@
   }
   function setPinState(b, on) {
     b.classList.toggle("is-on", on);
-    b.title = on ? "Unpin" : "Pin to home";
+    b.title = on ? "Unpin" : "Pin";
     b.setAttribute("aria-label", b.title);
     b.setAttribute("aria-pressed", on ? "true" : "false");
   }
@@ -155,7 +147,7 @@
     return b;
   }
 
-  // game card + pin toggle
+  // game card + pin toggle (shows on hover, stays when pinned)
   function card(g, opts = {}) {
     const c = ui.gameCard(g, { features: feats, ...opts });
     if (g.universeId) c.querySelector(".cer-gc-media")?.append(pinButton(g));
@@ -169,144 +161,103 @@
     return r;
   }
   const cardSkeletons = (n = 6) => rail(ui.skeleton("card", n));
-  function section(id, title, opts = {}) {
+  function section(title, opts = {}) {
     const s = ui.section(title, opts);
-    s.dataset.sec = id;
     s.classList.add("home-sec");
     s.body.classList.add("home-cq");
     return s;
+  }
+  // overlapping friend faces
+  function faces(friends, max = 3) {
+    return h(
+      "span",
+      { class: "home-faces" },
+      friends.slice(0, max).map((f) => h("span", { class: "home-face", title: f.displayName || f.name }, ui.thumb("headshot", f.id, { alt: "" }))),
+      friends.length > max && h("span", { class: "home-faces-more", text: "+" + (friends.length - max) })
+    );
   }
 
   // ------------------------------------------------------------ shell
   function buildShell(page) {
     const r = { page };
-    // greeting
-    r.greetAv = h("a", { class: "home-greet-av", title: "My profile" });
-    r.greetName = h("h1", { class: "home-greet-title" }, h("span", { class: "cer-sk home-sk-text" }));
-    r.greetUser = h("div", { class: "home-greet-user" });
-    r.greetStats = h("div", { class: "home-greet-stats" });
-    r.greet = h(
-      "header",
-      { class: "home-greet" },
-      r.greetAv,
-      h("div", { class: "home-greet-text" }, r.greetName, r.greetUser, r.greetStats),
-      h(
-        "nav",
-        { class: "home-greet-actions" },
-        ui.button("Avatar", { icon: "shirt", href: "https://www.roblox.com/my/avatar" }),
-        ui.button("Friends", { icon: "users", href: "https://www.roblox.com/users/friends" }),
-        ui.button("Discover", { icon: "compass", href: "https://www.roblox.com/charts" }),
-        ui.button("", { icon: "sliders", variant: "ghost", title: "Change home", onClick: openCustomize })
-      )
-    );
-
-    // jump back in: hero + rail
     r.hero = h("div", { class: "cer-sk home-hero-sk" });
-    r.contRail = h("div", { class: "home-cont-rail" }, cardSkeletons(6));
-    r.cont = h("section", { class: "home-sec home-jump", dataset: { sec: "continue" } }, r.hero, h("div", { class: "home-cq" }, r.contRail));
+    r.contRail = h("div", { class: "home-cq home-cont" }, cardSkeletons(6));
+    r.top = h("section", { class: "home-top" }, r.hero, r.contRail);
 
-    // friends strip
-    r.friends = section("friends", "Friends", { icon: "users", action: { label: "See all", href: "https://www.roblox.com/users/friends" } });
+    r.friends = section("Friends", { action: { label: "See all", href: "https://www.roblox.com/users/friends" } });
     r.friends.body.append(rail(Array.from({ length: 12 }, () => h("div", { class: "home-friend-sk" }, h("span", { class: "cer-sk" }), h("span", { class: "cer-sk cer-sk-line" }))), "home-friend-rail"));
 
-    r.pinned = section("pinned", "Pinned games", { icon: "pin" });
+    r.pinned = section("Pinned");
     r.pinned.hidden = true;
 
-    r.playing = section("playing", "Friends are playing", { icon: "gamepad" });
+    r.playing = section("Friends are playing");
     r.playing.hidden = true;
 
-    r.favorites = section("favorites", "Favorites", { icon: "star" });
+    r.favorites = section("Favorites");
     r.favorites.body.append(cardSkeletons(6));
 
-    r.recommended = section("recommended", "Recommended for you", { icon: "sparkle", action: { label: "Discover", href: "https://www.roblox.com/charts" } });
+    r.recommended = section("Recommended");
     r.recommended.body.append(cardSkeletons(6));
 
-    r.more = h("div", { class: "home-more", dataset: { sec: "more" } });
-
-    page.append(r.greet, r.cont, r.friends, r.pinned, r.playing, r.favorites, r.recommended, r.more);
+    page.append(r.top, r.friends, r.pinned, r.playing, r.favorites, r.recommended);
     return r;
   }
 
-  async function applyHidden() {
-    const hidden = new Set((await CER.get()).uiState?.homeHidden ?? []);
-    if (!S) return;
-    for (const el of S.page.querySelectorAll("[data-sec]")) el.classList.toggle("is-user-hidden", hidden.has(el.dataset.sec));
-  }
-
-  // ------------------------------------------------------------ greeting
-  function renderGreeting(me) {
-    S.greetAv.href = `https://www.roblox.com/users/${me.id}/profile`;
-    S.greetAv.replaceChildren(ui.thumb("bust", me.id, { alt: "" }));
-    S.greetName.replaceChildren(h("span", { text: "Hi, " + (me.displayName || me.name) }));
-    S.greetUser.textContent = "@" + me.name;
-    S.statOnline = h("a", { class: "home-pill", href: "https://www.roblox.com/users/friends" }, h("span", { class: "home-dot" }), h("span", { class: "home-sk-inline cer-sk" }));
-    S.statRobux = h("a", { class: "home-pill", href: "https://www.roblox.com/transactions", title: "My Robux" }, ui.icon("robux", 15), h("span", { class: "home-sk-inline cer-sk" }));
-    S.greetStats.replaceChildren(S.statOnline, S.statRobux);
-  }
-  function setOnlineStat(n) {
-    if (!S?.statOnline) return;
-    S.statOnline.replaceChildren(h("span", { class: "home-dot" + (n ? "" : " is-off") }), h("span", { text: n == null ? "Friends" : n === 1 ? "1 friend online" : `${fmt.num(n)} friends online` }));
-  }
-
-  // ------------------------------------------------------------ jump back in
-  function renderHero(g, heroImg) {
+  // ------------------------------------------------------------ hero
+  // `eyebrow`: "Jump back in" for Continue, "Try this" when we fall back to a pick
+  function renderHero(g, heroImg, eyebrow = "Jump back in") {
     const image = heroImg ? Promise.resolve(heroImg) : api.thumb("gameThumb", g.universeId);
     const hero = ui.hero({
       class: "home-hero",
-      eyebrow: "Jump back in",
-      eyebrowIcon: "clock",
+      eyebrow,
       title: clean(g.name),
-      stats: [g.playing != null && { icon: "users", label: fmt.num(g.playing) + " playing" }, g.rating != null && { icon: "like", label: g.rating + "% like it" }].filter(Boolean),
+      stats: [g.playing != null && { icon: "users", label: fmt.num(g.playing) }, g.rating != null && { icon: "like", label: g.rating + "%" }].filter(Boolean),
       image,
       art: h("a", { href: gameUrl(g), class: "home-hero-art", "aria-label": clean(g.name) }, ui.thumb("gameThumb", g.universeId, { src: heroImg, alt: "" })),
-      actions: [ui.button("Play", { icon: "play", variant: "light", size: "lg", onClick: () => ui.play(g.placeId) }), ui.button("Details", { variant: "glass", size: "lg", href: gameUrl(g) }), pinButton(g, "is-glass")],
+      actions: [ui.button("Play", { icon: "play", variant: "light", size: "lg", onClick: () => ui.play(g.placeId) }), pinButton(g, "is-hero")],
     });
     S.hero.replaceWith(hero);
     S.hero = hero;
     S.heroGame = g;
     image.then((url) => url && S.heroGame === g && (S.heroImg = url));
-    if (S.groups) heroFriends();
+    heroFaces();
   }
-  // "2 friends here" on the hero once presence is in
-  function heroFriends() {
+  // friends in the hero game: faces only, no words
+  function heroFaces() {
     const g = S.heroGame;
     if (!g || !S.hero?.isConnected) return;
-    S.hero.querySelector(".home-hero-friends")?.remove();
+    S.hero.querySelector(".home-hero-faces")?.remove();
     const grp = S.groups?.get(String(g.universeId));
-    if (!grp) return;
-    const n = grp.friends.length;
-    S.hero.querySelector(".cer-hero-stats")?.append(h("span", { class: "cer-hero-stat home-hero-friends" }, stack(grp.friends, 4, 24), h("span", { text: n === 1 ? "1 friend here" : n + " friends here" })));
+    if (grp) S.hero.querySelector(".cer-hero-stats")?.append(h("span", { class: "cer-hero-stat home-hero-faces" }, faces(grp.friends, 4)));
   }
   function renderContinue(games, heroImg) {
-    if (!games.length) {
-      const empty = h("div", { class: "home-hero-empty" }, ui.empty("Play a game and it shows up here.", { icon: "gamepad", action: ui.button("Find a game", { icon: "compass", variant: "primary", href: "https://www.roblox.com/charts" }) }));
-      S.hero.replaceWith(empty);
-      S.hero = empty;
-      S.heroGame = null;
-      S.contRail.replaceChildren();
-      return;
-    }
+    if (!games.length) return;
     const [first, ...rest] = games;
+    S.heroPick = false;
     if (!S.heroGame || String(S.heroGame.universeId) !== String(first.universeId)) renderHero(first, heroImg);
     const key = rest.map((g) => g.universeId).join(",");
     if (S.contKey === key) return;
     S.contKey = key;
     S.contRail.replaceChildren(rest.length ? rail(rest.map((g) => card(g))) : "");
   }
+  // nothing to continue: lead with a pick instead of an empty box
+  async function heroFallback(sorts) {
+    const pick = recSort(sorts)?.games?.slice(0, 1) ?? [];
+    const g = (await fill(pick))[0];
+    if (!S.hero.isConnected) return;
+    if (g) {
+      renderHero(g, null, "Try this");
+      S.heroPick = true;
+    }
+    else S.hero.replaceWith((S.hero = h("div", { class: "home-hero-none" }, ui.button("Find a game", { icon: "compass", variant: "light", size: "lg", href: "https://www.roblox.com/charts" }))));
+    S.contRail.replaceChildren();
+  }
 
   // ------------------------------------------------------------ friends
-  function stack(friends, max = 3, size = 28) {
-    return h(
-      "span",
-      { class: "home-stack", style: { "--av": size + "px" } },
-      friends.slice(0, max).map((f) => h("span", { class: "home-stack-av", title: f.displayName || f.name }, ui.thumb("headshot", f.id, { alt: "" }))),
-      friends.length > max && h("span", { class: "home-stack-more", text: "+" + (friends.length - max) })
-    );
-  }
   function friendTile(f, p) {
     const state = api.presenceState(p);
     const name = f.displayName || f.name || "";
-    const sub = state === "ingame" ? p.lastLocation || "Playing" : state === "studio" ? "In Studio" : state === "online" ? "Online" : "";
+    const game = state === "ingame" ? p.lastLocation || "" : "";
     const join =
       state === "ingame" &&
       p.placeId &&
@@ -324,39 +275,32 @@
             ui.play(p.placeId, p.gameId);
           },
         },
-        ui.icon("play", 12),
-        h("span", { text: "Join" })
+        ui.icon("play", 13)
       );
     return h(
       "a",
-      { class: "home-friend is-" + state, href: `https://www.roblox.com/users/${f.id}/profile`, title: name + (sub ? ": " + sub : "") },
-      h("span", { class: "home-friend-av" }, ui.avatar(f.id, { size: 72, presence: p }), join),
+      { class: "home-friend is-" + state, href: `https://www.roblox.com/users/${f.id}/profile`, title: game ? name + ": " + game : name },
+      h("span", { class: "home-friend-av" }, ui.avatar(f.id, { size: 76, presence: p }), join),
       h("span", { class: "home-friend-name", text: name }),
-      h("span", { class: "home-friend-sub is-" + state, text: sub || " " })
+      h("span", { class: "home-friend-game", text: game || " " })
     );
   }
   function renderFriends(list, pres) {
-    const body = S.friends.body;
-    if (!list) return body.replaceChildren(ui.empty("Could not load friends.", { icon: "users" }));
-    if (!list.length) return body.replaceChildren(ui.empty("No friends yet. Add some to see them here!", { icon: "userPlus" }));
+    const sec = S.friends;
+    if (!list) return sec.body.replaceChildren(ui.empty("Could not load friends.", { icon: "users" }));
+    if (!list.length) return (sec.hidden = true);
     const rows = list.map((f, i) => ({ f, p: pres?.get(String(f.id)), i }));
     rows.sort((a, b) => rank[api.presenceState(a.p)] - rank[api.presenceState(b.p)] || a.i - b.i);
-    const online = rows.filter((r) => api.presenceState(r.p) !== "offline").length;
-    setOnlineStat(pres ? online : null);
-    const sub = S.friends.head.querySelector(".cer-block-sub");
-    const text = pres ? (online ? `${fmt.num(online)} online` : "Nobody online") : "";
-    if (sub) sub.textContent = text;
-    else if (text) S.friends.head.insertBefore(h("div", { class: "cer-block-sub", text }), S.friends.head.querySelector(".cer-block-tools"));
-    const shown = rows.slice(0, 60);
+    const shown = rows.slice(0, MAX_FRIENDS);
     const sig = shown.map((r) => r.f.id + ":" + api.presenceState(r.p) + ":" + (r.p?.gameId ?? r.p?.universeId ?? "")).join("|");
     if (S.friendSig === sig) return;
     S.friendSig = sig;
-    const old = body.querySelector(".cer-rail-track")?.scrollLeft ?? 0;
+    const old = sec.body.querySelector(".cer-rail-track")?.scrollLeft ?? 0;
     const r = rail(
       shown.map((x) => friendTile(x.f, x.p)),
       "home-friend-rail"
     );
-    body.replaceChildren(r);
+    sec.body.replaceChildren(r);
     if (old) r.track.scrollLeft = old;
   }
 
@@ -380,18 +324,14 @@
     const sig = list.map((g) => g.game.universeId + ":" + g.friends.map((f) => f.id).join(".")).join("|");
     if (S.playSig === sig) return;
     S.playSig = sig;
-    if (!list.length) {
-      sec.hidden = true;
-      return;
-    }
+    if (!list.length) return (sec.hidden = true);
     const games = await fill(list.map((g) => g.game));
     if (my !== gen || S.playSig !== sig) return;
     const byId = new Map(list.map((g) => [String(g.game.universeId), g]));
     const cards = games.map((g) => {
       const grp = byId.get(String(g.universeId));
-      const n = grp?.friends.length ?? 0;
-      const c = card(g, { sub: n === 1 ? "1 friend" : n + " friends" });
-      if (grp) c.querySelector(".cer-gc-media")?.append(h("span", { class: "home-gc-friends" }, stack(grp.friends, 3, 30)));
+      const c = card(g);
+      if (grp) c.querySelector(".cer-gc-media")?.append(h("span", { class: "home-gc-faces" }, faces(grp.friends, 3)));
       return c;
     });
     sec.body.replaceChildren(rail(cards));
@@ -418,13 +358,14 @@
   }
 
   // ------------------------------------------------------------ lazy rails
-  function lazyRail(sec, load, emptyText, emptyOpts = {}) {
+  // null = failed (small error), [] = nothing (section hides)
+  function lazyRail(sec, load) {
     ui.whenVisible(sec, async () => {
       const my = gen;
       const games = await safe(load());
       if (my !== gen) return;
-      if (!games) return sec.body.replaceChildren(ui.empty("Could not load this. Try again soon.", { icon: "refresh" }));
-      if (!games.length) return sec.body.replaceChildren(ui.empty(emptyText, emptyOpts));
+      if (!games) return sec.body.replaceChildren(ui.empty("Could not load this.", { icon: "refresh" }));
+      if (!games.length) return (sec.hidden = true);
       sec.body.replaceChildren(rail(games.map((g) => card(g))));
     });
   }
@@ -441,30 +382,6 @@
     const rows = Object.entries(o?.playtime ?? {}).map(([uid, e]) => ({ uid, last: Object.keys(e.days ?? {}).sort().pop() ?? "", total: e.total ?? 0 }));
     rows.sort((a, b) => (b.last > a.last ? 1 : b.last < a.last ? -1 : b.total - a.total));
     return fill(rows.slice(0, 20).map((r) => ({ universeId: Number(r.uid) })));
-  }
-
-  // ------------------------------------------------------------ customize
-  async function openCustomize() {
-    const hidden = new Set((await CER.get()).uiState?.homeHidden ?? []);
-    const rows = SECTIONS.map((s) =>
-      h(
-        "label",
-        { class: "home-cust-row" },
-        h("span", { text: s.label }),
-        ui.toggle(!hidden.has(s.id), async (on) => {
-          on ? hidden.delete(s.id) : hidden.add(s.id);
-          const cur = await CER.get();
-          await CER.set({ uiState: { ...cur.uiState, homeHidden: [...hidden] } });
-          applyHidden();
-        })
-      )
-    );
-    ui.modal({
-      title: "Change home",
-      class: "home-cust",
-      body: h("div", {}, h("p", { class: "home-cust-hint", text: "Pick what shows on your home." }), h("div", { class: "home-cust-list" }, rows)),
-      actions: [{ label: "Done", variant: "primary" }],
-    });
   }
 
   // ------------------------------------------------------------ cache
@@ -490,11 +407,9 @@
     if (!alive()) return;
     if (!me) return ui.release();
     feats = (await settingsP).features ?? {};
-    applyHidden();
-    renderGreeting(me);
 
     // everything below runs in parallel
-    // null = the call failed (shown as an error), [] = nothing to show
+    // null = the call failed, [] = nothing to show
     const omniP = api.json(OMNI, { method: "POST", body: { pageType: "Home", sessionId: crypto.randomUUID() }, bg: true }).then((j) => (j ? parseOmni(j) : null));
     // raw read first so a failed call is told apart from "no friends" (api.friends hides it); same URL + ttl, so no second request
     const friendsP = api.json(`https://friends.roblox.com/v1/users/${me.id}/friends`, { ttl: 60000 }).then((j) => (j ? safe(api.friends(me.id)) : null));
@@ -504,29 +419,24 @@
     const cache = await cacheP;
     if (alive() && cache?.uid === me.id && Date.now() - cache.t < 7 * 864e5 && cache.cont?.length) renderContinue(cache.cont, cache.heroImg);
 
-    api.json(`https://economy.roblox.com/v1/users/${me.id}/currency`, { ttl: 60000 }).then((j) => {
-      if (!alive() || !S.statRobux) return;
-      if (j?.robux == null) return S.statRobux.remove();
-      S.statRobux.replaceChildren(ui.icon("robux", 15), h("span", { text: fmt.full(j.robux) }));
-      S.statRobux.title = fmt.full(j.robux) + " Robux";
-    });
-
-    // jump back in
+    // hero + continue
     omniP.then(async (sorts) => {
       if (!alive()) return;
-      const cont = sorts?.find((s) => /continue/i.test(s.topic))?.games ?? [];
-      let games = await fill(cont.slice(0, 24));
+      let games = await fill((findSort(sorts, /continue/i)?.games ?? []).slice(0, 24));
       if (!games.length) games = (await safe(playtimeRecent())) ?? [];
       if (!alive()) return;
+      if (!games.length) {
+        if (!S.heroGame) heroFallback(sorts);
+        return;
+      }
       renderContinue(games);
-      // cache once the hero art URL is known
       const first = games[0];
-      const done = (u) => {
+      // cache once the hero art URL is known (a failed load keeps the old cache)
+      api.thumb("gameThumb", first.universeId).then((u) => {
         if (!alive()) return;
-        if (u && S.heroGame && String(S.heroGame.universeId) === String(first?.universeId)) S.heroImg = u;
+        if (u && S.heroGame && String(S.heroGame.universeId) === String(first.universeId)) S.heroImg = u;
         writeCache(me.id, games);
-      };
-      if (first) api.thumb("gameThumb", first.universeId).then(done); // a failed load keeps the old cache
+      });
     });
 
     // friends + presence
@@ -535,17 +445,13 @@
     const applyPresence = (pres) => {
       renderFriends(friendList, pres);
       S.groups = groupPlaying(friendList, pres);
-      heroFriends();
+      heroFaces();
       renderPlaying(S.groups);
     };
     friendsP.then(async (list) => {
       if (!alive()) return;
       friendList = list;
-      if (!list?.length) {
-        renderFriends(list, new Map());
-        setOnlineStat(list ? 0 : null);
-        return;
-      }
+      if (!list?.length) return renderFriends(list, null);
       // names first (rings fill a beat later) so the strip never waits
       renderFriends(list, null);
       const pres = await loadPresence();
@@ -561,34 +467,16 @@
     });
 
     // lower rails, only when scrolled near
-    const recSort = (sorts) => sorts.find((s) => /recommended/i.test(s.topic)) ?? sorts.find((s) => !/continue|favorit|friend/i.test(s.topic));
-    lazyRail(S.favorites, () => loadFavorites(me.id), "Tap the star on a game to add it here.", { icon: "star" });
-    lazyRail(
-      S.recommended,
-      async () => {
-        const sorts = await omniP;
-        if (!sorts) return null;
-        const rec = recSort(sorts);
-        return rec ? fill(rec.games.slice(0, 30)) : [];
-      },
-      "No picks right now. Try Discover!",
-      { icon: "compass", action: ui.button("Discover", { icon: "compass", href: "https://www.roblox.com/charts" }) }
-    );
-    omniP.then((sorts) => {
-      if (!alive() || !sorts) return;
-      const recTopic = recSort(sorts)?.topic;
-      const extra = sorts.filter((s) => s.topic && s.topic !== recTopic && !/continue|favorit|sponsor|friend/i.test(s.topic) && s.games.length >= 4).slice(0, 3);
-      for (const s of extra) {
-        const sec = section("more", s.topic, { icon: "flame" });
-        sec.body.append(cardSkeletons(6));
-        S.more.append(sec);
-        lazyRail(sec, () => fill(s.games.slice(0, 30)), "Nothing here yet.");
-      }
+    lazyRail(S.favorites, () => loadFavorites(me.id));
+    lazyRail(S.recommended, async () => {
+      const sorts = await omniP;
+      if (!sorts) return null;
+      const rec = recSort(sorts);
+      // the hero fallback already shows the first pick
+      const games = rec ? await fill(rec.games.slice(0, 30)) : [];
+      return S.heroPick ? games.filter((g) => String(g.universeId) !== String(S.heroGame.universeId)) : games;
     });
   }
 
   ui.route("home", start);
-  CER.onSettingsChanged?.((ch) => {
-    if (ch.uiState && S?.page.isConnected) applyHidden();
-  });
 })();

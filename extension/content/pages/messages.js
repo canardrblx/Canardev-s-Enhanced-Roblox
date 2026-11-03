@@ -125,13 +125,6 @@
     if (!box.childNodes.length) box.append(h("span", { class: "ms-muted", text: "This message is empty." }));
     return box;
   }
-  const previewOf = (raw) =>
-    segments(raw)
-      .map((s) => s.text)
-      .join("")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 140);
 
   function shortDate(d) {
     const t = new Date(d);
@@ -153,18 +146,17 @@
 
     // shell first
     const { page } = ui.page("messages", "ms-view");
-    const sub = h("p", { class: "cer-view-sub ms-sub" });
-    const markAll = ui.button("Mark all read", { icon: "check", variant: "soft", size: "sm", class: "ms-markall" });
+    const markAll = ui.button("Mark all read", { variant: "ghost", size: "sm", class: "ms-markall" });
     markAll.hidden = true;
-    const head = ui.header({ title: "Messages", icon: "mail", actions: [markAll] });
-    head.querySelector(".cer-view-head-text").append(sub);
-    const tabSlot = h("div", { class: "ms-toolbar" }, h("div", { class: "cer-sk ms-sk-tabs" }));
+    const head = ui.header({ title: "Messages" });
+    const tabSlot = h("div", { class: "cer-sk ms-sk-tabs" });
+    const toolbar = h("div", { class: "ms-toolbar" }, tabSlot, markAll);
     const listBody = h("div", { class: "ms-list-body" }, rowSkeletons());
     const pager = h("div", { class: "ms-pager" });
     const listPane = h("section", { class: "ms-pane ms-list", "aria-label": "Messages" }, listBody, pager);
     const reader = h("section", { class: "ms-pane ms-reader", "aria-live": "polite" }, readerIdle());
     const split = h("div", { class: "ms-split" }, listPane, reader);
-    page.append(head, tabSlot, split);
+    page.append(head, toolbar, split);
 
     const me = await api.me();
     if (!session.alive) return;
@@ -172,15 +164,15 @@
 
     // ---- tabs
     const tabItems = [
-      { id: "inbox", label: "Inbox", icon: "mail" },
-      { id: "sent", label: "Sent", icon: "send" },
-      { id: "archive", label: "Archive", icon: "archive" },
+      { id: "inbox", label: "Inbox" },
+      { id: "sent", label: "Sent" },
+      { id: "archive", label: "Archive" },
     ];
     let tab = tabFromHash();
     if (tab === "news") tab = "inbox"; // until we know the news feed exists
     const wantNews = tabFromHash() === "news";
     const tabs = ui.tabs(tabItems, tab, (id) => go(id, true));
-    tabSlot.replaceChildren(tabs);
+    tabSlot.replaceWith(tabs);
 
     // ---- state
     let pageNo = 0;
@@ -195,15 +187,14 @@
       unread = Math.max(0, n);
       tabItems[0].count = unread || null;
       tabs.set(tab);
-      sub.textContent = unread ? unread + (unread === 1 ? " unread message" : " unread messages") : "You are all caught up.";
     };
     api.json(`${PM}/messages/unread/count`).then((j) => setUnread(j?.count));
 
-    // News / announcements: only shown when the API returns something.
+    // News / announcements: a tab only when there is some.
     api.json(`${PM}/announcements`).then((j) => {
-      if (!session.alive || !j || !Array.isArray(j.collection)) return;
+      if (!session.alive || !j?.collection?.length) return;
       news = j.collection;
-      tabItems.push({ id: "news", label: "News", icon: "megaphone", count: null });
+      tabItems.push({ id: "news", label: "News" });
       tabs.set(tab);
       if (wantNews) go("news", false);
     });
@@ -220,7 +211,7 @@
         if (tok !== loadTok || !session.alive) return;
         if (!j || !Array.isArray(j.collection)) {
           data = null;
-          listBody.replaceChildren(ui.empty("Could not load messages. Try again soon.", { icon: "mail", action: ui.button("Try again", { icon: "refresh", variant: "soft", size: "sm", onClick: loadList }) }));
+          listBody.replaceChildren(ui.empty("Could not load messages.", { icon: "mail", action: ui.button("Try again", { variant: "soft", size: "sm", onClick: loadList }) }));
           markAll.hidden = true;
           return;
         }
@@ -234,7 +225,7 @@
       const unreadHere = msgs.filter((m) => !m.isRead && tab !== "sent" && tab !== "news");
       markAll.hidden = !unreadHere.length;
       if (!msgs.length) {
-        const empty = { inbox: pageNo ? "No more messages." : "Your inbox is empty.", sent: "You have not sent any messages.", archive: "Nothing in your archive.", news: "No news right now." }[tab];
+        const empty = { inbox: pageNo ? "No more messages." : "No messages.", sent: "No sent messages.", archive: "Archive is empty.", news: "No news." }[tab];
         listBody.replaceChildren(ui.empty(empty, { icon: tab === "archive" ? "archive" : tab === "news" ? "megaphone" : "mail" }));
       } else listBody.replaceChildren(...msgs.map(row));
       // pager
@@ -242,10 +233,13 @@
       if (tab !== "news" && (pageNo > 0 || total > 1)) {
         const prev = ui.button("", { icon: "left", variant: "ghost", size: "sm", title: "Newer", disabled: pageNo === 0, onClick: () => ((pageNo -= 1), loadList()) });
         const next = ui.button("", { icon: "right", variant: "ghost", size: "sm", title: "Older", disabled: pageNo >= total - 1, onClick: () => ((pageNo += 1), loadList()) });
-        pager.replaceChildren(prev, h("span", { class: "ms-pager-text", text: `Page ${pageNo + 1} of ${Math.max(total, 1)}` }), next);
+        pager.replaceChildren(prev, h("span", { class: "ms-pager-text", text: `${pageNo + 1} / ${Math.max(total, 1)}` }), next);
       } else pager.replaceChildren();
       // keep the open message if it is still on this page
       if (openId && !msgs.some((m) => String(m.id) === String(openId))) closeReader();
+      // wide screens: fill the reader with the newest message, but only one
+      // that is already read (opening an unread one would mark it read)
+      if (!openId && !split.classList.contains("is-narrow") && msgs[0] && (msgs[0].isRead || tab === "sent" || tab === "news")) open(msgs[0]);
     }
 
     function other(m) {
@@ -260,13 +254,12 @@
         "button",
         { type: "button", class: "ms-row" + (isUnread ? " is-unread" : "") + (String(m.id) === String(openId) ? " is-active" : ""), dataset: { id: m.id }, onClick: () => open(m) },
         h("span", { class: "ms-dot", "aria-label": isUnread ? "Unread" : null }),
-        ui.avatar(who.id ?? 1, { size: 42 }),
+        ui.avatar(who.id ?? 1, { size: 40 }),
         h(
           "span",
           { class: "ms-row-main" },
           h("span", { class: "ms-row-top" }, h("span", { class: "ms-from", text: (tab === "sent" ? "To " : "") + (who.displayName || who.name || "Roblox") }), h("span", { class: "ms-date", text: shortDate(m.created) })),
-          h("span", { class: "ms-subj", text: m.subject || "No subject" }),
-          h("span", { class: "ms-preview", text: previewOf(m.body) })
+          h("span", { class: "ms-subj", text: m.subject || "No subject" })
         )
       );
       r.msg = m;
@@ -281,7 +274,7 @@
 
     // ---- reader
     function readerIdle() {
-      return h("div", { class: "ms-idle" }, h("span", { class: "cer-empty-icon" }, ui.icon("mail", 26)), h("p", { text: "Pick a message to read it." }));
+      return h("div", { class: "ms-idle" }, ui.icon("mail", 34), h("p", { text: "Pick a message." }));
     }
     function closeReader() {
       openId = null;
@@ -296,11 +289,11 @@
       listBody.querySelectorAll(".ms-row").forEach((r) => r.classList.toggle("is-active", String(r.dataset.id) === String(m.id)));
       const who = other(m) ?? {};
       const profile = who.id ? `https://www.roblox.com/users/${who.id}/profile` : null;
-      const back = ui.button("Back", { icon: "arrowLeft", variant: "ghost", size: "sm", class: "ms-back", onClick: closeReader });
+      const back = ui.button("", { icon: "arrowLeft", variant: "ghost", size: "sm", class: "ms-back", title: "Back", onClick: closeReader });
       const tools = h("div", { class: "ms-tools" });
       if (tab === "inbox" || tab === "archive") {
         const toArchive = tab === "inbox";
-        const b = ui.button(toArchive ? "Archive" : "Move to Inbox", { icon: toArchive ? "archive" : "mail", variant: "soft", size: "sm" });
+        const b = ui.button("", { icon: toArchive ? "archive" : "mail", variant: "ghost", size: "sm", title: toArchive ? "Archive" : "Move to Inbox" });
         b.addEventListener("click", async () => {
           b.busy(true);
           const res = await write(`${PM}/messages/${toArchive ? "archive" : "unarchive"}`, { messageIds: [m.id] });
@@ -321,12 +314,11 @@
         h(
           "article",
           { class: "ms-read" },
-          h("div", { class: "ms-read-bar" }, back, tools),
-          h("h2", { class: "ms-read-subject", text: m.subject || "No subject" }),
           h(
             "div",
-            { class: "ms-read-meta" },
-            profile ? h("a", { href: profile, class: "ms-read-av" }, ui.avatar(who.id, { size: 46 })) : ui.avatar(1, { size: 46 }),
+            { class: "ms-read-top" },
+            back,
+            profile ? h("a", { href: profile, class: "ms-read-av", title: who.name ? "@" + who.name : null }, ui.avatar(who.id, { size: 40 })) : ui.avatar(1, { size: 40 }),
             h(
               "div",
               { class: "ms-read-who" },
@@ -334,13 +326,13 @@
                 "div",
                 { class: "ms-read-name" },
                 tab === "sent" && h("span", { class: "ms-muted", text: "To " }),
-                profile ? h("a", { href: profile, class: "ms-name-link", text: who.displayName || who.name || "Roblox" }) : h("span", { text: who.displayName || who.name || "Roblox" }),
-                who.hasVerifiedBadge && ui.icon("verified", 15, "ms-verified"),
-                who.name && h("span", { class: "ms-handle", text: "@" + who.name })
+                profile ? h("a", { href: profile, class: "ms-name-link", text: who.displayName || who.name || "Roblox" }) : h("span", { text: who.displayName || who.name || "Roblox" })
               ),
               h("div", { class: "ms-read-date", text: longDate(m.created) })
-            )
+            ),
+            tools
           ),
+          h("h2", { class: "ms-read-subject", text: m.subject || "No subject" }),
           bodyNode(m.body)
         )
       );
