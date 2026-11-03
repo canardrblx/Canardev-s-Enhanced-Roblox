@@ -136,11 +136,6 @@
     return [...seen.values()];
   };
   const byPlaying = (a, b) => (b.playing ?? 0) - (a.playing ?? 0);
-  const byLiked = (list) =>
-    list
-      .filter((g) => g.votes >= 800 && g.rating != null)
-      .sort((a, b) => b.rating - a.rating || byPlaying(a, b));
-
   // ------------------------------------------------------------ state
   const S = { root: null, genre: "all", seq: 0 };
   const alive = (root) => root && root.isConnected && document.getElementById("cer-app") === root;
@@ -202,7 +197,6 @@
     const main = [heroSlot, rails, allView];
     const side = friendsColumn(root);
     page.append(
-      ui.header({ title: "Discover", icon: "compass", sub: "Find your next favorite game." }),
       chipWrap,
       ui.cols(main, side, { side: 340 })
     );
@@ -257,16 +251,13 @@
       if (!lists) return failed(root);
       const top = lists["top-playing-now"] ?? [];
       const trending = lists["top-trending"] ?? [];
-      showHero(trending.length ? trending : top, "Trending now", "flame");
+      showHero(trending.length ? trending : top);
       ui.clear(S.rails, 
-        railSection("Top games", "trophy", top, { rank: true, item: 280 }),
+        railSection("Top games", top, { rank: true, item: 280 }),
         picksSection(root, trending),
-        railSection("Trending now", "flame", trending),
-        railSection("Up and coming", "zap", lists["up-and-coming"]),
-        railSection("Fun with friends", "users", lists["fun-with-friends"]),
-        lazyRail("Most liked", "like", () => loadSort("top-rated")),
-        railSection("Players come back", "refresh", lists["top-revisited"]),
-        lazyRail("Most popular", "star", () => loadSort("most-popular"))
+        railSection("Trending", trending),
+        railSection("Up and coming", lists["up-and-coming"]),
+        railSection("Fun with friends", lists["fun-with-friends"])
       );
       return;
     }
@@ -286,21 +277,19 @@
         if (!ok()) return;
         fromPool = dedupe([fromPool, trend ?? []]).sort(byPlaying);
         if (!fromPool.length) return trend ? noGames(name) : failed(root);
-        trendSlot = railSection("Trending in " + name, "flame", trend);
+        trendSlot = railSection("Trending", trend);
       } else trendSlot = h("div", { class: "dc-lazy" }, skeletonSections(1));
-      showHero(fromPool, "Top in " + name, "flame");
+      showHero(fromPool);
       ui.clear(
         S.rails,
-        railSection(`Top ${name} games`, "trophy", fromPool.slice(0, 30), { rank: true, item: 280 }),
+        railSection(`Top ${name} games`, fromPool.slice(0, 30), { rank: true, item: 280 }),
         trendSlot,
-        railSection("Up and coming", "zap", inGenre(lists?.["up-and-coming"])),
-        railSection("Most liked", "like", byLiked(fromPool)),
-        railSection("Fun with friends", "users", inGenre(lists?.["fun-with-friends"]))
+        railSection("Up and coming", inGenre(lists?.["up-and-coming"]))
       );
       if (trendSlot?.classList.contains("dc-lazy")) {
         const trend = await trendP;
         if (!ok()) return;
-        const s = railSection("Trending in " + name, "flame", trend);
+        const s = railSection("Trending", trend);
         if (s) trendSlot.replaceWith(s);
         else trendSlot.remove();
       }
@@ -320,11 +309,10 @@
     if (!all.length) return noGames(name);
     const top = all.slice(0, 30);
     const topIds = new Set(top.slice(0, 20).map((g) => g.universeId));
-    showHero(all, "Top in " + name, "flame");
+    showHero(all);
     ui.clear(S.rails, 
-      railSection(`Top ${name} games`, "trophy", top, { rank: true, item: 280 }),
-      railSection("Most liked", "like", byLiked(all)),
-      railSection("More to try", "sparkle", (found ?? []).filter((g) => !topIds.has(g.universeId)))
+      railSection(`Top ${name} games`, top, { rank: true, item: 280 }),
+      railSection("More to try", (found ?? []).filter((g) => !topIds.has(g.universeId)))
     );
   }
 
@@ -332,10 +320,9 @@
     if (S.hero) S.hero.loading(false);
     S.heroSlot.hidden = true;
     ui.clear(S.rails, 
-      ui.empty("Games did not load. Try again.", {
+      ui.empty("Games did not load.", {
         icon: "refresh",
         action: ui.button("Try again", {
-          icon: "refresh",
           onClick: () => {
             S.heroSlot.hidden = false;
             render(root);
@@ -351,14 +338,13 @@
   }
 
   // ------------------------------------------------------------ rails
-  function railSection(title, icon, list, opts = {}) {
+  function railSection(title, list, opts = {}) {
     const full = list ?? [];
     const games = full.slice(0, opts.max ?? 24);
     if (games.length < 3) return null;
     const s = ui.section(title, {
-      icon,
       class: "dc-section",
-      action: full.length > 4 && { label: "See all", onClick: () => openAll(title, icon, full, opts) },
+      action: full.length > 4 && { label: "See all", onClick: () => openAll(title, full, opts) },
     });
     const rail = ui.rail(ui.skeleton("card", 6), { item: opts.item ?? 250 });
     s.body.append(rail);
@@ -366,26 +352,14 @@
     ui.whenVisible(s, () => rail.track.replaceChildren(...games.map((g, i) => ui.gameCard(g, { rank: opts.rank ? i + 1 : null }))));
     return s;
   }
-  // a rail whose list is fetched only when it scrolls near view
-  function lazyRail(title, icon, load) {
-    const holder = h("div", { class: "dc-lazy" }, skeletonSections(1));
-    ui.whenVisible(holder, async () => {
-      const games = await load();
-      const s = railSection(title, icon, games);
-      if (s) holder.replaceWith(s);
-      else holder.remove();
-    });
-    return holder;
-  }
-
   // "See all": the whole list as a grid, in place (Back returns to the rails)
-  function openAll(title, icon, games, opts) {
+  function openAll(title, games, opts) {
     S.allView.replaceChildren(
       h(
         "div",
         { class: "dc-all-head" },
-        ui.button("Back", { icon: "arrowLeft", variant: "soft", onClick: closeAll }),
-        h("h2", { class: "cer-block-title" }, ui.icon(icon, 20), h("span", { text: title }))
+        ui.button("", { icon: "arrowLeft", variant: "soft", title: "Back", onClick: closeAll }),
+        h("h2", { class: "cer-block-title", text: title })
       ),
       ui.grid(
         games.map((g, i) => ui.gameCard(g, { rank: opts.rank ? i + 1 : null })),
@@ -409,7 +383,7 @@
   // One hero element, reused across genres: content swaps with a short fade
   // and the backdrop cross-fades. The active dot's fill bar is the timer: its
   // animation runs 8 s (paused on hover via CSS) and its end advances.
-  function showHero(games, eyebrow, eyebrowIcon) {
+  function showHero(games) {
     const list = games.filter((g) => g.placeId).slice(0, 5);
     S.heroSlot.hidden = !list.length;
     if (!list.length) return;
@@ -417,18 +391,14 @@
       S.hero = makeHero();
       S.heroSlot.replaceChildren(S.hero.el);
     }
-    S.hero.set(list, eyebrow, eyebrowIcon);
+    S.hero.set(list);
   }
 
   function makeHero() {
-    const eyebrowText = h("span", { text: "" });
-    const eyebrowIcon = h("span", { class: "dc-eyebrow-icon" });
-    const sub = h("p", { class: "cer-hero-sub dc-hero-by" });
     const players = h("span", { text: "" });
     const rating = h("span", { text: "" });
     const ratingWrap = h("span", { class: "cer-hero-stat" }, ui.icon("like", 16), rating);
     const stats = h("div", { class: "cer-hero-stats" }, h("span", { class: "cer-hero-stat" }, ui.icon("users", 16), players), ratingWrap);
-    const more = ui.button("More info", { icon: "info", variant: "glass", size: "lg", href: "#" });
     let current = null;
     const play = ui.button("Play", { icon: "play", variant: "light", size: "lg", onClick: () => current && ui.play(current.placeId) });
     const dots = h("div", { class: "dc-dots", role: "tablist" });
@@ -436,12 +406,14 @@
     const artLink = h("a", { class: "dc-art-link", href: "#", tabindex: "-1", "aria-hidden": "true" }, artImg);
     const hero = ui.hero({
       class: "dc-hero",
-      eyebrow: h("span", { class: "dc-eyebrow" }, eyebrowIcon, eyebrowText),
       title: "",
       art: artLink,
-      children: [sub, stats, h("div", { class: "cer-hero-actions" }, play, more), dots],
+      children: [stats, h("div", { class: "cer-hero-actions" }, play), dots],
     });
-    const title = hero.querySelector(".cer-hero-title");
+    // the title is the way to the game page (no extra "info" button)
+    const titleH = hero.querySelector(".cer-hero-title");
+    const title = h("a", { class: "dc-hero-link", href: "#" });
+    titleH.append(title);
     const body = hero.querySelector(".cer-hero-body");
 
     let list = [];
@@ -498,21 +470,17 @@
       const name = CER.cleanTitle(g.name, CER._featsCache ?? {});
       title.textContent = name;
       title.title = g.name;
-      players.textContent = (g.playing != null ? fmt.num(g.playing) : "–") + " playing";
-      rating.textContent = g.rating != null ? g.rating + "% liked" : "";
+      titleH.title = g.name;
+      players.textContent = g.playing != null ? fmt.num(g.playing) : "–";
+      rating.textContent = g.rating != null ? g.rating + "%" : "";
       ratingWrap.hidden = g.rating == null;
       const href = "https://www.roblox.com/games/" + g.placeId;
-      more.href = href;
+      title.href = href;
       artLink.href = href;
       play.setAttribute("aria-label", "Play " + name);
       hero.setImage(url);
       if (url) artImg.src = url;
       artImg.classList.toggle("is-none", !url);
-      sub.textContent = "";
-      api.game(g.universeId).then((info) => {
-        if (my !== token || !info?.creator?.name) return;
-        sub.textContent = "By " + info.creator.name;
-      });
       hero.classList.remove("is-loading");
       body.classList.remove("is-swapping");
     }
@@ -525,9 +493,7 @@
 
     return {
       el: hero,
-      set(games, eyebrow, icon) {
-        eyebrowText.textContent = eyebrow;
-        eyebrowIcon.replaceChildren(ui.icon(icon, 14));
+      set(games) {
         const sig = games.map((g) => g.universeId).join();
         if (sig === lastSig) return hero.classList.remove("is-loading");
         lastSig = sig;
@@ -572,20 +538,9 @@
   };
 
   function picksSection(root, trending) {
-    const timer = h("span", { class: "dc-picks-timer" });
-    const s = ui.section("Canardev's picks", { icon: "sparkle", class: "dc-section dc-picks", tools: timer });
+    const s = ui.section("Canardev's picks", { class: "dc-section dc-picks" });
     const grid = ui.grid(ui.skeleton("card", 3), { min: 240, gap: 20, class: "dc-picks-grid" });
     s.body.append(grid);
-    const tick = () => {
-      const now = new Date();
-      const ms = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now;
-      const hrs = Math.floor(ms / 3.6e6);
-      const min = Math.floor((ms % 3.6e6) / 6e4);
-      timer.textContent = "New picks in " + (hrs ? hrs + "h " : "") + min + "m";
-    };
-    tick();
-    const t = setInterval(() => (alive(root) && s.isConnected ? tick() : clearInterval(t)), 30000);
-
     (async () => {
       const [salt, uni] = await Promise.all([pickSalt(), CER.getUniverseIds(PICK_PLACES).catch(() => ({}))]);
       const rng = mulberry32(salt + dateKey());
@@ -602,7 +557,7 @@
       await ui.hydrateGames(games);
       if (!s.isConnected) return;
       const ready = games.filter((g) => g.universeId && g.name);
-      if (!ready.length) grid.replaceWith(ui.empty("Picks did not load.", { icon: "sparkle" }));
+      if (!ready.length) s.remove();
       else grid.replaceChildren(...ready.map((g) => ui.gameCard(g, { size: "lg" })));
     })();
     return s;
@@ -610,27 +565,24 @@
 
   // ------------------------------------------------------------ friends
   function friendsColumn(root) {
-    const count = h("span", { class: "cer-block-count", hidden: true });
     const list = h("div", { class: "dc-fg-list" }, ui.skeleton("row", 4));
-    const box = ui.card(
-      [h("div", { class: "dc-fg-head" }, h("h2", { class: "cer-block-title" }, ui.icon("users", 20), h("span", { text: "Friends' games" }), count)), list],
-      { class: "dc-fg" }
-    );
+    const box = h("div", { class: "dc-fg" }, h("h2", { class: "cer-block-title dc-fg-title", text: "Friends' games" }), list);
+    const note = (text) => list.replaceChildren(h("p", { class: "dc-fg-note", text }));
     let friends = null;
     const load = async () => {
       if (!alive(root)) return;
       const me = await api.me();
-      if (!me) return list.replaceChildren(ui.empty("Log in to see what friends play.", { icon: "users" }));
+      if (!me) return note("Log in to see what friends play.");
       if (!friends) friends = await api.friends(me.id);
       if (!alive(root)) return;
       if (!friends?.length) {
-        list.replaceChildren(ui.empty("Add friends to see what they play.", { icon: "userPlus" }));
+        note("Add friends to see what they play.");
         return;
       }
       const pres = await api.presence(friends.map((f) => f.id));
       if (!alive(root)) return;
       if (!pres.size) {
-        list.replaceChildren(ui.empty("Friends did not load.", { icon: "users" }));
+        note("Friends did not load.");
         return;
       }
       // group friends by the game they are in
@@ -643,10 +595,8 @@
         games.get(key).people.push({ ...f, gameId: p.gameId, placeId: p.placeId });
       }
       const rows = [...games.values()].sort((a, b) => b.people.length - a.people.length);
-      count.hidden = !rows.length;
-      count.textContent = String(rows.length);
       if (!rows.length) {
-        list.replaceChildren(ui.empty("No friends are playing right now.", { icon: "gamepad" }));
+        note("No friends are playing right now.");
         return;
       }
       // presence hides some universe ids: look them up so icons still show
@@ -690,7 +640,7 @@
         )
       ),
       ui.button("Join", {
-        variant: "primary",
+        variant: "soft",
         size: "sm",
         class: "dc-fg-join",
         title: joinable ? "Join " + (joinable.displayName || joinable.name) : "Play " + name,

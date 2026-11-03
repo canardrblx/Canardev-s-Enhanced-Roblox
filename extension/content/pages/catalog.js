@@ -193,9 +193,7 @@
       { class: "cat-card-media" },
       h("span", { class: "cat-ph" }, ui.icon("image", 28)),
       ui.thumb(kind === "Bundle" ? "bundle" : "asset", it.id, { alt: "" }),
-      (p.limited || p.timed) &&
-        h("div", { class: "cat-card-tags" }, p.limited && h("span", { class: "cat-tag is-" + p.limited.toLowerCase(), text: p.limited }), p.timed && h("span", { class: "cat-tag is-timed" }, ui.icon("clock", 12), h("span", { text: "Timed" }))),
-      p.left != null && h("span", { class: "cat-card-left", text: fmt.num(p.left) + " left" })
+      p.limited && h("div", { class: "cat-card-tags" }, h("span", { class: "cat-tag is-" + p.limited.toLowerCase(), text: p.limited }))
     );
     return spaLink(
       h(
@@ -203,14 +201,14 @@
         { class: "cat-card", href, title: it.name },
         media,
         h("div", { class: "cat-card-name", text: it.name ?? "" }),
-        h("div", { class: "cat-card-by" }, h("span", { class: "cat-card-by-name", text: it.creatorName ?? "" }), it.creatorHasVerifiedBadge && verified()),
-        h("div", { class: "cat-card-price" }, priceNode(p), p.fromResale && h("span", { class: "cat-card-resale", text: "Resale" }))
+        h("div", { class: "cat-card-price" }, priceNode(p))
       ),
       href
     );
   }
   const cardSkeletons = (n) =>
     Array.from({ length: n }, () => h("div", { class: "cat-card cat-card-sk", "aria-hidden": "true" }, h("div", { class: "cat-card-media cer-sk" }), h("div", { class: "cer-sk cer-sk-line" }), h("div", { class: "cer-sk cer-sk-line short" })));
+
 
   // ------------------------------------------------------------ router
   const S = { key: null, browse: null };
@@ -358,19 +356,14 @@
     window.scrollTo(0, 0);
 
     // --- header: title + big search
-    const searchBox = ui.search("Search clothes, hair, emotes and more", {
+    const searchBox = ui.search("Search the catalog", {
       value: st.q,
       class: "cat-search",
       onSubmit: (v) => update({ q: v }),
       onInput: (v) => !v && st.q && update({ q: "" }),
       delay: 300,
     });
-    const head = h(
-      "header",
-      { class: "cat-head" },
-      h("div", { class: "cat-head-text" }, h("h1", { class: "cat-title" }, ui.icon("bag", 30), h("span", { text: "Catalog" })), h("p", { class: "cat-sub", text: "Find cool stuff for your avatar." })),
-      searchBox
-    );
+    const head = h("header", { class: "cat-head" }, h("h1", { class: "cat-title", text: "Catalog" }), searchBox);
 
     // --- category chips + sub chips
     const catRow = ui.chips(
@@ -400,12 +393,24 @@
       return inp;
     };
     const priceBox = h("div", { class: "cat-price-range" + (st.free ? " is-disabled" : ""), title: "Price range" }, ui.icon("robux", 16), priceInput("Min", "min"), h("span", { class: "cat-price-dash", text: "to" }), priceInput("Max", "max"));
-    const tools = h(
-      "div",
-      { class: "cat-tools" },
-      h("div", { class: "cat-filters" }, filterChip("Free", "free", "sparkle"), filterChip("Limited", "limited", "crown"), filterChip("Off sale too", "offsale", "eye"), priceBox),
-      h("div", { class: "cat-sort" }, h("span", { class: "cat-sort-label", text: "Sort" }), sortSel)
-    );
+    const tools = h("div", { class: "cat-filters" }, filterChip("Free", "free"), filterChip("Limited", "limited"), filterChip("Off sale too", "offsale"), priceBox);
+    const filterCount = () => [st.free, st.limited, st.offsale, !st.free && (st.min || st.max)].filter(Boolean).length;
+    const filterBtn = ui.button("Filters", { icon: "sliders", variant: "ghost", class: "cat-filter-btn" });
+    const filterBadge = h("span", { class: "cat-filter-n" });
+    filterBtn.append(filterBadge);
+    let filtersOpen = filterCount() > 0;
+    const syncFilterBtn = () => {
+      const n = filterCount();
+      filterBadge.textContent = n ? String(n) : "";
+      filterBtn.classList.toggle("is-on", filtersOpen || n > 0);
+      tools.hidden = !filtersOpen;
+    };
+    filterBtn.addEventListener("click", () => {
+      filtersOpen = !filtersOpen;
+      syncFilterBtn();
+    });
+    syncFilterBtn();
+    const bar = h("div", { class: "cat-bar" }, catRow, h("div", { class: "cat-bar-end" }, filterBtn, sortSel));
 
     // --- results
     const label = h("div", { class: "cat-results-head" });
@@ -413,7 +418,7 @@
     const more = ui.button("Load more", { variant: "soft", class: "cat-more", icon: "down" });
     const sentinel = h("div", { class: "cat-sentinel" });
     const foot = h("div", { class: "cat-foot" }, more, sentinel);
-    view.append(head, h("div", { class: "cat-nav" }, catRow, subRow), tools, h("section", { class: "cat-results" }, label, grid, foot));
+    view.append(head, h("div", { class: "cat-nav" }, bar, subRow, tools), h("section", { class: "cat-results" }, label, grid, foot));
 
     // --- loading
     let token = 0;
@@ -422,15 +427,10 @@
     let done = false;
     let count = 0;
     const seen = new Set();
-    const subNames = new Map();
 
     function setLabel() {
-      const c = CAT[st.cat] ?? CAT.featured;
-      const bits = [];
-      if (st.q) bits.push(h("span", {}, "Results for ", h("strong", { text: "“" + st.q + "”" })));
-      else bits.push(h("strong", { text: st.sub ? subNames.get(st.sub) ?? c.label : st.cat === "featured" && !st.creator ? "Featured items" : c.label }));
-      if (st.creator) bits.push(h("span", { class: "cat-results-by" }, "by ", h("strong", { text: st.creator }), ui.button("", { icon: "x", variant: "ghost", size: "sm", title: "Show all creators", onClick: () => update({ creator: "" }) })));
-      ui.clear(label, bits);
+      ui.clear(label, st.creator && h("span", { class: "cat-results-by" }, h("span", { text: "By " }), h("strong", { text: st.creator }), ui.button("", { icon: "x", variant: "ghost", size: "sm", title: "Show all creators", onClick: () => update({ creator: "" }) })));
+      label.hidden = !st.creator;
       B.title = (st.q ? st.q + " - " : "") + "Catalog";
       document.title = B.title;
     }
@@ -514,9 +514,8 @@
       const top = nav?.categories?.find((x) => x.taxonomy === c.tax);
       const subs = (top?.subcategories ?? []).filter((s) => s.taxonomy && s.name);
       if (!subs.length) return;
-      for (const x of subs) subNames.set(x.taxonomy, x.name);
-      if (st.sub && subNames.has(st.sub) && !st.q) setLabel();
-      const row = ui.chips([{ id: "", label: "All " + c.label.toLowerCase() }, ...subs.map((s) => ({ id: s.taxonomy, label: s.name }))], st.sub, (id) => update({ sub: id }), { wrap: true });
+
+      const row = ui.chips([{ id: "", label: "All" }, ...subs.map((s) => ({ id: s.taxonomy, label: s.name }))], st.sub, (id) => update({ sub: id }), { wrap: true });
       row.classList.add("cat-subchips");
       subRow.replaceChildren(row);
     }
@@ -528,11 +527,12 @@
       if ("q" in patch && searchBox.input.value.trim() !== st.q) searchBox.input.value = st.q;
       // keep the filter controls in sync
       for (const [i, k] of ["free", "limited", "offsale"].entries()) {
-        const chip = tools.querySelectorAll(".cat-filters > .cer-chip")[i];
+        const chip = tools.querySelectorAll(":scope > .cer-chip")[i];
         chip.classList.toggle("is-active", !!st[k]);
         chip.setAttribute("aria-pressed", st[k] ? "true" : "false");
       }
       priceBox.classList.toggle("is-disabled", st.free);
+      syncFilterBtn();
       const [minI, maxI] = priceBox.querySelectorAll("input");
       minI.value = st.free ? "" : st.min;
       maxI.value = st.free ? "" : st.max;
@@ -558,7 +558,7 @@
 
     // shell with skeletons right away
     const fromBrowse = !!S.browse && history.state?.cer === TAG;
-    const back = ui.button(fromBrowse ? "Back" : "Catalog", { icon: "arrowLeft", variant: "ghost", size: "sm", class: "cat-back", href: "https://www.roblox.com" + (S.browse?.key ?? "/catalog") });
+    const back = ui.button("", { icon: "arrowLeft", variant: "ghost", class: "cat-back", title: fromBrowse ? "Back" : "Catalog", href: "https://www.roblox.com" + (S.browse?.key ?? "/catalog") });
     back.addEventListener("click", (e) => {
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       e.preventDefault();
@@ -567,7 +567,7 @@
     });
     const backdrop = h("div", { class: "cat-item-backdrop" });
     const art = h("div", { class: "cat-item-art" }, h("span", { class: "cat-ph" }, ui.icon("image", 48)), ui.thumb(kind === "Bundle" ? "bundle" : "asset", id, { alt: "" }));
-    const info = h("div", { class: "cat-item-info" }, h("div", { class: "cer-sk cer-sk-line short" }), h("div", { class: "cer-sk cat-sk-title" }), h("div", { class: "cer-sk cer-sk-line short" }), h("div", { class: "cer-sk cat-sk-price" }), h("div", { class: "cer-sk cat-sk-btns" }));
+    const info = h("div", { class: "cat-item-info" }, h("div", { class: "cer-sk cat-sk-title" }), h("div", { class: "cer-sk cer-sk-line short" }), h("div", { class: "cer-sk cat-sk-price" }), h("div", { class: "cer-sk cat-sk-btns" }));
     const top = h("section", { class: "cat-item-top" }, backdrop, h("div", { class: "cat-item-left" }, art), info);
     const below = h("div", { class: "cat-item-below" });
     view.append(back, top, below);
@@ -627,11 +627,9 @@
 
     // bundle contents
     if (kind === "Bundle" && it.bundleItems?.length) below.append(bundleSection(it));
-    // description
-    below.append(aboutSection(it));
     // rails, lazily
-    const recs = ui.section("You might also like", { icon: "sparkle" });
-    const mine = ui.section("More from " + it.creator.name, { icon: "user", action: { label: "See all", href: "https://www.roblox.com" + stateUrl({ ...readStateDefaults(), creator: it.creator.name }) } });
+    const recs = ui.section("You might also like");
+    const mine = ui.section("More from " + it.creator.name, { action: { label: "See all", href: "https://www.roblox.com" + stateUrl({ ...readStateDefaults(), creator: it.creator.name }) } });
     spaLink(mine.head.querySelector(".cer-link"), stateUrl({ ...readStateDefaults(), creator: it.creator.name }));
     for (const s of [mine, recs]) s.body.append(railSkeleton());
     below.append(mine, recs);
@@ -724,60 +722,41 @@
   }
 
   function renderInfo(it) {
-    const eyebrow = h("div", { class: "cat-item-eyebrow" });
+    const tags = h("div", { class: "cat-item-tags" });
     const title = h("h1", { class: "cat-item-name", text: it.name });
-    const by = h(
-      "a",
-      { class: "cat-item-by", href: creatorHref(it.creator.type, it.creator.id) },
-      h("span", { class: "cat-item-by-label", text: "By " }),
-      h("span", { class: "cat-item-by-name", text: it.creator.name }),
-      it.creator.verified && verified()
+    const favEl = h("span", { class: "cat-item-fav", title: "Favorites" });
+    const meta = h(
+      "div",
+      { class: "cat-item-meta" },
+      h("a", { class: "cat-item-by", href: creatorHref(it.creator.type, it.creator.id) }, h("span", { class: "cat-item-by-name", text: it.creator.name }), it.creator.verified && verified()),
+      favEl
     );
     const priceRow = h("div", { class: "cat-item-price" });
     const actions = h("div", { class: "cat-item-actions" });
-    const stats = h("div", { class: "cat-item-stats" });
-    const note = h("p", { class: "cat-item-note" });
+    const desc = (it.description ?? "").trim();
+    const about = desc ? h("div", { class: "cat-item-desc" }, ui.clamp(desc, 3)) : null;
     let owned = false;
     let fav = it.favorites ?? null;
 
     function paint() {
       const p = it.p ?? { state: "off" };
-      ui.clear(
-        eyebrow,
-        h("span", { class: "cat-item-type", text: it.kind === "Bundle" && it.typeLabel !== "Bundle" ? "Bundle · " + it.typeLabel : it.typeLabel }),
-        p.limited && h("span", { class: "cat-tag is-" + p.limited.toLowerCase(), text: p.limited }),
-        p.timed && h("span", { class: "cat-tag is-timed" }, ui.icon("clock", 12), h("span", { text: "Timed" })),
-        owned && ui.badge("You own this", "good", "check")
-      );
-      ui.clear(
-        priceRow,
-        p.fromResale && h("span", { class: "cat-item-price-label", text: "From" }),
-        priceNode(p, true),
-        p.resale && h("span", { class: "cat-item-resale" }, "Resale from ", robux(p.resale))
-      );
+      ui.clear(tags, p.limited && h("span", { class: "cat-tag is-" + p.limited.toLowerCase(), text: p.limited }), owned && h("span", { class: "cat-tag is-owned", text: "Owned" }));
+      tags.hidden = !tags.firstChild;
+      ui.clear(favEl, fav != null && [ui.icon("heart", 15), h("span", { text: fmt.num(fav) })]);
+      ui.clear(priceRow, !owned && priceNode(p, true), !owned && p.left != null && h("span", { class: "cat-item-left", text: fmt.num(p.left) + " left" }));
+      priceRow.hidden = owned;
       const native = ui.nativeUrl(itemHref(it.kind, it.id, it.name));
-      let buy = null;
-      if (owned) buy = ui.button("Owned", { icon: "check", variant: "good", size: "lg", class: "cat-buy is-owned", href: native, title: "Open on Roblox" });
-      else if (p.state === "free") buy = ui.button("Get it free", { icon: "plus", variant: "primary", size: "lg", class: "cat-buy", href: native });
-      else if (p.state === "sale") buy = ui.button(p.fromResale ? "See sellers" : "Buy", { icon: "robux", variant: "primary", size: "lg", class: "cat-buy", href: native });
-      const tryOn = it.kind === "Asset" && it.assetType === 19 ? null : ui.button(owned ? "Wear it" : "Try it on", { icon: "shirt", variant: "soft", size: "lg", href: "https://www.roblox.com/my/avatar" });
-      ui.clear(actions, buy, tryOn);
-      note.textContent = owned ? "" : p.state === "off" ? "You can't buy this right now." : buy ? "Buying opens Roblox's own checkout." : "";
-      note.hidden = !note.textContent;
-      const st = [];
-      if (fav != null) st.push(ui.stat(fmt.num(fav), "Favorites", { icon: "heart" }));
-      if (p.left != null) st.push(ui.stat(fmt.num(p.left), "Left in stock", { icon: "box" }));
-      else if (p.total) st.push(ui.stat(fmt.num(p.total), "Made", { icon: "box" }));
-      if (it.sales > 0) st.push(ui.stat(fmt.num(it.sales), "Sold", { icon: "bag" }));
-      if (p.timed) st.push(ui.stat(fmt.date(p.timed), "Leaves on", { icon: "clock" }));
-      if (it.updated) st.push(ui.stat(fmt.ago(it.updated), "Updated", { icon: "refresh" }));
-      else if (it.created) st.push(ui.stat(fmt.date(it.created), "Made on", { icon: "calendar" }));
-      ui.clear(stats, st);
-      stats.hidden = !st.length;
+      const wearable = !(it.kind === "Asset" && it.assetType === 19);
+      let main = null;
+      if (owned) main = wearable ? ui.button("Wear it", { variant: "primary", size: "lg", class: "cat-buy", href: "https://www.roblox.com/my/avatar" }) : null;
+      else if (p.state === "free") main = ui.button("Get", { variant: "primary", size: "lg", class: "cat-buy", href: native });
+      else if (p.state === "sale") main = ui.button(p.fromResale ? "See sellers" : "Buy", { variant: "primary", size: "lg", class: "cat-buy", href: native });
+      const tryOn = !owned && wearable ? ui.button("Try it on", { variant: "ghost", size: "lg", href: "https://www.roblox.com/my/avatar" }) : null;
+      ui.clear(actions, main, tryOn);
     }
     paint();
     return {
-      nodes: [eyebrow, title, by, priceRow, actions, note, stats],
+      nodes: [tags, title, meta, priceRow, actions, about],
       refresh: () => {
         if (it.favorites != null && fav == null) fav = it.favorites;
         paint();
@@ -794,37 +773,18 @@
   }
 
   function bundleSection(it) {
-    const s = ui.section("What's inside", { icon: "box", count: it.bundleItems.length });
+    const s = ui.section("In this bundle");
     const list = h(
       "div",
       { class: "cat-inside" },
       it.bundleItems.map((x) => {
         const href = itemHref("Asset", x.id, x.name);
-        return spaLink(
-          h("a", { class: "cat-inside-item", href, title: x.name }, h("div", { class: "cat-inside-media" }, ui.thumb("asset", x.id, { alt: "" })), h("div", { class: "cat-inside-text" }, h("span", { class: "cat-inside-name", text: x.name }), h("span", { class: "cat-inside-type", text: ASSET_TYPES[x.assetType] ?? "Item" }))),
-          href
-        );
+        return spaLink(h("a", { class: "cat-inside-item", href, title: x.name }, h("div", { class: "cat-inside-media" }, ui.thumb("asset", x.id, { alt: "" })), h("span", { class: "cat-inside-name", text: x.name })), href);
       })
     );
     s.body.append(list);
     return s;
   }
-
-  function aboutSection(it) {
-    const s = ui.section("About", { icon: "info" });
-    const text = (it.description ?? "").trim();
-    const facts = h(
-      "div",
-      { class: "cat-facts" },
-      fact("Type", it.typeLabel),
-      fact("Creator", it.creator.name),
-      it.created && fact("Made", fmt.date(it.created)),
-      it.updated && fact("Updated", fmt.date(it.updated))
-    );
-    s.body.append(ui.card([text ? ui.clamp(text, 5) : h("p", { class: "cat-nodesc", text: "No description." }), facts], { class: "cat-about" }));
-    return s;
-  }
-  const fact = (k, v) => v && h("div", { class: "cat-fact" }, h("span", { class: "cat-fact-k", text: k }), h("span", { class: "cat-fact-v", text: v }));
 
   const railSkeleton = () => h("div", { class: "cat-rail-sk" }, cardSkeletons(7));
   function fillRail(sec, items) {

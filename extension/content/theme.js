@@ -177,10 +177,15 @@
     const preset = CER.THEMES.find((t) => t.id === settings.theme.preset);
     const tint = preset && !preset.native && preset.id !== "" ? preset : null;
 
-    // ONE accent for everything (pills, badges, buttons, ratio bar). On tints
-    // it's the tint accent; on native themes it tracks Roblox's own action
-    // colour instead of each component falling back to its own hard-coded blue.
-    rules.push(`:root { --cer-accent: ${tint ? tint.accent : "var(--color-action-emphasis-background, #335fff)"}; }`);
+    // ONE accent for everything (pills, badges, buttons, ratio bar).
+    // Default / native: no borrowed brand blue. The accent is the theme's own
+    // ink (white on dark, near-black on light), resolved per element so it
+    // follows Roblox's light/dark and app themes.
+    rules.push(
+      tint
+        ? `:root { --cer-accent: ${tint.accent}; --cer-accent-ink: #fff; }`
+        : `* { --cer-accent: var(--color-content-emphasis, #f6f7f9); --cer-accent-ink: var(--color-surface-0, #111216); }`
+    );
 
     // skeleton veil background — match the theme even on native light (where we
     // don't tint, so --color-surface-0 isn't set and it would fall back to dark)

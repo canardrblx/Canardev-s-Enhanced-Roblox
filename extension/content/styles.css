@@ -118,7 +118,7 @@
   border: none;
   border-radius: 50%;
   background: var(--cer-accent, #335fff);
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
   cursor: pointer;
   display: none;
   align-items: center;
@@ -404,7 +404,7 @@
   border: none;
   border-radius: 8px;
   background: var(--cer-accent, #335fff);
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -838,7 +838,7 @@ body.cer-no-topbar .left-nav {
 
 .cer-gp-tabs .cer-tab-active {
   background: var(--cer-accent, #335fff);
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
   opacity: 1;
 }
 
@@ -993,7 +993,7 @@ ul.badge-list.hlist {
 
 .cer-friend-btn-primary {
   background: var(--cer-accent, #335fff);
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 
 .cer-friend-btn-danger {
@@ -1076,7 +1076,7 @@ ul.badge-list.hlist {
 
 .cer-msg-markread:hover {
   background: var(--cer-accent, #335fff);
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 
 .cer-msg-markall {
@@ -1270,7 +1270,7 @@ body.cer-settings-reskin [class*="btn-cta"] {
 .cer-profile-pill-active,
 .cer-profile-pill-active:hover {
   background: var(--cer-accent, var(--color-action-primary, #00a2ff));
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 
 .cer-profile-aboutview {
@@ -1469,7 +1469,7 @@ body.cer-settings-reskin .settings-left-navigation .menu-vertical {
   font-size: 15px;
   font-weight: 800;
   background: var(--cer-accent, var(--color-action-primary, #00a2ff));
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 
 .cer-set-dd-menu {
@@ -1669,7 +1669,7 @@ body.cer-settings-reskin .cer-set-card [class*="title"] {
    them the solid CER accent so every accent control is the same colour */
 #running-game-instances-container .foundation-web-button.bg-action-soft-emphasis {
   background-color: var(--cer-accent, var(--color-action-emphasis-background, #335fff)) !important;
-  color: #fff !important;
+  color: var(--cer-accent-ink, #fff) !important;
 }
 
 .cer-sb-controls {
@@ -2022,7 +2022,7 @@ body [class*="group-badge"] {
   font-weight: 800;
   cursor: pointer;
   background: var(--cer-accent, var(--color-action-primary, #00a2ff));
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 
 .cer-g-genre-label {
@@ -2247,7 +2247,7 @@ button.bg-surface-300.radius-circle:hover {
    turn the whole button the accent colour */
 .cer-gp-sbtn.cer-gp-on {
   background: var(--cer-accent, var(--color-action-emphasis-background, #335fff)) !important;
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 .cer-gp-sbtn.cer-gp-on .cer-gp-svg {
   fill: currentColor;
@@ -2557,7 +2557,7 @@ body.cer-catalog .shopping-cart-icon {
 .friend-tile-dropdown a[class*="join"] {
   border-radius: 999px !important;
   background: var(--cer-accent, var(--color-action-primary, #00a2ff)) !important;
-  color: #fff !important;
+  color: var(--cer-accent-ink, #fff) !important;
   font-weight: 700 !important;
   border: none !important;
 }
@@ -2640,7 +2640,7 @@ body.cer-settings-reskin .cer-set-card.cer-set-loading::after {
 }
 .cer-game-redesign .cer-tab.cer-tab-active {
   background: var(--cer-accent, var(--color-action-primary, #00a2ff)) !important;
-  color: #fff !important;
+  color: var(--cer-accent-ink, #fff) !important;
 }
 
 /* social links: only the LINK button is a pill (not the whole section); its
@@ -2826,7 +2826,7 @@ body.cer-group-cfg .cer-set-card {
   font-weight: 700;
   cursor: pointer;
 }
-.cer-update-go { background: var(--cer-accent, #335fff); color: #fff; }
+.cer-update-go { background: var(--cer-accent, #335fff); color: var(--cer-accent-ink, #fff); }
 .cer-update-cancel {
   background: var(--color-surface-300, rgba(128, 128, 128, 0.25));
   color: var(--color-content-default, #d5d7dd);
@@ -2964,7 +2964,7 @@ body.cer-group-cfg .cer-set-card {
 .cer-search-page .avatar-card-btns .btn-control-md {
   background: var(--cer-accent, #335fff) !important;
   border-color: transparent !important;
-  color: #fff !important;
+  color: var(--cer-accent-ink, #fff) !important;
 }
 
 /* group cards: stroke, room for the whole icon, clamp long descriptions to two
@@ -3180,7 +3180,7 @@ body.cer-group-cfg .cer-set-card {
 .cer-avatar-tabs .cer-tab-active,
 .cer-avatar-tabs .cer-tab-active:hover {
   background: var(--cer-accent, #335fff);
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 .cer-avatar-subrow {
   display: flex;
@@ -3293,7 +3293,7 @@ body.cer-group-cfg .cer-set-card {
 }
 .cer-outfit-btn:hover {
   background: var(--cer-accent, #335fff);
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 .cer-outfit-del:hover {
   background: #d93a3a;
@@ -3375,7 +3375,7 @@ body.cer-group-cfg .cer-set-card {
 }
 .cer-avatar-typebtn-on {
   background: var(--cer-accent, #335fff);
-  color: #fff;
+  color: var(--cer-accent-ink, #fff);
 }
 
 /* profile About cells pulse while loading (beats .cer-profile-infocell's bg) */

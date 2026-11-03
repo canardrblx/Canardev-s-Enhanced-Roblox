@@ -30,13 +30,13 @@ html.cer-takeover #container-main {
   --cer-text: var(--color-content-emphasis, #f6f7f9);
   --cer-text-2: var(--color-content-default, #cfd2da);
   --cer-text-3: var(--color-content-muted, #8e93a3);
-  --cer-acc: var(--cer-accent, var(--color-action-emphasis-background, #4c6bff));
-  --cer-acc-ink: #fff;
+  --cer-acc: var(--cer-accent, var(--color-content-emphasis, #f6f7f9));
+  --cer-acc-ink: var(--cer-accent-ink, var(--color-surface-0, #111216));
   --cer-acc-soft: color-mix(in srgb, var(--cer-acc) 16%, transparent);
   --cer-good: #2fd27a;
   --cer-warn: #ffb020;
   --cer-bad: #ff4d5e;
-  --cer-online: #2f9bff;
+  --cer-online: var(--cer-acc);
   --cer-ingame: #2fd27a;
   --cer-studio: #ff9a2f;
   --cer-r-xs: 6px;
@@ -358,10 +358,9 @@ a.cer-card-box:hover {
 .cer-btn-primary {
   background: var(--cer-acc);
   color: var(--cer-acc-ink) !important;
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--cer-acc) 35%, transparent);
 }
 .cer-btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--cer-acc) 88%, #fff);
+  filter: brightness(1.08);
 }
 .cer-btn-light {
   background: #fff;
@@ -428,9 +427,8 @@ a.cer-card-box:hover {
   border-color: var(--cer-text) transparent var(--cer-text) transparent;
   animation: cer-spin 0.7s linear infinite;
 }
-.cer-btn-primary.is-busy::after,
-.cer-btn-light.is-busy::after {
-  border-color: #fff transparent #fff transparent;
+.cer-btn-primary.is-busy::after {
+  border-color: var(--cer-acc-ink) transparent var(--cer-acc-ink) transparent;
 }
 .cer-btn-light.is-busy::after {
   border-color: #111 transparent #111 transparent;

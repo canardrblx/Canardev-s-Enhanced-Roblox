@@ -14,6 +14,18 @@ scratch as an original product.
   and a "Friends' games" right column. That is the quality and feel to aim for everywhere.
 - Speed matters most. He stopped using CER because it was slow.
 
+## LOOK: game platform, minimal (owner correction, overrides anything below)
+The first pass looked "vibecoded", like a professional/SaaS website. CER must feel like a GAME
+PLATFORM (console home screen, game launcher), minimal and modern. The owner loved CER because it
+REMOVED clutter and useless info. Every element must earn its place.
+- Art first (game thumbnails, avatars, item images). Text and buttons last.
+- No page subtitles, helper sentences, "N items" lines, or section counts.
+- Section titles are plain bold words: no icon in front.
+- No badges/pills/stat cards unless real player info (playing count, rating, price, online).
+- One obvious primary action per screen (usually Play). Secondary actions small and quiet.
+- No bordered info cards, no settings-style modals for simple things.
+- Fewer sections; cut what is rarely useful. Icons only where they replace words.
+
 ## Architecture (already built; read these files first)
 - `extension/content/ui.js`: the design system. Read ALL of it before writing code.
   - `CER.PAGES` route table + `CER.pageFor`. theme.js adds `html.cer-takeover` at
