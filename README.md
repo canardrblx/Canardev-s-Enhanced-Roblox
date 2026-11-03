@@ -18,30 +18,28 @@ I'm canardev and I make Roblox games (you might have played Build a Country).
 Every Roblox extension I tried did cool stuff but phoned home to servers I
 couldn't see, so I built my own and kept it fully open.
 
-It only talks to roblox.com. No backend, no analytics, no accounts. Every line
-is in this repo and there's no build step, so the code you read is the code that
-runs.
+It only talks to roblox.com (plus the feedback box, if you use it). No backend,
+no analytics, no accounts. Every line is in this repo and there's no build step,
+so the code you read is the code that runs.
 
 > **Heads up:** this is still in active development and nowhere near finished.
 > Expect rough edges, missing bits, and frequent updates.
 
 ## What it does
 
-**Themes.** A big pile of them, plus animated ones like Aurora and Ember drawn
-in pure CSS. Dark themes recolor every corner of the site, not just the homepage.
+**Every page, redesigned.** Home, games, game pages, search, profiles, friends,
+groups and the group manager, catalog, avatar editor, messages, badges, passes,
+inventory, favorites, trades, transactions, account settings and even the 404
+page. Clean layouts, big art, no clutter.
 
-**Redesigned pages.** Home, profile, game pages, groups, friends, messages,
-settings, the avatar editor and the games page all get cleaner layouts. The
-profile has proper tabs (About, Creations, Favorites, Friends, Groups, Badges),
-the games page is trimmed down to Top Games, a rotating genre carousel and my
-daily picks, and the avatar editor lets you stack more accessories than Roblox's
-own UI allows.
+**Themes.** Midnight, Galaxy, Ocean, Forest, Lava, Black, Cloud, Bubblegum, Mint
+and Sunny, plus Roblox's own Light and Dark. Pick one and the whole site follows.
 
-**Quality of life.** A search dropdown across games, people, catalog and groups.
-Presence rings on avatars so you can tell at a glance who's online, in game or in
-Studio. A local playtime tracker with a heatmap. A better server browser. Cleaner
-game titles. Communities renamed back to Groups. Hideable home rows. Almost
-everything is a toggle in the CER Settings panel.
+**Quality of life.** Verified, Premium and Plus badges on every name. Pin games
+to Home. Sort friend requests by mutual friends, followers or verified. Select
+all in messages. A search dropdown across games, people, catalog and groups.
+Presence rings on avatars. A local playtime tracker. Communities renamed back to
+Groups.
 
 ## Screenshots
 
@@ -77,13 +75,13 @@ Roblox's own Dark and Light, with a few custom themes below.
 </details>
 
 <details>
-<summary><b>Grape</b></summary>
+<summary><b>Galaxy</b></summary>
 
-![Home](assets/screenshots/grape/home.png)
-![Games](assets/screenshots/grape/games.png)
-![Profile](assets/screenshots/grape/profile.png)
-![Avatar](assets/screenshots/grape/avatar.png)
-![Friends](assets/screenshots/grape/friends.png)
+![Home](assets/screenshots/galaxy/home.png)
+![Games](assets/screenshots/galaxy/games.png)
+![Profile](assets/screenshots/galaxy/profile.png)
+![Avatar](assets/screenshots/galaxy/avatar.png)
+![Friends](assets/screenshots/galaxy/friends.png)
 </details>
 
 <details>
@@ -97,13 +95,13 @@ Roblox's own Dark and Light, with a few custom themes below.
 </details>
 
 <details>
-<summary><b>Cotton Candy</b></summary>
+<summary><b>Bubblegum</b></summary>
 
-![Home](assets/screenshots/cotton/home.png)
-![Games](assets/screenshots/cotton/games.png)
-![Profile](assets/screenshots/cotton/profile.png)
-![Avatar](assets/screenshots/cotton/avatar.png)
-![Friends](assets/screenshots/cotton/friends.png)
+![Home](assets/screenshots/bubblegum/home.png)
+![Games](assets/screenshots/bubblegum/games.png)
+![Profile](assets/screenshots/bubblegum/profile.png)
+![Avatar](assets/screenshots/bubblegum/avatar.png)
+![Friends](assets/screenshots/bubblegum/friends.png)
 </details>
 
 <details>
@@ -120,8 +118,8 @@ Roblox's own Dark and Light, with a few custom themes below.
 
 Prefer to run it straight from source? Clone the repo, then in Chrome open
 `chrome://extensions`, turn on Developer mode, and **Load unpacked** the
-`extension/` folder. Firefox: load `firefox-build/manifest.json` as a temporary
-add-on from `about:debugging`.
+`extension/` folder. Firefox: run `./build-firefox.sh`, then load
+`firefox-build/manifest.json` as a temporary add-on from `about:debugging`.
 
 ## Why you can trust it
 
@@ -129,7 +127,9 @@ Don't take my word for it, check for yourself:
 
 - Everything is in this repo. No minified blobs, no build output, no
   dependencies.
-- Search the code for `fetch`. Requests go to roblox.com domains.
+- Search the code for `fetch`. Requests go to roblox.com domains. The one
+  exception is the feedback box: when you press Send, your message and Roblox
+  username go to my Discord.
 - Permissions: `storage` (your settings), `alarms` (the playtime tracker), and
   roblox.com pages.
 - GPL-3.0 licensed, so it stays open.

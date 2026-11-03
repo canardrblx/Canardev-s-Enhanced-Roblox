@@ -352,6 +352,10 @@ try {
   if (CER.dev) {
     window.addEventListener("message", (e) => {
       if (e.source === window && e.data?.cer === "dev-reload") CER.ext.runtime.sendMessage({ cer: "dev-reload" });
+      // screenshots: show a preset locally, without pickTheme's Roblox theme write
+      if (e.source === window && e.data?.cer === "dev-theme" && CER.themeById?.(e.data.id)) {
+        CER.get().then((cur) => CER.set({ theme: { ...cur.theme, preset: e.data.id } }));
+      }
     });
   }
 } catch {
