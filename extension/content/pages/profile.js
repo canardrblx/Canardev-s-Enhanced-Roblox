@@ -21,9 +21,55 @@
   let runId = 0; // bumps per start(); async work from an older run stops
 
   // ---------------------------------------------------------------- data
-  // GET with a background-fetch fallback (some hosts answer the page with a
-  // 401/CORS error but work from the worker, which holds our host permissions).
-  const get = async (url, ttl = 60000) => (await api.json(url, { ttl })) ?? (await api.json(url, { ttl, bg: true }));
+  // GET from the page; the worker only when the page could not ask at all
+  // (network/CORS throw, status 0, 401). A 429 / 403 / 404 is Roblox's real
+  // answer, so it is not asked again. Shares api.json's session cache format.
+  const memo = new Map();
+  async function get(url, ttl = 60000) {
+    const hit = memo.get(url);
+    if (ttl && hit && Date.now() - hit.t < ttl) return hit.v;
+    if (ttl) {
+      try {
+        const o = JSON.parse(sessionStorage.getItem("cer:" + url) ?? "null");
+        if (o && Date.now() - o.t < ttl) return memo.set(url, o), o.v;
+      } catch {
+        /* storage off */
+      }
+    }
+    let v = null;
+    let viaWorker = false;
+    for (let i = 0; i < 3; i++) {
+      let res;
+      try {
+        res = await fetch(url, { credentials: "include" });
+      } catch {
+        viaWorker = true;
+        break;
+      }
+      if (res.status === 429 && i < 2) {
+        await api.sleep(700 * (i + 1));
+        continue;
+      }
+      if (res.ok) v = await res.json().catch(() => null);
+      else if (res.status === 0 || res.status === 401) viaWorker = true;
+      break;
+    }
+    if (viaWorker) {
+      const r = await CER.bgFetch(url);
+      v = r.ok ? r.data ?? null : null;
+    }
+    if (v != null && ttl) {
+      const o = { t: Date.now(), v };
+      memo.set(url, o);
+      try {
+        const str = JSON.stringify(o);
+        if (str.length < 200000) sessionStorage.setItem("cer:" + url, str);
+      } catch {
+        /* quota: memory cache still works */
+      }
+    }
+    return v;
+  }
 
   // users/v1 lookup that tells "gone" (404 / banned) apart from "failed".
   async function loadUser(id) {
@@ -207,17 +253,30 @@
     // friends: theirs + mine (for mutuals first), shared by Overview + Friends
     const theirFriendsP = friendsOf(id);
     const myFriendIdsP = isSelf ? Promise.resolve(null) : friendsOf(me.id).then((l) => (l ? new Set(l.map((f) => String(f.id))) : null));
+    // sort: friends you share, then in game, studio, online, offline
+    const rank = { ingame: 0, studio: 1, online: 2, offline: 3 };
+    const sortFriends = (list) => list.sort((a, b) => b.mutual - a.mutual || rank[api.presenceState(a.presence)] - rank[api.presenceState(b.presence)]);
+    const addPresence = async (rows) => {
+      if (!rows.length) return;
+      const pres = await api.presence(rows.map((f) => f.id));
+      for (const f of rows) f.presence = pres.get(String(f.id)) ?? null;
+    };
+    // Overview: presence for the first 100 only (one call)
     const friendsP = Promise.all([theirFriendsP, myFriendIdsP]).then(async ([list, mine]) => {
       if (!list) return null;
       for (const f of list) f.mutual = !!mine?.has(String(f.id));
-      // presence for the first 500 (5 batched calls), then sort:
-      // friends you share, in game, studio, online, offline
-      const pres = await api.presence(list.slice(0, 500).map((f) => f.id));
-      const rank = { ingame: 0, studio: 1, online: 2, offline: 3 };
-      for (const f of list) f.presence = pres.get(String(f.id)) ?? null;
-      list.sort((a, b) => b.mutual - a.mutual || rank[api.presenceState(a.presence)] - rank[api.presenceState(b.presence)]);
-      return list;
+      sortFriends(list);
+      await addPresence(list.slice(0, 100));
+      return sortFriends(list);
     });
+    // Friends tab: the rest (up to 500 in all), only once it is opened
+    let allFriendsP = null;
+    const allFriends = () =>
+      (allFriendsP ??= friendsP.then(async (list) => {
+        if (!list) return list;
+        await addPresence(list.filter((f) => f.presence === undefined).slice(0, 400));
+        return sortFriends(list);
+      }));
 
     // games from groups the user OWNS count as their creations too
     const groupGamesP = rolesP.then(async (roles) => {
@@ -411,7 +470,7 @@
         else grid.replaceChildren(...rows.slice(0, limit).map((f) => ui.userTile(f, { presence: f.presence, sub: friendSub(f) })));
         foot.hidden = rows.length <= limit;
       };
-      Promise.all([friendsP, countsP]).then(([l, [count]]) => {
+      Promise.all([allFriends(), countsP]).then(([l, [count]]) => {
         if (!alive()) return;
         if (!l?.length) {
           toolbar.hidden = true;
@@ -438,6 +497,7 @@
         const [j, rb] = await Promise.all([get(url, 300000), first ? robloxP : null]);
         moreBtn.busy(false);
         if (!alive()) return;
+        if (!j && !first) return CER.toast("Could not load more.", "error"); // cursor + button stay
         if (first) {
           grid.replaceChildren(
             ...(Array.isArray(rb) ? rb : []).map((b) => badgeTile({ href: `${RB}/info/roblox-badges#Badge${b.id}`, name: b.name, tip: b.description, img: ui.img(b.imageUrl, { alt: "" }), roblox: true }))
@@ -559,19 +619,29 @@
     return hero;
   }
 
+  // Roblox asked for a check (captcha) we cannot show: offer its own page.
+  const askRoblox = () =>
+    ui.modal({
+      title: "Finish on Roblox",
+      body: h("p", { text: "Roblox wants a quick check first." }),
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        { label: "Open Roblox page", variant: "primary", onClick: (close) => (close(), (location.href = ui.nativeUrl())) },
+      ],
+    });
+
   // Friend button: status → Add friend / Request sent / Accept / Friends.
   async function wireFriend(slot, chatSlot, id, me, user) {
-    const j = await api.json(`https://friends.roblox.com/v1/users/${me.id}/friends/statuses?userIds=${id}`, { bg: true });
-    let status = j?.data?.[0]?.status ?? "NotFriends";
-    const askRoblox = () =>
-      ui.modal({
-        title: "Finish on Roblox",
-        body: h("p", { text: "Roblox wants a quick check first." }),
-        actions: [
-          { label: "Cancel", variant: "ghost" },
-          { label: "Open Roblox page", variant: "primary", onClick: (close) => (close(), (location.href = ui.nativeUrl())) },
-        ],
-      });
+    const url = `https://friends.roblox.com/v1/users/${me.id}/friends/statuses?userIds=${id}`;
+    let j = await get(url, 0);
+    if (!j?.data?.[0]?.status) {
+      await api.sleep(1500); // one retry
+      if (!slot.isConnected) return;
+      j = await get(url, 0);
+    }
+    let status = j?.data?.[0]?.status;
+    // unknown: never guess "not friends" (it could offer Add friend to a friend)
+    if (!status) return slot.replaceChildren();
     const render = () => {
       let b;
       if (status === "Friends") {
@@ -645,7 +715,7 @@
       if (r.ok) {
         st.on = !st.on;
         CER.toast(st.on ? "Following" : "Not following");
-      } else if (r.status === 403) location.href = ui.nativeUrl(); // captcha: Roblox's page runs it
+      } else if (r.status === 403) askRoblox(); // captcha: Roblox's page runs it
       else CER.toast("Could not do that", "error");
     };
     return st;

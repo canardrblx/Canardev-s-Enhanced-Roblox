@@ -93,14 +93,19 @@
   // Your place in this group: { me, role, pending, perms }. The membership
   // API sometimes 401s from the page; fall back to the background worker,
   // then to your groups list (role only).
+  // unknown = we could not tell (never show Join to someone who may be a member).
   async function membership(gid, me) {
-    if (!me) return { me: null };
+    if (!me) return CER.loggedOut ? { me: null } : { me: null, unknown: true };
     const url = `${GROUPS}/v1/groups/${gid}/membership`;
     let m = await api.json(url);
     if (!m?.groupId) m = await api.json(url, { bg: true });
-    let role = m?.userRole?.role?.rank > 0 ? m.userRole.role : null;
-    if (!m?.groupId) role = (await myRoles(me.id))?.get(String(gid))?.role ?? null;
-    return { me, role, pending: !!m?.isPendingJoin, perms: m?.permissions ?? null };
+    if (m?.groupId) {
+      const role = m.userRole?.role?.rank > 0 ? m.userRole.role : null;
+      return { me, role, pending: !!m.isPendingJoin, perms: m.permissions ?? null };
+    }
+    const mine = await myRoles(me.id);
+    if (!mine) return { me, unknown: true };
+    return { me, role: mine.get(String(gid))?.role ?? null, pending: false, perms: null };
   }
 
   // Manage = any admin permission (posts/forums are normal member rights)
@@ -127,18 +132,12 @@
   const byPopular = (list) => [...list].sort((a, b) => (b.playing ?? 0) - (a.playing ?? 0) || b.visits - a.visits);
 
   // One page of the group store, with names + prices. null = could not load.
-  // v2 search returns details in one GET; v1 search + details POST is the
-  // fallback if v2 ever goes away.
+  // The catalog rate limit is strict: one v2 GET (names + prices in one call),
+  // no fallback, no extra retry. api.json itself tries at most 3 times on 429.
   async function loadStore(gid, cursor = "") {
     const cur = cursor ? "&cursor=" + encodeURIComponent(cursor) : "";
     const v2 = await api.json(`https://catalog.roblox.com/v2/search/items/details?Category=All&CreatorTargetId=${gid}&CreatorType=Group&Limit=30${cur}`, { ttl: 5 * 60000 });
-    if (Array.isArray(v2?.data)) return { items: v2.data, next: v2.nextPageCursor ?? null };
-    const s = await api.json(`https://catalog.roblox.com/v1/search/items?category=All&creatorTargetId=${gid}&creatorType=Group&limit=30${cur}`, { ttl: 5 * 60000 });
-    if (!s) return null;
-    const ids = (s.data ?? []).map((x) => ({ itemType: x.itemType, id: x.id }));
-    const det = ids.length ? await api.json("https://catalog.roblox.com/v1/catalog/items/details", { method: "POST", body: { items: ids } }) : null;
-    const byKey = new Map((det?.data ?? []).map((d) => [d.itemType + ":" + d.id, d]));
-    return { items: ids.map((x) => ({ ...x, ...(byKey.get(x.itemType + ":" + x.id) ?? {}) })), next: s.nextPageCursor ?? null };
+    return Array.isArray(v2?.data) ? { items: v2.data, next: v2.nextPageCursor ?? null } : null;
   }
 
   const loadAllies = (gid, start = 0) =>
@@ -179,15 +178,19 @@
     );
   }
 
+  // onClick resolves true = more to load, false = done, null = failed (keep the button)
   function loadMoreButton(onClick) {
     const b = ui.button("More", { variant: "soft" });
+    const wrap = h("div", { class: "cer-gp-more" }, b);
     b.addEventListener("click", async () => {
+      if (b.disabled) return;
       b.busy(true);
       const more = await onClick();
       b.busy(false);
-      if (!more) b.remove();
+      if (more === null) CER.toast("Could not load more. Try again.", "error");
+      else if (!more) wrap.remove();
     });
-    return h("div", { class: "cer-gp-more" }, b);
+    return wrap;
   }
 
   // ---------------------------------------------------------------- group page
@@ -211,8 +214,6 @@
     const rolesP = api.json(`${GROUPS}/v1/groups/${gid}/roles`, { ttl: TTL });
     const socialP = api.json(`${GROUPS}/v1/groups/${gid}/social-links`, { ttl: TTL });
     const alliesP = loadAllies(gid);
-    // catalog often rate-limits: one quiet retry before the Store tab gives up
-    const storeP = loadStore(gid).then((s) => s ?? api.sleep(2500).then(() => loadStore(gid)));
     const memP = meP.then((me) => membership(gid, me));
 
     let info = await infoP;
@@ -228,7 +229,14 @@
       );
       return;
     }
-    const ctx = { gid, info, gamesP, hydratedP, rolesP, socialP, alliesP, storeP, memP, alive, state };
+    // store is lazy (catalog limit): first asked for by the Store section or tab
+    let storeP = null;
+    const store = () =>
+      (storeP ??= loadStore(gid).then((s) => {
+        if (alive() && s?.items.length && !has.store) ((has.store = true), renderTabs());
+        return s;
+      }));
+    const ctx = { gid, info, gamesP, hydratedP, rolesP, socialP, alliesP, store, memP, alive, state };
 
     // ---- hero: icon, name, members, owner, one action
     const heroImage = gamesP
@@ -271,7 +279,9 @@
     const renderActions = (mem) => {
       if (!alive()) return;
       const out = [];
-      if (!mem.me) {
+      if (mem.unknown) {
+        // could not tell if you are in it: show nothing rather than a wrong Join
+      } else if (!mem.me) {
         out.push(ui.button("Join", { variant: "light", size: "lg", href: ui.nativeUrl() }));
       } else if (mem.role) {
         const own = mem.role.rank === 255;
@@ -316,7 +326,6 @@
 
     gamesP.then((g) => ((has.games = !!g?.length), renderTabs()));
     alliesP.then((a) => ((has.allies = !!a?.relatedGroups?.length), renderTabs()));
-    storeP.then((s) => ((has.store = !!s?.items.length), renderTabs()));
   }
 
   function featuredGame(g) {
@@ -409,12 +418,16 @@
       if (list.length > 12) games.head.querySelector(".cer-block-tools")?.append(ui.link("See all", { onClick: () => setTab("games") }));
     });
 
+    // nothing at all to show (no games, store, allies, about)
+    const quiet = () => {
+      if (ctx.alive() && !pane.querySelector(".cer-empty") && ![...pane.children].some((x) => x.isConnected && !x.hidden)) pane.append(ui.empty(`This ${word} is quiet for now.`, { icon: "users" }));
+    };
     const store = ui.section("Store");
     store.body.append(h("div", { class: "cer-gp-items is-row" }, ui.skeleton("card", 6)));
     ui.whenVisible(store, () =>
-      ctx.storeP.then((s) => {
+      ctx.store().then((s) => {
         if (!ctx.alive()) return;
-        if (!s?.items.length) return store.remove();
+        if (!s?.items.length) return store.remove(), quiet();
         store.body.replaceChildren(h("div", { class: "cer-gp-items is-row" }, s.items.slice(0, 6).map(itemCard)));
         if (s.items.length > 6 || s.next) store.head.querySelector(".cer-block-tools")?.append(ui.link("See all", { onClick: () => setTab("store") }));
       })
@@ -448,10 +461,8 @@
     });
 
     pane.append(games, store, allies, about);
-    // nothing at all to show (no games, store, allies, about)
-    Promise.all([ctx.hydratedP, ctx.storeP, ctx.alliesP, ctx.socialP]).then(() => {
-      if (ctx.alive() && ![...pane.children].some((x) => x.isConnected && !x.hidden)) pane.append(ui.empty(`This ${word} is quiet for now.`, { icon: "users" }));
-    });
+    // the store section stays until it is seen (lazy), and re-checks when it goes
+    Promise.all([ctx.hydratedP, ctx.alliesP, ctx.socialP]).then(quiet);
   }
 
   function socialIcon(type) {
@@ -473,7 +484,7 @@
   function buildStore(ctx, pane) {
     const grid = h("div", { class: "cer-gp-items" }, ui.skeleton("card", 12));
     pane.append(grid);
-    ctx.storeP.then((s) => {
+    ctx.store().then((s) => {
       if (!ctx.alive()) return;
       if (!s) return pane.replaceChildren(ui.empty("We could not load the store.", { icon: "bag" }));
       if (!s.items.length) return pane.replaceChildren(ui.empty("Nothing for sale yet.", { icon: "bag" }));
@@ -483,7 +494,7 @@
         pane.append(
           loadMoreButton(async () => {
             const more = await loadStore(ctx.gid, cursor);
-            if (!more) return true; // keep the button to retry
+            if (!more) return null; // keep the button to retry
             grid.append(...more.items.map(itemCard));
             cursor = more.next;
             return !!cursor;
@@ -497,7 +508,7 @@
     const chipSlot = h("div", { class: "cer-gp-rolebar" }, ui.skeleton("line"));
     const list = h("div", { class: "cer-gp-members" });
     pane.append(chipSlot, list);
-    const cache = new Map(); // roleId → { users, cursor, done, grid, wrap }
+    const cache = new Map(); // roleId → { users, cursor, done, loading, wrap, grid }
 
     ctx.rolesP.then((r) => {
       if (!ctx.alive()) return;
@@ -515,36 +526,41 @@
       show(first);
     });
 
-    async function show(role) {
+    function show(role) {
       const key = String(role.id);
-      if (!cache.has(key)) {
-        const grid = ui.grid([], { min: 116, gap: 10 });
-        cache.set(key, { users: [], cursor: "", done: false, grid, wrap: h("div", { class: "cer-gp-rolewrap" }, grid) });
-      }
+      if (!cache.has(key)) cache.set(key, { users: [], cursor: "", done: false, loading: null, wrap: h("div", { class: "cer-gp-rolewrap" }), grid: null });
       const c = cache.get(key);
       list.replaceChildren(c.wrap);
-      if (!c.users.length && !c.done) {
-        c.grid.append(...ui.skeleton("tile", 12));
-        await loadPage(role, c);
-      }
+      if (!c.users.length && !c.done) firstPage(role, c);
     }
-    async function loadPage(role, c) {
-      const j = await api.json(`${GROUPS}/v1/groups/${ctx.gid}/roles/${role.id}/users?limit=50&sortOrder=Desc${c.cursor ? "&cursor=" + encodeURIComponent(c.cursor) : ""}`);
-      if (!ctx.alive()) return false;
-      c.grid.querySelectorAll(".cer-sk").forEach((x) => x.remove());
-      c.wrap.querySelector(".cer-gp-more")?.remove();
-      if (!j) {
-        if (!c.users.length) c.grid.replaceWith((c.grid = ui.empty("We could not load these members.", { icon: "users" })));
-        return false;
-      }
-      const users = j.data ?? [];
-      c.users.push(...users);
-      c.cursor = j.nextPageCursor;
-      c.done = !c.cursor;
-      c.grid.append(...users.map((u) => ui.userTile({ id: u.userId, name: u.username, displayName: u.displayName }, { size: 84, sub: "" })));
-      if (!c.users.length) c.grid.replaceWith((c.grid = ui.empty("Nobody here yet.", { icon: "users" })));
-      if (!c.done) c.wrap.append(loadMoreButton(() => loadPage(role, c)));
-      return !c.done;
+    // first page: a fresh grid every attempt, Try again on failure
+    function firstPage(role, c) {
+      if (c.loading) return c.loading; // already on its way (fast chip switching)
+      c.grid = ui.grid(ui.skeleton("tile", 12), { min: 116, gap: 10 });
+      c.wrap.replaceChildren(c.grid);
+      return loadPage(role, c).then((r) => {
+        if (r === null && ctx.alive()) {
+          const retry = ui.button("Try again", { variant: "soft", onClick: () => firstPage(role, c) });
+          c.wrap.replaceChildren(ui.empty("We could not load these members.", { icon: "users", action: retry }));
+        }
+      });
+    }
+    // one page into c.grid. true = more left, false = done, null = failed
+    function loadPage(role, c) {
+      return (c.loading ??= (async () => {
+        const j = await api.json(`${GROUPS}/v1/groups/${ctx.gid}/roles/${role.id}/users?limit=50&sortOrder=Desc${c.cursor ? "&cursor=" + encodeURIComponent(c.cursor) : ""}`);
+        if (!ctx.alive()) return false;
+        c.grid.querySelectorAll(".cer-sk").forEach((x) => x.remove());
+        if (!j) return null;
+        const users = j.data ?? [];
+        c.users.push(...users);
+        c.cursor = j.nextPageCursor;
+        c.done = !c.cursor;
+        c.grid.append(...users.map((u) => ui.userTile({ id: u.userId, name: u.username, displayName: u.displayName }, { size: 84, sub: "" })));
+        if (!c.users.length) c.wrap.replaceChildren(ui.empty("Nobody here yet.", { icon: "users" }));
+        else if (!c.done && !c.wrap.querySelector(".cer-gp-more")) c.wrap.append(loadMoreButton(() => loadPage(role, c)));
+        return !c.done;
+      })().finally(() => (c.loading = null)));
     }
   }
 
@@ -566,7 +582,7 @@
         pane.append(
           loadMoreButton(async () => {
             const more = await loadAllies(ctx.gid, next);
-            if (!more) return true;
+            if (!more) return null;
             const got = more.relatedGroups ?? [];
             grid.append(...got.map((g) => groupTile(g)));
             shown += got.length;
@@ -580,8 +596,12 @@
   // ---------------------------------------------------------------- my groups
   async function myGroups() {
     const me = await api.me();
-    if (!me) return ui.release();
+    if (!me && CER.loggedOut) return ui.release();
     const { page } = ui.page(TAG, "cer-mg");
+    if (!me) {
+      page.append(ui.empty(`We could not load your ${word}s.`, { icon: "users", action: ui.button("Try again", { variant: "soft", onClick: () => location.reload() }) }));
+      return;
+    }
     document.title = Word() + "s - Roblox";
     let query = "";
 

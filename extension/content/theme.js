@@ -11,6 +11,19 @@
 (async function () {
   if (typeof CER === "undefined") return;
 
+  // Text color that stays readable on an accent: dark ink on light accents.
+  const inkOn = (hex) => {
+    const m = /^#([0-9a-f]{6})$/i.exec(hex ?? "");
+    if (!m) return "#fff";
+    const lin = (i) => {
+      const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+    // white while it still reads (contrast 3+, fine for bold button text)
+    return 1.05 / (L + 0.05) < 3 ? "#111216" : "#fff";
+  };
+
   // ---- document_start: decide what never paints ----
   // Classes on <html> gate CSS in styles.css, so Roblox's nav/top bar and the
   // native parts we replace are hidden BEFORE the first paint (no JS race).
@@ -61,16 +74,14 @@
         inner.observe(c, { childList: true });
       });
       outer.observe(root, { childList: true, subtree: true });
-      document.addEventListener(
-        "DOMContentLoaded",
-        () => {
-          outer.disconnect();
-          inner?.disconnect();
-          const c = document.getElementById("content");
-          if (c) gut(c);
-        },
-        { once: true }
-      );
+      const stopGut = () => {
+        outer.disconnect();
+        inner?.disconnect();
+        const c = document.getElementById("content");
+        if (c) gut(c);
+      };
+      // settings can arrive after DOMContentLoaded on a fast or cached load
+      document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", stopGut, { once: true }) : stopGut();
       // Roblox's page is gone, so giving it back means reloading it natively
       const giveBack = () => {
         if (!document.getElementById("cer-app")) {
@@ -87,12 +98,8 @@
       ? null
       : /\/users\/\d+\/profile/.test(p) && feats.profileRedesign !== false
       ? "profile"
-      : p.startsWith("/users/friends") && feats.friendsPage !== false
-      ? "friends"
       : p.startsWith("/my/avatar") && feats.avatarEditor !== false
       ? "avatar"
-      : p.startsWith("/charts") && feats.gamesRedesign !== false
-      ? "games"
       : p.startsWith("/home") && feats.wideTiles !== false
       ? "continue"
       : null;
@@ -104,8 +111,6 @@
         mainHtml = block(140, 1000) + block(22, 180) + row(8, 90, 90) + block(22, 140) + row(6, 150, 220);
       } else if (/\/users\/\d+\/profile/.test(p)) {
         mainHtml = block(200, 1100) + `<div class="cer-skel-row">${Array.from({ length: 6 }, () => `<div class="cer-skel-tile" style="height:34px;width:90px;border-radius:999px"></div>`).join("")}</div>` + row(5, 120, 120);
-      } else if (p.startsWith("/charts")) {
-        mainHtml = block(22, 150) + row(6, 150, 220) + block(22, 200) + row(6, 150, 220);
       } else if (p.startsWith("/my/avatar")) {
         mainHtml = `<div class="cer-skel-row"><div class="cer-skel-tile" style="height:420px;width:360px"></div><div style="flex:1;display:flex;flex-direction:column;gap:16px">${block(40, 600)}${row(8, 110, 110)}</div></div>`;
       } else {
@@ -213,7 +218,7 @@
     // follows Roblox's light/dark and app themes.
     rules.push(
       tint
-        ? `:root { --cer-accent: ${tint.accent}; --cer-accent-ink: #fff; }`
+        ? `:root { --cer-accent: ${tint.accent}; --cer-accent-ink: ${inkOn(tint.accent)}; }`
         : `* { --cer-accent: var(--color-content-emphasis, #f6f7f9); --cer-accent-ink: var(--color-surface-0, #111216); }`
     );
 
@@ -340,10 +345,10 @@
       // legacy buttons: primary, growth (all sizes — "Join Event" is
       // btn-growth-xs), play buttons
       rules.push(
-        `[class*="btn-primary-"], [class*="btn-growth-"], .btn-common-play-game-lg, .play-button { background-color: ${tint.accent} !important; border-color: ${tint.accent} !important; color: #fff !important; }`
+        `[class*="btn-primary-"], [class*="btn-growth-"], .btn-common-play-game-lg, .play-button { background-color: ${tint.accent} !important; border-color: ${tint.accent} !important; color: ${inkOn(tint.accent)} !important; }`
       );
       rules.push(
-        `#game-instances .foundation-web-button, .rbx-game-server-item .foundation-web-button, .rbx-private-server-item .foundation-web-button { background: ${tint.accent} !important; color: #fff !important; }`
+        `#game-instances .foundation-web-button, .rbx-game-server-item .foundation-web-button, .rbx-private-server-item .foundation-web-button { background: ${tint.accent} !important; color: ${inkOn(tint.accent)} !important; }`
       );
 
       // legacy chat window (new-UI parts follow the tokens)
@@ -390,7 +395,7 @@
         // out-ranks my own chip rule '[class*="forum"] a[class]' (0,2,1) which
         // was painting the active pill the card colour — the real 20x bug.
         rules.push(
-          `.group-forums-category-pill.active.clickable { background-color: ${tint.accent} !important; color: #fff !important; }`
+          `.group-forums-category-pill.active.clickable { background-color: ${tint.accent} !important; color: ${inkOn(tint.accent)} !important; }`
         );
       }
     }

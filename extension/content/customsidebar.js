@@ -47,19 +47,26 @@
     // flashing a nav full of login bounces.
     if (snap.me === null) {
       root.classList.remove("cer-cnav");
-      CER.me().then((me) => {
-        if (!me) return;
-        root.classList.add("cer-cnav");
-        build();
-      });
+      const check = () =>
+        CER.me().then((me) => {
+          if (me) {
+            root.classList.add("cer-cnav");
+            return build();
+          }
+          // unknown (rate limit, network): ask again later; logged out: stop
+          if (!CER.loggedOut && CER.alive?.() !== false) setTimeout(check, 30000);
+        });
+      check();
       return;
     }
     build();
   }
 
   function build() {
+    let navWanted = true; // false once we know the user is logged out
     // Roblox's #wrap reserves the nav's 288px via this class. Keep it.
     const reserveSpace = () => {
+      if (!navWanted) return;
       const wrap = document.querySelector("#wrap");
       if (wrap && !wrap.classList.contains("left-nav-new-width")) wrap.classList.add("left-nav-new-width");
     };
@@ -292,17 +299,32 @@
       m.style.left = r.left + "px";
       m.style.minWidth = Math.max(200, r.width) + "px";
       m.style.top = (up ? r.top - m.offsetHeight - 6 : r.bottom + 6) + "px";
-      const close = () => {
+      const close = (refocus) => {
         m.remove();
         document.removeEventListener("click", onDoc);
-        document.removeEventListener("keydown", onKey);
+        document.removeEventListener("keydown", onKey, true);
+        if (refocus) anchor.focus({ preventScroll: true });
       };
+      m.close = close;
       const onDoc = (e) => !m.contains(e.target) && close();
-      const onKey = (e) => e.key === "Escape" && close();
-      setTimeout(() => {
-        document.addEventListener("click", onDoc);
-        document.addEventListener("keydown", onKey);
-      }, 0);
+      // Esc closes only this menu; arrows move between its items
+      const onKey = (e) => {
+        if (!m.isConnected) return close();
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          close(true);
+        } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const items = [...m.querySelectorAll(".cer-ctx-item")];
+          const i = items.indexOf(document.activeElement);
+          const n = e.key === "ArrowDown" ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+          items[n]?.focus();
+        } else if (e.key === "Tab") close();
+      };
+      m.querySelector(".cer-ctx-item")?.focus({ preventScroll: true });
+      document.addEventListener("keydown", onKey, true);
+      setTimeout(() => document.addEventListener("click", onDoc), 0);
       return m;
     }
 
@@ -314,7 +336,7 @@
             label: "CER settings",
             icon: "sliders",
             onClick: (_, m) => {
-              m.remove();
+              m.close();
               CER.openSettings?.();
             },
           },
@@ -356,7 +378,7 @@
       const next = {
         groupsLabel: s.features.renameGroups ? "Groups" : "Communities",
         opt: ["Inventory", "Trade"].filter((l) => s.sidebarPrefs?.[l] === "show"),
-        chat: !!s.features.customChat,
+        chat: !!s.features.customChat && !s.features.hideChat,
       };
       if (JSON.stringify(next) !== JSON.stringify(prefs)) {
         prefs = next;
@@ -366,19 +388,33 @@
     });
 
     // ---- live data ----
-    let navWanted = true;
-    CER.me().then((me) => {
+    const loadLive = () => CER.me().then((me) => {
       if (!me) {
+        if (!CER.loggedOut) {
+          // unknown (rate limit, network): keep the nav and the snapshot,
+          // try again later
+          if (CER.alive?.() !== false) setTimeout(loadLive, 30000);
+          return;
+        }
         // logged out: Roblox's own header has Log In / Sign Up, so hand the
         // page back to it
         navWanted = false;
         nav.remove();
         vtagEl?.remove();
         root.classList.remove("cer-cnav");
+        document.querySelector("#wrap")?.classList.remove("left-nav-new-width");
         saveSnap({ me: null, head: null, robux: null });
         return;
       }
       const meSnap = { id: me.id, name: me.name, displayName: me.displayName };
+      if (snap.me && snap.me.id !== me.id) {
+        // a different account than last time: drop the old face and Robux
+        avatarImg.classList.remove("is-in");
+        avatarImg.removeAttribute("src");
+        showRobux(null);
+        showOnline(0);
+        saveSnap({ head: null, robux: null });
+      }
       showMe(meSnap);
       if (myId !== me.id) {
         myId = me.id;
@@ -395,7 +431,7 @@
       // Robux: fresh at most once a minute per tab
       const fresh = (key, ms) => {
         try {
-          const c = JSON.parse(sessionStorage.getItem("cer-" + key));
+          const c = JSON.parse(sessionStorage.getItem("cer-" + key + ":" + me.id));
           return c && Date.now() - c.t < ms ? c.v : undefined;
         } catch {
           return undefined;
@@ -403,7 +439,7 @@
       };
       const stamp = (key, v) => {
         try {
-          sessionStorage.setItem("cer-" + key, JSON.stringify({ t: Date.now(), v }));
+          sessionStorage.setItem("cer-" + key + ":" + me.id, JSON.stringify({ t: Date.now(), v }));
         } catch {}
       };
       const rbx = fresh("robux", 60000);
@@ -430,6 +466,7 @@
         showOnline(n);
       });
     });
+    loadLive();
 
     // Roblox can replace <body> children or drop the #wrap class on re-render.
     // Only body's direct children are watched, never the whole page.

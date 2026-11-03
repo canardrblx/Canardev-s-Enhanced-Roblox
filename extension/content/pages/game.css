@@ -245,6 +245,10 @@
   background: rgba(255, 255, 255, 0.22);
   color: #fff !important;
 }
+/* can not vote yet (game never played): still clickable, says why */
+[data-page="game"] .gx-qbtn.cer-btn.is-locked {
+  opacity: 0.5;
+}
 /* "on" = filled white: favorite / your vote / updates on */
 [data-page="game"] .gx-qbtn.cer-btn.is-on {
   background: #fff;
@@ -328,6 +332,12 @@
   color: var(--cer-text-2);
   font-size: 15.5px;
   line-height: 1.6;
+}
+
+/* ui.clamp renders a <p>; Roblox's own "p" colour (cross-origin sheet) beats
+   .cer-clamp, so pin it to the CER token here */
+[data-page="game"] .gx-about .cer-clamp {
+  color: var(--cer-text-2);
 }
 
 /* ------------------------------------------------------------ tabs: plain words */

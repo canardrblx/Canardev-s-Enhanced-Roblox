@@ -7,11 +7,6 @@
   margin: 4px 0 20px;
 }
 
-.cer-section-fallback {
-  padding: 0 24px;
-  margin-top: 16px;
-}
-
 .cer-section-title {
   font-size: 20px;
   font-weight: 700;
@@ -349,27 +344,6 @@
   opacity: 1;
 }
 
-/* --- Pin button (inline in the game title) --- */
-
-.cer-pin-btn {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 10px;
-  padding: 3px 12px;
-  border: 1px solid rgba(128, 128, 128, 0.5);
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  vertical-align: middle;
-}
-
-.cer-pin-btn:hover {
-  background: rgba(128, 128, 128, 0.15);
-}
-
 /* --- ⚙ button next to Play --- */
 /* Roblox's container is flex-column and the Play button can render after
    ours, so we force row direction and use `order` for a stable layout. */
@@ -411,13 +385,6 @@
 }
 
 /* --- sidebar entry + gear dropdown entry --- */
-
-.cer-side-icon {
-  display: inline-flex;
-  width: 28px;
-  justify-content: center;
-  font-size: 18px;
-}
 
 .cer-nav-li {
   cursor: pointer;
@@ -463,19 +430,6 @@
   margin-top: 0;
 }
 
-/* --- Pin checkbox under the maturity label (game page) --- */
-
-.cer-pin-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  width: fit-content;
-}
-
 /* --- centered rating/CCU metadata on game cards --- */
 
 .game-card-info,
@@ -501,25 +455,6 @@
 
 /* fit any window width, not just fullscreen: nothing may out-grow the column,
    and the 3D preview scales down instead of forcing a horizontal scrollbar */
-
-/* --- wide 16:9 thumbnails in the Continue carousel --- */
-
-.cer-wide-thumb {
-  width: 246px !important;
-  height: 138px !important;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.cer-wide-thumb img {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover;
-}
-
-.cer-wide-card {
-  width: 246px !important;
-}
 
 /* --- friends carousel: align with section titles + hover grow --- */
 
@@ -585,39 +520,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* --- game page declutter (beta) --- */
-
-.cer-stat-hidden {
-  display: none !important;
-}
-
-.cer-stats-open .cer-stat-hidden {
-  display: inline-block !important;
-}
-
-.cer-stats-toggle {
-  border: none;
-  background: transparent;
-  color: var(--color-content-emphasis, inherit);
-  opacity: 0.75;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-.cer-stats-toggle:hover {
-  opacity: 1;
-  text-decoration: underline;
-}
-
-.cer-desc-clamped {
-  max-height: 180px;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
-  mask-image: linear-gradient(180deg, #000 70%, transparent);
 }
 
 /* --- currentColor SVG gear (sidebar item + join button) --- */
@@ -781,46 +683,7 @@ body.cer-no-topbar .left-nav {
   margin: 0 0 16px;
 }
 
-/* --- game page hero --- */
-
-.cer-gp-banner {
-  background-size: cover;
-  background-position: center;
-  height: 300px;
-  border-radius: 12px 12px 0 0;
-  /* mask fade: the image itself dissolves, so ANY page background (solid,
-     gradient, starfield) shows through — no fade color to mismatch */
-  -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
-}
-
-.cer-gp-play,
-.cer-gp-hero .cer-join-btn {
-  height: 60px !important;
-}
-
-/* perfect square: kill the base class's min-width/padding */
-.cer-gp-hero .cer-join-btn {
-  width: 60px !important;
-  min-width: 60px !important;
-  flex: 0 0 60px;
-  padding: 0 !important;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* our pill bar replaces the native tab HEADERS — but .rbx-tabs-horizontal
-   also CONTAINS the tab panes, so only the header list inside it may hide
-   (hiding the wrapper made every pane invisible = "tabs don't work") */
-.cer-game-redesign .rbx-tabs-horizontal > ul,
-.cer-game-redesign .rbx-tabs-horizontal .rbx-tab-set {
-  display: none !important;
-}
-
-.cer-game-redesign .game-stat-container {
-  display: none !important;
-}
+/* --- pill tabs on Roblox's group page (groups.js) --- */
 
 .cer-gp-tabs {
   display: flex;
@@ -840,10 +703,6 @@ body.cer-no-topbar .left-nav {
   background: var(--cer-accent, #335fff);
   color: var(--cer-accent-ink, #fff);
   opacity: 1;
-}
-
-.cer-gp-hidden {
-  display: none !important;
 }
 
 /* --- profile badges: native list floats <li>s with bullets in a block parent,
@@ -869,262 +728,6 @@ ul.badge-list.hlist {
   max-width: 100% !important;
 }
 
-/* --- redesigned Friends + Messages pages --- */
-
-.cer-page {
-  padding: 12px 28px 40px;
-}
-
-.cer-friend-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 14px;
-}
-
-.cer-friend-card {
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.08));
-  border-radius: 14px;
-  padding: 16px 10px 12px;
-  text-align: center;
-  transition: transform 0.15s ease;
-}
-
-.cer-friend-card:hover {
-  transform: scale(1.03);
-}
-
-.cer-friend-link {
-  color: inherit;
-  text-decoration: none;
-  display: block;
-}
-
-.cer-friend-link:hover {
-  color: inherit;
-  text-decoration: none;
-}
-
-.cer-friend-avatar {
-  width: 96px;
-  height: 96px;
-  border-radius: 50%;
-  background: var(--color-surface-200, #e3e5e9);
-  /* offline = grey by default; presence classes recolour. Thick so it reads as
-     a status ring, not a hairline. */
-  border: 4px solid #6b7280;
-}
-
-.cer-friend-avatar.cer-presence-online {
-  border-color: #2f80ff; /* blue = online */
-}
-
-.cer-friend-avatar.cer-presence-game {
-  border-color: #2ecc71; /* green = in game */
-}
-
-.cer-friend-avatar.cer-presence-studio {
-  border-color: #f2ba2a; /* yellow = in studio */
-}
-
-.cer-friend-name {
-  font-size: 15px;
-  font-weight: 700;
-  margin-top: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cer-friend-status {
-  font-size: 12px;
-  opacity: 0.65;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* status text matches the presence RING colour, not the theme */
-.cer-friend-status.cer-presence-online {
-  color: #2f80ff; /* blue = online */
-  opacity: 1;
-}
-
-.cer-friend-status.cer-presence-game {
-  color: #2ecc71; /* green = in game */
-  opacity: 1;
-}
-
-.cer-friend-status.cer-presence-studio {
-  color: #f2ba2a; /* yellow = in studio */
-  opacity: 1;
-}
-
-.cer-friend-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-  justify-content: center;
-}
-
-.cer-friend-actions .cer-join-menu-action {
-  width: auto;
-  margin: 0;
-  padding: 7px 16px;
-}
-
-/* unified friend/request action buttons — identical shape & roundedness, only
-   the colour differs (primary = accept/chat, danger = decline/unfriend) */
-.cer-friend-btn {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 6px;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.1;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: filter 0.12s, background 0.12s;
-}
-
-.cer-friend-btn-primary {
-  background: var(--cer-accent, #335fff);
-  color: var(--cer-accent-ink, #fff);
-}
-
-.cer-friend-btn-danger {
-  background: var(--color-surface-300, rgba(128, 128, 128, 0.2));
-  color: var(--color-content-emphasis, #fff);
-}
-
-.cer-friend-btn:hover {
-  filter: brightness(1.1);
-}
-
-.cer-msg-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 13px 16px;
-  margin-bottom: 8px;
-  border: none;
-  border-radius: 12px;
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.08));
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.cer-msg-row:hover {
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.15));
-}
-
-.cer-msg-unread {
-  border-left: 3px solid var(--cer-accent, #335fff);
-}
-
-.cer-msg-from {
-  flex: 0 0 140px;
-  font-weight: 700;
-  font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cer-msg-mid {
-  flex: 1;
-  min-width: 0;
-}
-
-.cer-msg-subject {
-  font-size: 14px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cer-msg-preview {
-  font-size: 12.5px;
-  opacity: 0.6;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cer-msg-date {
-  font-size: 12px;
-  opacity: 0.55;
-}
-
-.cer-msg-markread {
-  border: none;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  background: var(--color-shift-200, rgba(128, 128, 128, 0.14));
-  color: var(--cer-accent, #335fff);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.cer-msg-markread:hover {
-  background: var(--cer-accent, #335fff);
-  color: var(--cer-accent-ink, #fff);
-}
-
-.cer-msg-markall {
-  margin-bottom: 10px;
-}
-
-.cer-msg-nav {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  padding: 12px 0;
-}
-
-.cer-msg-reader {
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.08));
-  border-radius: 14px;
-  padding: 22px;
-}
-
-.cer-msg-reader-subject {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.cer-msg-reader-meta {
-  font-size: 13px;
-  opacity: 0.6;
-  margin: 6px 0 16px;
-}
-
-.cer-msg-reader-body {
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--color-content-emphasis, inherit);
-}
-
-/* PM HTML loves stacked empty paragraphs — keep spacing sane */
-.cer-msg-reader-body p,
-.cer-msg-reader-body div {
-  margin: 0 0 8px;
-  min-height: 0;
-}
-
-.cer-msg-reader-body p:empty,
-.cer-msg-reader-body div:empty {
-  display: none;
-}
-
 /* anti-flash veil: home sections stay invisible (not display:none — layout
    stays stable) until sections.js applies the user's hide preferences */
 html.cer-sections-pending div:has(> .home-sort-header-container) {
@@ -1138,81 +741,6 @@ body.cer-group-page .content-main,
 body.cer-group-page [class*="group-details-container"] {
   margin-top: 0 !important;
   padding-top: 0 !important;
-}
-
-/* --- redesigned Transactions page --- */
-
-.cer-tx-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin: 8px 0 20px;
-}
-
-.cer-tx-card {
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.08));
-  border-radius: 14px;
-  padding: 18px;
-}
-
-.cer-tx-card-label {
-  font-size: 13px;
-  opacity: 0.65;
-  margin-bottom: 8px;
-}
-
-.cer-tx-card-value {
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.cer-tx-pos { color: #39c582; }
-.cer-tx-neg { color: #ff6a5c; }
-
-.cer-tx-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.cer-tx-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.08));
-}
-
-.cer-tx-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  background: var(--color-surface-200, #e3e5e9);
-  flex: 0 0 auto;
-}
-
-.cer-tx-mid {
-  flex: 1;
-  min-width: 0;
-}
-
-.cer-tx-name {
-  font-size: 14px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cer-tx-date {
-  font-size: 12.5px;
-  opacity: 0.6;
-}
-
-.cer-tx-amt {
-  font-size: 15px;
-  font-weight: 800;
 }
 
 /* --- universal settings re-skin --- */
@@ -1302,21 +830,6 @@ body.cer-settings-reskin [class*="btn-cta"] {
   font-weight: 600;
   color: var(--color-content-muted, #9aa0a8);
   margin-top: 2px;
-}
-
-.cer-profile-editbio {
-  padding: 9px 18px;
-  border-radius: 999px;
-  border: none;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  background: var(--color-surface-300, rgba(128, 128, 128, 0.2));
-  color: var(--color-content-emphasis, #fff);
-}
-
-.cer-profile-editbio:hover {
-  filter: brightness(1.1);
 }
 
 /* the native Angular bio is hidden — our About view renders the description
@@ -1648,10 +1161,6 @@ body.cer-settings-reskin .cer-set-card [class*="title"] {
   resize: vertical;
 }
 
-.cer-gp-copy {
-  cursor: pointer;
-}
-
 /* --- enhanced server browser --- */
 
 .cer-sb {
@@ -1786,65 +1295,6 @@ body [class*="group-badge"] {
   border-radius: 999px !important;
 }
 
-/* the Characters sub-row + "save current look" button sat far apart */
-
-/* confirmation popover (update/delete character) */
-
-.cer-gp-icon {
-  width: 88px;
-  height: 88px;
-  border-radius: 14px;
-  border: 3px solid rgba(255, 255, 255, 0.9);
-  background: var(--color-surface-200, #e3e5e9);
-  position: relative;
-  z-index: 1;
-}
-
-.cer-gp-play {
-  width: 200px;
-  height: 52px;
-  font-size: 20px;
-}
-
-.cer-gp-hero .cer-profile-actions {
-  margin-top: 44px;
-  display: flex;
-  gap: 8px;
-}
-
-.cer-gp-hero .cer-join-btn {
-  width: 52px;
-  height: 52px;
-  flex: 0 0 52px;
-}
-
-.cer-native-desc-hidden {
-  display: none !important;
-}
-
-/* --- game page redesign: info column card + pill tabs --- */
-
-.cer-game-redesign .cer-gp-panel {
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.08));
-  border-radius: 14px;
-  padding: 18px;
-}
-
-.cer-game-redesign .rbx-tabs-horizontal .rbx-tab {
-  border-radius: 999px;
-  overflow: hidden;
-  margin-right: 6px;
-}
-
-.cer-game-redesign .rbx-tabs-horizontal .rbx-tab .rbx-tab-heading {
-  border: none;
-}
-
-.cer-game-redesign .section-content,
-.cer-game-redesign .game-about-container {
-  border-radius: 14px;
-}
-
 /* --- card metadata icons --- */
 
 .cer-card-meta-item {
@@ -1853,81 +1303,7 @@ body [class*="group-badge"] {
   gap: 4px;
 }
 
-/* --- game page redesign chips --- */
-
-.cer-native-stats-hidden {
-  display: none !important;
-}
-
-.cer-gp-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 10px 0;
-}
-
-.cer-gp-chip {
-  padding: 6px 13px;
-  border-radius: 999px;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.13));
-  font-size: 13px;
-  border: none;
-  color: var(--color-content-emphasis, inherit);
-}
-
-.cer-gp-chip b {
-  font-weight: 700;
-}
-
-.cer-gp-chip-extra {
-  display: none;
-}
-
-.cer-gp-open .cer-gp-chip-extra {
-  display: inline-block;
-}
-
-.cer-gp-more {
-  cursor: pointer;
-  opacity: 0.75;
-}
-
-.cer-gp-more:hover {
-  opacity: 1;
-}
-
-/* --- Games (charts) redesign --- */
-
-.cer-games {
-  display: flex;
-  gap: 28px;
-  padding: 18px 0 40px;
-}
-
-.cer-games-main {
-  flex: 0 0 64%;
-  min-width: 0;
-  position: relative;
-  /* fade the right edge into the friend sidebar */
-  -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent 100%);
-  mask-image: linear-gradient(90deg, #000 88%, transparent 100%);
-}
-
-.cer-games-side {
-  flex: 1;
-  min-width: 220px;
-}
-
-.cer-g-h2 {
-  font-size: 22px;
-  font-weight: 800;
-  margin: 26px 0 12px;
-  color: var(--color-content-emphasis, #fff);
-}
-
-.cer-g-h2:first-child {
-  margin-top: 4px;
-}
+/* --- game rows (old profile Creations, profileredesign.js) --- */
 
 /* horizontal scrolling row of games (not a wrapping grid) */
 .cer-g-grid {
@@ -1990,164 +1366,12 @@ body [class*="group-badge"] {
   gap: 12px;
   margin-top: 3px;
 }
-.cer-g-meta-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.cer-g-meta-item svg { opacity: 0.85; }
 
 /* center the title on native Roblox game tiles too (recommendations, search) */
 .game-card-name,
 .game-card-container .game-card-name,
 [class*="gameCardName"] {
   text-align: center !important;
-}
-
-/* genre pill with the shrinking time-left cover */
-.cer-g-trendhead {
-  display: flex;
-  align-items: center;
-  margin: 26px 0 12px; /* match .cer-g-h2 so every section header is evenly spaced */
-}
-
-.cer-g-genre {
-  position: relative;
-  overflow: hidden;
-  margin-left: 8px;
-  padding: 4px 14px;
-  border: none;
-  border-radius: 999px;
-  font-size: 16px;
-  font-weight: 800;
-  cursor: pointer;
-  background: var(--cer-accent, var(--color-action-primary, #00a2ff));
-  color: var(--cer-accent-ink, #fff);
-}
-
-.cer-g-genre-label {
-  position: relative;
-  z-index: 1; /* stays legible above the shrinking time cover */
-}
-
-.cer-g-genre-cover {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
-  pointer-events: none;
-  background: var(--color-surface-0, rgba(255, 255, 255, 0.28));
-  opacity: 0.28;
-  transition: width 0.1s linear;
-}
-
-.cer-g-genremenu {
-  position: fixed;
-  z-index: 10000;
-  display: flex;
-  flex-direction: column;
-  min-width: 160px;
-  padding: 6px;
-  border-radius: 12px;
-  background: var(--color-surface-100, #1a2436);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-}
-
-.cer-g-genreopt {
-  padding: 9px 12px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--color-content-emphasis, #fff);
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-
-.cer-g-genreopt:hover {
-  background: var(--color-surface-300, rgba(128, 128, 128, 0.2));
-}
-
-/* the timer is now an inline part of the title itself (not a flex sibling), so
-   it just flows after the heading text — no resolution-dependent baseline math. */
-.cer-g-pickssub {
-  font-size: 0.6em; /* relative to the h2 */
-  font-weight: 700;
-  color: var(--cer-accent, var(--color-content-link, #4dabff));
-  margin-left: 10px;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-.cer-g-trendhead.cer-g-pickshead {
-  display: block;
-}
-.cer-g-trendhead.cer-g-pickshead .cer-g-h2 {
-  display: block;
-  margin: 0;
-}
-
-/* friend sidebar */
-.cer-g-sideh {
-  font-size: 18px;
-  font-weight: 800;
-  margin: 4px 0 14px;
-  color: var(--color-content-emphasis, #fff);
-}
-
-.cer-g-sidelist {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.cer-g-friendgame {
-  text-decoration: none;
-  color: inherit;
-  display: block;
-  width: 100%; /* fill the friend sidebar — bigger than the row cards */
-}
-
-.cer-g-friendlabel {
-  font-size: 14px;
-  font-weight: 700;
-  color: #2ecc71; /* "is playing" = in game → green, matching the presence ring */
-  margin-bottom: 6px;
-}
-
-.cer-g-friendthumb {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  border-radius: 12px;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.12)) center/cover no-repeat;
-  overflow: hidden;
-}
-
-.cer-g-friendhead {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  background: var(--color-surface-300, #2a3446);
-}
-
-.cer-g-friendname {
-  margin-top: 6px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--color-content-emphasis, #fff);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (max-width: 1100px) {
-  .cer-games { flex-direction: column; }
-  .cer-games-main { flex: 1; -webkit-mask-image: none; mask-image: none; }
 }
 
 /* --- custom sidebar: Roblox's nav + top bar never paint. html.cer-cnav is
@@ -2187,132 +1411,10 @@ button.bg-surface-300.radius-circle:hover {
 
 /* --- game page tweaks --- */
 
-.cer-gp-tabrow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
-}
-
-/* inside the row the tab bar's own vertical margin threw it off-centre from
-   the date pills — let the row own the spacing so both line up */
-.cer-gp-tabrow .cer-gp-tabs {
-  margin: 0;
-}
-
-.cer-gp-datepills {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Favorite / Like / Dislike / Notify — custom buttons that proxy the native
-   controls (which sit off-screen in .cer-gp-native-hide). */
-.cer-gp-social2 {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-}
-.cer-gp-sbtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 16px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.12));
-  color: var(--color-content-default, #c9ced6);
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s, transform 0.1s;
-}
-.cer-gp-sbtn:hover {
-  background: var(--color-surface-300, rgba(128, 128, 128, 0.2));
-}
-.cer-gp-sbtn:active {
-  transform: scale(0.96);
-}
-.cer-gp-sicon {
-  display: inline-flex;
-}
-.cer-gp-svg {
-  display: block;
-}
-/* active (favorited / liked / disliked / notifications on): fill the icon and
-   turn the whole button the accent colour */
-.cer-gp-sbtn.cer-gp-on {
-  background: var(--cer-accent, var(--color-action-emphasis-background, #335fff)) !important;
-  color: var(--cer-accent-ink, #fff);
-}
-.cer-gp-sbtn.cer-gp-on .cer-gp-svg {
-  fill: currentColor;
-}
-/* ratio: likes are the accent, dislikes a slightly darker theme colour */
-.cer-gp-ratio {
-  flex: 0 1 160px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--color-surface-300, rgba(128, 128, 128, 0.28));
-  overflow: hidden;
-}
-.cer-gp-ratio-fill {
-  height: 100%;
-  background: var(--cer-accent, var(--color-action-emphasis-background, #335fff));
-  border-radius: 999px 0 0 999px;
-}
-.cer-gp-native-hide {
-  position: absolute;
-  left: -9999px;
-  top: 0;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-}
 /* the server "Load more" button sits centred under the list */
 .cer-sb-more {
   display: block;
   margin: 12px auto 0;
-}
-
-.cer-gp-datepill {
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.12));
-  color: var(--color-content-muted, #9aa0a8);
-}
-
-/* kill the big gap between the pill tabs and the tab content (About, etc.) */
-.cer-game-redesign .rbx-tabs-horizontal + *,
-.cer-game-redesign .tab-content,
-.cer-game-redesign [class*="game-about"],
-.cer-game-redesign .game-main-content {
-  padding-top: 10px !important;
-  margin-top: 0 !important;
-}
-
-/* social links go under the maturity label; report abuse under the links */
-.cer-gp-social {
-  order: 5 !important;
-  margin-top: 10px !important;
-}
-
-.cer-gp-report {
-  order: 6 !important;
-  margin-top: 8px !important;
-}
-
-/* modernise the social-link buttons */
-.cer-gp-social a,
-.cer-gp-social [class*="social-link"] {
-  border-radius: 999px !important;
-  font-weight: 700 !important;
 }
 
 /* --- catalog cleanup --- */
@@ -2408,58 +1510,9 @@ body.cer-catalog .shopping-cart-icon {
   color: var(--color-content-emphasis, #fff) !important;
 }
 
-/* games-page card 3-dots menu */
+/* game card thumb */
 .cer-g-thumb {
   position: relative;
-}
-
-.cer-g-dots {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 900;
-  line-height: 1;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.55);
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-
-.cer-g-card:hover .cer-g-dots {
-  opacity: 1;
-}
-
-.cer-g-cardmenu {
-  position: fixed;
-  z-index: 100000;
-  display: flex;
-  flex-direction: column;
-  min-width: 150px;
-  padding: 6px;
-  border-radius: 12px;
-  background: var(--color-surface-100, #1a2436);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-}
-
-.cer-g-cardmenu-opt {
-  padding: 9px 12px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--color-content-emphasis, #fff);
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-
-.cer-g-cardmenu-opt:hover {
-  background: var(--color-surface-300, rgba(128, 128, 128, 0.2));
 }
 
 /* --- general dropdown / popover theming (group 3-dots, catalog, etc.) --- */
@@ -2607,55 +1660,17 @@ body.cer-settings-reskin .cer-set-card.cer-set-loading::after {
 
 /* --- QA fixes batch --- */
 
-/* hover lift on a friend's "playing" card in the games sidebar */
-.cer-g-friendthumb { transition: transform 0.15s ease; }
-.cer-g-friendgame:hover .cer-g-friendthumb { transform: translateY(-4px); }
-
-/* "Trending in X" pill vertically centered with the heading */
-.cer-g-trendhead { display: flex; align-items: center; gap: 4px; }
-.cer-g-trendhead .cer-g-h2 { display: inline-flex; align-items: center; margin: 0; }
-.cer-g-genre { margin-left: 8px; align-self: center; }
-
-/* game-page pills: one consistent size/shape/colour for ALL of them
-   (tabs, date pills, maturity) — neutral surface, accent only when active */
-.cer-game-redesign .cer-tab,
-.cer-gp-datepill,
-.cer-game-redesign [class*="game-badge"],
-.cer-game-redesign .maturity-badge {
-  border-radius: 999px !important;
-  padding: 7px 16px !important;
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.12)) !important;
-  color: var(--color-content-default, #c9ced6) !important;
-  border: none !important;
-}
 /* the wide game-badges *list* also matches [class*="game-badge"] above, which
    turned the whole panel into a giant pill. It's a container, not a chip. */
-.cer-game-redesign .game-badges-list,
 .game-badges-list.badge-container {
   border-radius: 14px !important;
   padding: 0 !important;
   background: transparent !important;
 }
-.cer-game-redesign .cer-tab.cer-tab-active {
-  background: var(--cer-accent, var(--color-action-primary, #00a2ff)) !important;
-  color: var(--cer-accent-ink, #fff) !important;
-}
 
-/* social links: only the LINK button is a pill (not the whole section); its
-   platform logo becomes a circle */
-.cer-gp-social {
-  border-radius: 0 !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-.cer-gp-social a,
 .game-social-links a {
   border-radius: 999px !important;
 }
-.cer-gp-social a img,
-.cer-gp-social a [class*="icon"],
 .game-social-links a img {
   border-radius: 50% !important;
   overflow: hidden !important;
@@ -2681,18 +1696,6 @@ body.cer-settings-reskin .cer-set-card.cer-set-loading::after {
 .cer-g-grid .cer-skel-row {
   flex-wrap: nowrap;
   margin-top: 0;
-}
-
-/* even vertical rhythm between Top Games / Trending / Picks */
-.cer-games-main .cer-g-h2,
-.cer-games-main .cer-g-trendhead {
-  margin: 26px 0 12px;
-}
-.cer-games-main > .cer-g-h2:first-child {
-  margin-top: 4px;
-}
-.cer-games-main .cer-g-grid {
-  margin-bottom: 4px;
 }
 
 /* catalog: stop the search text sitting under the magnifier icon */
@@ -2802,18 +1805,7 @@ body.cer-group-cfg .cer-set-card {
 }
 .cer-update-title { font-size: 17px; font-weight: 800; }
 .cer-update-sub { margin-top: 6px; font-size: 13px; color: var(--color-content-muted, #9aa0a8); line-height: 1.4; }
-.cer-update-cmd {
-  margin-top: 10px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.3);
-  font-family: monospace;
-  font-size: 11.5px;
-  color: var(--color-content-emphasis, #fff);
-  word-break: break-all;
-  user-select: all;
-  text-align: left;
-}
+
 .cer-update-actions { display: flex; gap: 10px; margin-top: 18px; }
 .cer-update-btn {
   flex: 1;
@@ -3730,6 +2722,9 @@ html.cer-own-theme #theme-background {
   transform: translateY(8px) scale(0.985);
   transition: transform 0.2s var(--cer-ease);
 }
+.cer-sp:focus {
+  outline: none;
+}
 .cer-sp-overlay.is-in .cer-sp {
   transform: none;
 }
@@ -4171,6 +3166,27 @@ label.cer-sp-row:hover {
   height: 8px;
   border-radius: 50%;
   background: var(--cer-text);
+}
+.cer-ui .cer-chat-more {
+  align-self: center;
+  margin: 6px 0 2px;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cer-text-3);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.cer-ui .cer-chat-more:hover {
+  background: var(--cer-raise);
+  color: var(--cer-text);
+}
+.cer-ui .cer-chat-more:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .cer-chat-groupic {
   flex: none;

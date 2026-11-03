@@ -27,14 +27,17 @@
     { tag: "game", feat: "gamePageRedesign", test: (p) => /^\/games\/\d+/i.test(p) },
     { tag: "profile", feat: "profileRedesign", test: (p) => /^\/users\/\d+\/profile/i.test(p) },
     { tag: "friends", feat: "friendsPage", test: (p) => /^\/users\/(\d+\/)?friends/i.test(p) },
-    { tag: "groups", feat: "groupsPage", test: (p) => /^\/(communities|groups)(\/\d+(\/[^/]*)?\/?|\/?)$/i.test(p) && !/configure/i.test(p) },
+    { tag: "groups", feat: "groupsPage", test: (p) => /^\/(communities|groups)(\/\d+(\/[^/]*)?\/?|\/?)$/i.test(p) && !/^\/(communities|groups)\/configure/i.test(p) },
     { tag: "catalog", feat: "catalogClean", test: (p) => /^\/(catalog|bundles)(\/|$)/i.test(p) },
     { tag: "messages", feat: "messagesPage", test: (p) => /^\/my\/messages/i.test(p) },
-    { tag: "settings", feat: "settingsPage", test: (p) => /^\/my\/account/i.test(p) },
+    { tag: "settings", feat: "settingsPage", test: (p) => /^\/my\/account/i.test(p) && !/^#!\/(?!info\b)\w/.test(location.hash) },
     { tag: "transactions", feat: "transactionsPage", test: (p) => /^\/transactions/i.test(p) },
   ];
+  // Loaded with ?cer=native: Roblox's page for this whole visit, even after
+  // Roblox rewrites the URL without the query (game pages, /charts do).
+  const loadedNative = /[?&]cer=native\b/.test(location.search);
   CER.pageFor = function (path = location.pathname, query = location.search, feats = {}) {
-    if (/[?&]cer=native\b/.test(query)) return null; // escape hatch: Roblox's own page
+    if (loadedNative || /[?&]cer=native\b/.test(query)) return null; // escape hatch: Roblox's own page
     for (const pg of CER.PAGES) if (pg.test(path, query) && feats[pg.feat] !== false) return pg;
     return null;
   };
@@ -263,7 +266,8 @@
       const feats = (await CER.get()).features;
       const match = CER.pageFor(location.pathname, location.search, feats)?.tag === tag;
       if (!match) {
-        if (document.getElementById("cer-app")?.dataset.page === tag) ui.release();
+        // another of our pages owns the new URL: it remounts #cer-app itself
+        if (document.getElementById("cer-app")?.dataset.page === tag && !CER.pageFor(location.pathname, location.search, feats)) ui.release();
         lastKey = null;
         return;
       }
@@ -356,14 +360,19 @@
       queue = [];
       for (let i = 0; i < ids.length; i += max) {
         const chunk = ids.slice(i, i + max);
-        load(chunk.map((x) => x.id))
+        const settle = (x, val) => {
+          if (x.done) return;
+          x.done = true;
+          x.resolve(val ?? null);
+          if (val == null || !keep) cache.delete(String(x.id)); // let a later call refetch
+        };
+        const byId = new Map(chunk.map((x) => [String(x.id), x]));
+        // loaders may hand back finished ids early: emit(id, val)
+        const emit = (id, val) => byId.has(String(id)) && settle(byId.get(String(id)), val);
+        load(chunk.map((x) => x.id), emit)
           .catch(() => ({}))
           .then((res) => {
-            for (const x of chunk) {
-              const val = res instanceof Map ? res.get(String(x.id)) : res?.[x.id];
-              x.resolve(val ?? null);
-              if (val == null || !keep) cache.delete(String(x.id)); // let a later call refetch
-            }
+            for (const x of chunk) settle(x, res instanceof Map ? res.get(String(x.id)) : res?.[x.id]);
           });
       }
     };
@@ -406,7 +415,7 @@
   for (const [kind, [path, param, size, extra = ""]] of Object.entries(THUMBS)) {
     const multi = kind === "gameThumb";
     thumbBatchers[kind] = batcher(
-      async (ids) => {
+      async (ids, emit) => {
         const out = new Map();
         let todo = ids;
         for (let attempt = 0; attempt < 3 && todo.length; attempt++) {
@@ -416,8 +425,10 @@
           for (const it of j?.data ?? []) {
             const t = multi ? it.thumbnails?.[0] : it;
             const id = String(multi ? it.universeId : it.targetId);
-            if (t?.imageUrl && t.state === "Completed") out.set(id, t.imageUrl);
-            else if (t?.state === "Pending") pending.push(id);
+            if (t?.imageUrl && t.state === "Completed") {
+              out.set(id, t.imageUrl);
+              emit(id, t.imageUrl);
+            } else if (t?.state === "Pending") pending.push(id);
           }
           todo = pending;
         }
@@ -473,8 +484,10 @@
   api.me = () => CER.me();
 
   // All friends of a user: [{ id, name, displayName }] (names filled in).
+  // null when the list could not be loaded (so callers can say so and retry).
   api.friends = async function (userId, { ttl = 60000 } = {}) {
     const j = await api.json(`https://friends.roblox.com/v1/users/${userId}/friends`, { ttl });
+    if (!Array.isArray(j?.data)) return null;
     const list = (j?.data ?? []).map((f) => ({ id: f.id, name: f.name, displayName: f.displayName }));
     const missing = list.filter((f) => !f.name).map((f) => f.id);
     if (missing.length) {
@@ -658,6 +671,8 @@
     };
     track.addEventListener("scroll", sync, { passive: true });
     new ResizeObserver(sync).observe(track);
+    // cards swapped in later (skeletons → real ones) change the scroll width
+    new MutationObserver(() => requestAnimationFrame(sync)).observe(track, { childList: true });
     wrap.track = track;
     return wrap;
   };
@@ -803,7 +818,10 @@
   // Modal dialog. ui.modal({ title, body: node, actions: [{ label, variant, onClick(close) }] })
   // Returns { el, close }. Esc and the backdrop close it.
   ui.modal = function (o) {
+    let closed = false;
     const close = () => {
+      if (closed) return;
+      closed = true;
       overlay.classList.remove("is-in");
       document.removeEventListener("keydown", onKey);
       setTimeout(() => overlay.remove(), 160);
@@ -844,11 +862,17 @@
       more.textContent = open ? "Show less" : "Show more";
     });
     const wrap = h("div", { class: "cer-clamp-wrap" }, p, more);
-    requestAnimationFrame(() => more.classList.toggle("is-hidden", p.scrollHeight <= p.clientHeight + 2));
+    // measured whenever it gets a size (hidden tabs start at 0 x 0)
+    new ResizeObserver(() => {
+      if (!p.clientHeight || p.classList.contains("is-open")) return;
+      more.classList.toggle("is-hidden", p.scrollHeight <= p.clientHeight + 2);
+    }).observe(p);
+    more.classList.add("is-hidden");
     return wrap;
   };
 
   // Lazy section: runs `load()` when `el` scrolls near view (once).
+  // Returns a function that cancels it (call it if `el` is removed first).
   ui.whenVisible = function (el, load) {
     const io = new IntersectionObserver(
       (entries) => {
@@ -860,6 +884,7 @@
       { rootMargin: "600px" }
     );
     io.observe(el);
+    return () => io.disconnect();
   };
 
   // keep a synchronous copy of features for cleanTitle in cards

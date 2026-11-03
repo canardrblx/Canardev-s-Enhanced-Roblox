@@ -6,7 +6,7 @@
 //    so spam-clicking is a single request instead of a pile of racing ones.
 //  - A failed or rate-limited read never replaces state. (It used to: an
 //    error body turned into "wearing nothing", and the next click stripped
-//    the whole avatar.)
+//    the whole avatar.) Nothing writes until the first read has worked.
 //  - Every tile and chip is painted from `want` by paint(), so highlights can
 //    never drift from what is actually worn.
 //  - Our UI is a sibling of Roblox's React root, never inside it, so a React
@@ -19,9 +19,10 @@
 
   const API = "https://avatar.roblox.com";
   const ANIM_TYPES = [48, 49, 50, 51, 52, 53, 54, 55, 56];
-  // not shown as removable chips: animations, emotes, body parts that would
-  // leave a broken avatar if removed one by one
-  const HIDDEN_CHIP_TYPES = new Set([...ANIM_TYPES, 24, 27, 28, 29, 30, 31, 61]);
+  // not shown as removable chips: animations, emotes, mood, and the head and
+  // body parts that would leave a broken avatar if removed one by one
+  // (17 Head, 27-31 body, 78 Mood, 79 Dynamic Head)
+  const HIDDEN_CHIP_TYPES = new Set([...ANIM_TYPES, 17, 24, 27, 28, 29, 30, 31, 61, 78, 79]);
 
   const CATEGORIES = [
     { label: "Characters", characters: true },
@@ -187,14 +188,74 @@
   let server = new Map(); // assetId -> { id, name, assetType, meta }
   let want = new Map();
   let avatarCache = null; // last good GET v1/avatar
+  // Nothing writes until a read of the avatar has worked. With `server`
+  // unknown, one click would send only that item and strip everything else.
+  let loaded = false;
+  let loadFailed = false;
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function readAvatar() {
     const av = await getJSON(API + "/v1/avatar");
     if (!Array.isArray(av.assets)) throw new Error("bad avatar body");
     avatarCache = av;
     return av;
   }
+  // a 429 or a blip should not leave us without the avatar: back off and retry
+  async function readAvatarRetry() {
+    for (let i = 0; ; i++) {
+      try {
+        return await readAvatar();
+      } catch (e) {
+        if (i >= 3) throw e;
+      }
+      await sleep(1000 * 2 ** i);
+    }
+  }
   const toMap = (assets) => new Map(assets.map((a) => [a.id, a]));
+
+  // (re)load what is worn. On failure every write stays blocked and the
+  // wearing strip offers "Try again".
+  let loadRun = null;
+  function reload() {
+    if (!loadRun) {
+      loadFailed = false;
+      loadRun = (async () => {
+        try {
+          server = toMap((await readAvatarRetry()).assets);
+          want = new Map(server);
+          loaded = true;
+        } catch {
+          loaded = false;
+          loadFailed = true;
+        }
+        loadRun = null;
+        paint();
+      })();
+      paint();
+    }
+    return loadRun;
+  }
+
+  // per-type wear limits (Shirt 1, Pants 1, Face 1...). Roblox's defaults
+  // until avatar-rules answers; unknown types allow 1, like Roblox's own
+  // editor. Accessories are left out: Roblox accepts more than their
+  // maxNumber (2 hairs, extra hats) and checks its own total, so taking
+  // one off here could remove something the user wanted.
+  const ACCESSORY_TYPES = new Set([8, 41, 42, 43, 44, 45, 46, 47]);
+  const typeMax = new Map([
+    [88, 6],
+    [89, 6],
+    [90, 6],
+  ]);
+  let rulesRun = null; // cached only when it works
+  const avatarRules = () =>
+    (rulesRun ??= getJSON(API + "/v1/avatar-rules").catch(() => {
+      rulesRun = null;
+      return null;
+    }));
+  avatarRules().then((r) => {
+    for (const w of r?.wearableAssetTypes ?? []) if (w.maxNumber > 0) typeMax.set(w.id, w.maxNumber);
+  });
 
   // paint every tile and chip from `want`
   function paint() {
@@ -206,8 +267,39 @@
     renderStrip();
   }
 
+  // Character and outfit wears replace the whole look, so they run one at a
+  // time, after any pending save, and block single-item clicks meanwhile.
+  // Clicked several quickly: only the last one is put on.
+  let opChain = Promise.resolve();
+  let opSeq = 0;
+  let opBusy = 0;
+  function exclusive(fn) {
+    const seq = ++opSeq;
+    opBusy++;
+    const run = opChain.then(async () => {
+      if (seq !== opSeq || !loaded) return false;
+      await flushWrites();
+      await fn();
+      return true;
+    });
+    opChain = run.catch(() => {}).finally(() => opBusy--);
+    return run;
+  }
+  // `queue`: wears may line up behind a running wear
+  function canWrite(queue) {
+    if (!loaded) {
+      CER.toast(loadFailed ? "Couldn't load your avatar." : "Loading your avatar…", loadFailed ? "error" : undefined);
+      return false;
+    }
+    if (opBusy && !queue) {
+      CER.toast("Wait a moment.");
+      return false;
+    }
+    return true;
+  }
+
   let syncTimer = null;
-  let syncing = false;
+  let syncRun = null;
   let dirty = false;
   // debounce: a burst of clicks becomes one write
   function scheduleSync() {
@@ -215,58 +307,75 @@
     clearTimeout(syncTimer);
     syncTimer = setTimeout(runSync, 450);
   }
-  async function runSync() {
-    if (syncing) return; // the running sync loops until clean
-    syncing = true;
-    try {
-      while (dirty) {
-        dirty = false;
-        const sent = new Map(want);
-        const assets = [...sent.values()].map((a) => (a.meta ? { id: a.id, meta: a.meta } : { id: a.id }));
-        let res = null;
-        try {
-          res = await CER.robloxWrite(API + "/v2/avatar/set-wearing-assets", "POST", { assets });
-        } catch {
-          /* network error: handled as a failure below */
-        }
-        let body = null;
-        try {
-          body = res ? await res.json() : null;
-        } catch {}
-        const okWrite = !!res?.ok && body?.success !== false;
-        if (!okWrite) {
-          // roll back to what Roblox has, unless more clicks already queued
-          if (!dirty) want = new Map(server);
-          paint();
-          CER.toast(res?.status === 429 ? "Too fast! Wait a moment." : "Couldn't save that change.", "error");
-          continue;
-        }
-        const bad = body?.invalidAssetIds ?? [];
-        if (bad.length) {
-          for (const id of bad) want.delete(id);
-          CER.toast("Some items can't be worn together.", "error");
-        }
-        // pull real meta + asset types for what we sent; keep any clicks that
-        // landed while the write was in flight
-        try {
-          const av = await readAvatar();
-          server = toMap(av.assets);
-          if (!dirty) want = new Map(server);
-          else for (const [id, a] of server) if (want.has(id)) want.set(id, a);
-        } catch {
-          server = new Map([...sent].filter(([id]) => !bad.includes(id)));
-        }
-        paint();
-        redraw();
+  // one sync at a time; the running one loops until nothing is queued
+  function runSync() {
+    clearTimeout(syncTimer);
+    if (!syncRun) syncRun = doSync().finally(() => (syncRun = null));
+    return syncRun;
+  }
+  let flushScales = async () => {}; // set by the Body tab
+  // send anything still waiting, and wait for writes in flight
+  async function flushWrites() {
+    if (dirty || syncRun) await runSync();
+    await flushScales();
+  }
+  async function doSync() {
+    while (dirty && loaded) {
+      dirty = false;
+      const sent = new Map(want);
+      const assets = [...sent.values()].map((a) => (a.meta ? { id: a.id, meta: a.meta } : { id: a.id }));
+      let res = null;
+      try {
+        res = await CER.robloxWrite(API + "/v2/avatar/set-wearing-assets", "POST", { assets });
+      } catch {
+        /* network error: handled as a failure below */
       }
-    } finally {
-      syncing = false;
+      let body = null;
+      try {
+        body = res ? await res.json() : null;
+      } catch {}
+      const okWrite = !!res?.ok && body?.success !== false;
+      if (!okWrite) {
+        // roll back to what Roblox has, unless more clicks already queued
+        if (!dirty) want = new Map(server);
+        paint();
+        CER.toast(res?.status === 429 ? "Too fast! Wait a moment." : "Couldn't save that change.", "error");
+        continue;
+      }
+      const bad = body?.invalidAssetIds ?? [];
+      if (bad.length) {
+        for (const id of bad) want.delete(id);
+        CER.toast("Some items can't be worn together.", "error");
+      }
+      // pull real meta + asset types for what we sent; keep any clicks that
+      // landed while the write was in flight
+      try {
+        const av = await readAvatar();
+        server = toMap(av.assets);
+        if (!dirty) want = new Map(server);
+        else for (const [id, a] of server) if (want.has(id)) want.set(id, a);
+      } catch {
+        server = new Map([...sent].filter(([id]) => !bad.includes(id)));
+      }
+      paint();
+      redraw();
     }
   }
 
   function toggleAsset(item) {
+    if (!canWrite()) return;
     if (want.has(item.id)) want.delete(item.id);
-    else want.set(item.id, item);
+    else {
+      // at the limit for this type (a 2nd shirt): take off the oldest one
+      // first, or Roblox rejects the whole change
+      const type = item.assetType?.id;
+      if (type && !ACCESSORY_TYPES.has(type)) {
+        const max = typeMax.get(type) ?? 1;
+        const same = [...want.values()].filter((a) => a.assetType?.id === type);
+        for (const a of same.slice(0, Math.max(0, same.length - max + 1))) want.delete(a.id);
+      }
+      want.set(item.id, item);
+    }
     paint();
     scheduleSync();
   }
@@ -274,18 +383,54 @@
   // ---- emotes (own slot API; set-wearing-assets ignores them) ----
 
   let emotes = new Map(); // assetId -> slot 1..8
+  const emoteNames = new Map(); // assetId -> name
+  let emotesOk = false; // the last emote read worked
   async function refreshEmotes() {
     try {
       const list = await getJSON(API + "/v1/emotes");
-      if (Array.isArray(list)) emotes = new Map(list.map((e) => [e.assetId, e.position]));
+      if (!Array.isArray(list)) throw 0;
+      emotes = new Map(list.map((e) => [e.assetId, e.position]));
+      for (const e of list) if (e.assetName) emoteNames.set(e.assetId, e.assetName);
+      emotesOk = true;
     } catch {
-      /* keep old state */
+      emotesOk = false; // keep old state, but don't write on top of it
     }
+  }
+  // all 8 slots full: ask before swapping one out
+  function askSwap(oldName, newName) {
+    const text = "Swap “" + oldName + "” for “" + newName + "”?";
+    if (!ui) return Promise.resolve(confirm("All 8 emote slots are full. " + text));
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (yes, close) => {
+        if (!done) {
+          done = true;
+          resolve(yes);
+        }
+        close?.();
+      };
+      ui.modal({
+        title: "All 8 emote slots are full",
+        body: CER.el("p", "", text),
+        actions: [
+          { label: "Cancel", onClick: (close) => finish(false, close) },
+          { label: "Swap", variant: "primary", onClick: (close) => finish(true, close) },
+        ],
+        onClose: () => finish(false),
+      });
+    });
   }
   let emoteQ = Promise.resolve();
   function toggleEmote(assetId, name) {
     emoteQ = emoteQ
       .then(async () => {
+        if (!emotesOk) {
+          await refreshEmotes();
+          if (!emotesOk) {
+            CER.toast("Couldn't load your emotes. Try again.", "error");
+            return;
+          }
+        }
         if (emotes.has(assetId)) {
           const r = await CER.robloxWrite(`${API}/v1/emotes/${assetId}`, "DELETE");
           if (!r?.ok) throw 0;
@@ -294,18 +439,29 @@
         }
         const used = new Set(emotes.values());
         let slot = 0;
+        let swapped = 0;
         for (let p = 1; p <= 8 && !slot; p++) if (!used.has(p)) slot = p;
         if (!slot) {
-          // all 8 full: free the lowest slot
+          // all 8 full: offer to free the lowest slot
           const [firstId, firstPos] = [...emotes].sort((a, b) => a[1] - b[1])[0];
+          if (!(await askSwap(emoteNames.get(firstId) ?? "your first emote", name))) return;
           const d = await CER.robloxWrite(`${API}/v1/emotes/${firstId}`, "DELETE");
           if (!d?.ok) throw 0;
           emotes.delete(firstId);
           slot = firstPos;
+          swapped = firstId;
         }
-        const r = await CER.robloxWrite(`${API}/v1/emotes/${assetId}/${slot}`, "POST", {});
-        if (!r?.ok) throw 0;
+        const r = await CER.robloxWrite(`${API}/v1/emotes/${assetId}/${slot}`, "POST", {}).catch(() => null);
+        if (!r?.ok) {
+          // put back the emote we just took out of that slot
+          if (swapped) {
+            const back = await CER.robloxWrite(`${API}/v1/emotes/${swapped}/${slot}`, "POST", {}).catch(() => null);
+            if (back?.ok) emotes.set(swapped, slot);
+          }
+          throw 0;
+        }
         emotes.set(assetId, slot);
+        emoteNames.set(assetId, name);
       })
       .catch(() => CER.toast("Couldn't update " + name, "error"))
       .finally(paint);
@@ -379,6 +535,13 @@
   let stripSeq = 0;
   async function renderStrip() {
     const seq = ++stripSeq;
+    if (!loaded) {
+      // still loading (blank), or failed: say so and offer a retry
+      if (!loadFailed) return strip.replaceChildren();
+      const again = ui ? ui.button("Try again", { variant: "soft", size: "sm" }) : CER.el("button", "cer-profile-btn", "Try again");
+      again.addEventListener("click", () => reload());
+      return strip.replaceChildren(CER.el("p", "cer-hint", "Couldn't load your avatar."), again);
+    }
     const items = [...want.values()].filter((a) => !a.assetType || !HIDDEN_CHIP_TYPES.has(a.assetType.id));
     const thumbs = await assetThumbs(items.map((a) => a.id));
     if (seq !== stripSeq) return; // a newer render won
@@ -426,6 +589,8 @@
     label.title = name;
     t.appendChild(label);
     t.addEventListener("keydown", (e) => {
+      // only the tile itself: Enter on its Update/Delete buttons must not wear it
+      if (e.target !== t) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         t.click();
@@ -441,6 +606,7 @@
     if (isEmote) {
       t.dataset.kind = "emote";
       t.addEventListener("click", () => {
+        if (!canWrite(true)) return;
         t.classList.toggle("cer-avatar-item-worn");
         toggleEmote(item.assetId, name);
       });
@@ -518,32 +684,45 @@
     return out;
   }
 
-  async function wearBundle(bundle, kind) {
-    const toast = CER.toast("Putting on " + bundle.name + "…");
-    try {
-      const details = await getJSON(`https://catalog.roblox.com/v1/bundles/${bundle.id}/details`);
-      const items = details.items ?? [];
-      const outfit = items.find((i) => i.type === "UserOutfit");
-      if (kind === "BodyParts" && outfit) {
-        const r = await CER.robloxWrite(`${API}/v1/outfits/${outfit.id}/wear`, "POST", {});
-        if (!r?.ok) throw 0;
-        const av = await readAvatar();
-        server = toMap(av.assets);
-        want = new Map(server);
-        paint();
-        redraw();
-      } else {
-        // animation packs: swap out the current animations for the pack's
-        for (const [id, a] of want) if (a.assetType && ANIM_TYPES.includes(a.assetType.id)) want.delete(id);
-        for (const i of items) if (i.type === "Asset") want.set(i.id, { id: i.id, name: i.name });
-        paint();
-        scheduleSync();
+  // wear a saved character (Roblox swaps the whole look), then adopt what
+  // Roblox reports. Runs inside exclusive().
+  async function wearOutfitNow(outfitId) {
+    const r = await CER.robloxWrite(`${API}/v1/outfits/${outfitId}/wear`, "POST", {}).catch(() => null);
+    if (!r?.ok) throw 0;
+    await reload(); // if this read fails, writes stay blocked until "Try again"
+    redraw();
+  }
+
+  function wearBundle(bundle, kind) {
+    if (!canWrite(true)) return;
+    exclusive(async () => {
+      const toast = CER.toast("Putting on " + bundle.name + "…");
+      try {
+        const details = await getJSON(`https://catalog.roblox.com/v1/bundles/${bundle.id}/details`);
+        const items = details.items ?? [];
+        const outfit = items.find((i) => i.type === "UserOutfit");
+        if (kind === "BodyParts" && outfit) {
+          await wearOutfitNow(outfit.id);
+        } else {
+          // animation packs: swap out the current animations for the pack's.
+          // Body bundles without an outfit only add their parts.
+          if (kind === "AvatarAnimations") for (const [id, a] of want) if (a.assetType && ANIM_TYPES.includes(a.assetType.id)) want.delete(id);
+          const ids = [];
+          for (const i of items) if (i.type === "Asset") {
+            want.set(i.id, { id: i.id, name: i.name });
+            ids.push(i.id);
+          }
+          paint();
+          dirty = true;
+          await runSync(); // finish here, so the next wear starts from it
+          if (!ids.some((id) => server.has(id))) throw 0;
+        }
+        toast.textContent = "Wearing " + bundle.name;
+      } catch {
+        toast.textContent = "Couldn't put on " + bundle.name;
+        toast.classList.add("cer-toast-error");
       }
-      toast.textContent = "Wearing " + bundle.name;
-    } catch {
-      toast.textContent = "Couldn't put on " + bundle.name;
-      toast.classList.add("cer-toast-error");
-    }
+    });
   }
 
   async function loadBundles(kind) {
@@ -605,13 +784,22 @@
     }, 0);
   }
 
+  // v2 outfit body (what Roblox's own editor sends with BrickColor ids):
+  // assets keep their meta, so layered clothing order/puffiness and
+  // accessory position/rotation/scale survive. The v1 shape (assetIds) lost them.
   const outfitPayload = (name, av) => ({
     name,
     bodyColors: av.bodyColors,
-    assetIds: av.assets.map((a) => a.id),
+    assets: av.assets.map((a) => (a.meta ? { id: a.id, meta: a.meta } : { id: a.id })),
     scale: av.scales,
     playerAvatarType: av.playerAvatarType,
   });
+  // the look as Roblox has it, after every pending change has landed
+  async function snapshotLook() {
+    await opChain;
+    await flushWrites();
+    return readAvatar();
+  }
 
   async function loadOutfits() {
     const seq = startView();
@@ -623,7 +811,7 @@
       if (!name) return;
       create.disabled = true;
       try {
-        const r = await CER.robloxWrite(API + "/v1/outfits/create", "POST", outfitPayload(name.slice(0, 25), await readAvatar()));
+        const r = await CER.robloxWrite(API + "/v2/outfits/create", "POST", outfitPayload(name.slice(0, 25), await snapshotLook()));
         if (r?.ok) {
           CER.toast("Saved " + name, "success");
           loadOutfits();
@@ -656,21 +844,18 @@
       if (!outfits.length) frag.appendChild(ui ? ui.empty("No saved characters yet.", { icon: "user" }) : CER.el("p", "cer-hint", "No saved characters yet."));
       for (const o of outfits) {
         const t = tile(o.name, thumbs[o.id]);
-        t.addEventListener("click", async () => {
-          const toast = CER.toast("Putting on " + o.name + "…");
-          try {
-            const r = await CER.robloxWrite(`${API}/v1/outfits/${o.id}/wear`, "POST", {});
-            if (!r?.ok) throw 0;
-            const av = await readAvatar();
-            server = toMap(av.assets);
-            want = new Map(server);
-            paint();
-            redraw();
-            toast.textContent = "Wearing " + o.name;
-          } catch {
-            toast.textContent = "Couldn't put on " + o.name;
-            toast.classList.add("cer-toast-error");
-          }
+        t.addEventListener("click", () => {
+          if (!canWrite(true)) return;
+          exclusive(async () => {
+            const toast = CER.toast("Putting on " + o.name + "…");
+            try {
+              await wearOutfitNow(o.id);
+              toast.textContent = "Wearing " + o.name;
+            } catch {
+              toast.textContent = "Couldn't put on " + o.name;
+              toast.classList.add("cer-toast-error");
+            }
+          });
         });
         const controls = CER.el("div", "cer-outfit-controls");
         const upd = CER.el("button", "cer-outfit-btn");
@@ -680,7 +865,7 @@
           e.stopPropagation();
           confirmMenu(upd, "Replace “" + o.name + "” with your current look?", async () => {
             try {
-              const r = await CER.robloxWrite(`${API}/v1/outfits/${o.id}`, "POST", outfitPayload(o.name, await readAvatar()));
+              const r = await CER.robloxWrite(`${API}/v2/outfits/${o.id}`, "PATCH", outfitPayload(o.name, await snapshotLook()));
               if (!r?.ok) throw 0;
               CER.toast("Updated " + o.name, "success");
             } catch {
@@ -718,7 +903,12 @@
     const seq = startView();
     let av, rules;
     try {
-      [av, rules] = await Promise.all([readAvatar(), getJSON(API + "/v1/avatar-rules").catch(() => null)]);
+      // read after any wear or size save still in flight
+      await flushScales();
+      await opChain;
+      if (loadRun) await loadRun;
+      if (!loaded) throw 0;
+      [av, rules] = await Promise.all([readAvatar(), avatarRules()]);
     } catch {
       if (!stale(seq)) showMsg("Couldn't load your body settings.");
       return;
@@ -735,7 +925,7 @@
       const b = CER.el("button", "cer-avatar-typebtn", type);
       b.classList.toggle("cer-avatar-typebtn-on", curType === type);
       b.addEventListener("click", async () => {
-        if (curType === type) return;
+        if (curType === type || !canWrite()) return;
         const r = await CER.robloxWrite(API + "/v1/avatar/set-player-avatar-type", "POST", { playerAvatarType: type }).catch(() => null);
         if (!r?.ok) return CER.toast("Couldn't switch. Try again.", "error");
         curType = type;
@@ -764,24 +954,52 @@
       ["proportion", "Proportions", ...range("proportion", 0, 1)],
       ["bodyType", "Body shape", ...range("bodyType", 0, 1)],
     ];
+    // Roblox's own editor never sends depth (its set-scales body is height,
+    // width, head, proportion, bodyType). So send depth exactly as read, and
+    // leave it out, like Roblox, only once the width slider has moved. (This
+    // used to copy width into depth on every save, silently changing it.)
+    let widthMoved = false;
+    let widthSaved = false;
     let saveTimer = null;
+    let saveRun = null;
+    let scaleDirty = false;
     let lastGood = { ...scales };
     const inputs = {};
     function scheduleSave() {
+      scaleDirty = true;
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(async () => {
-        scales.depth = scales.width; // Roblox's editor ties depth to width
-        const r = await CER.robloxWrite(API + "/v1/avatar/set-scales", "POST", scales).catch(() => null);
-        if (r?.ok) {
-          lastGood = { ...scales };
-          redraw();
-        } else {
-          Object.assign(scales, lastGood);
-          for (const k in inputs) inputs[k].reset();
-          CER.toast("Couldn't save that size.", "error");
-        }
-      }, 500);
+      saveTimer = setTimeout(saveNow, 500);
     }
+    // one save at a time; loops until the sliders stop moving
+    function saveNow() {
+      clearTimeout(saveTimer);
+      if (!saveRun)
+        saveRun = (async () => {
+          while (scaleDirty) {
+            scaleDirty = false;
+            const sent = { ...scales }; // what this request saves
+            const sentWidth = widthMoved;
+            const body = { ...sent };
+            if (sentWidth) delete body.depth;
+            const r = await CER.robloxWrite(API + "/v1/avatar/set-scales", "POST", body).catch(() => null);
+            if (r?.ok) {
+              lastGood = sent;
+              widthSaved = sentWidth;
+              redraw();
+            } else {
+              // undo every unsaved move, and drop any save queued after it
+              clearTimeout(saveTimer);
+              scaleDirty = false;
+              Object.assign(scales, lastGood);
+              widthMoved = widthSaved;
+              for (const k in inputs) inputs[k].reset();
+              CER.toast("Couldn't save that size.", "error");
+            }
+          }
+        })().finally(() => (saveRun = null));
+      return saveRun;
+    }
+    flushScales = () => (scaleDirty || saveRun ? saveNow() : Promise.resolve());
     for (const [key, label, min, max, step] of DEFS) {
       const row = CER.el("div", "cer-scale-row");
       row.appendChild(CER.el("span", "cer-scale-label", label));
@@ -800,6 +1018,8 @@
       };
       inputs[key].reset();
       s.addEventListener("input", () => {
+        if (!loaded || opBusy) return inputs[key].reset(); // a wear is running
+        if (key === "width") widthMoved = true;
         scales[key] = Number(s.value);
         show();
         scheduleSave();
@@ -851,11 +1071,5 @@
     if (!ok) pollPreview(); // render still generating
   });
   openTab(CATEGORIES[0]);
-  try {
-    server = toMap((await readAvatar()).assets);
-    want = new Map(server);
-  } catch {
-    // keep going: the grid still works, and the first save re-reads the avatar
-  }
-  paint();
+  reload(); // writes stay blocked until this works
 })();

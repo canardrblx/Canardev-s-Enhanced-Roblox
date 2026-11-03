@@ -5,7 +5,7 @@
 (async function () {
   if (typeof CER === "undefined") return;
   const settings = await CER.get();
-  if (!settings.features.customChat) return;
+  if (!settings.features.customChat || settings.features.hideChat) return;
 
   document.body.classList.add("cer-custom-chat"); // CSS hides #chat-container
 
@@ -94,6 +94,8 @@
   const { h, icon } = CER.ui;
   let panel = null;
   let pollTimer = null;
+  let poller = null; // the open thread's load(), while one is open
+  let threadToken = 0; // bumps whenever the open thread changes or closes
 
   function togglePanel() {
     if (panel) return closePanel();
@@ -119,7 +121,10 @@
     setTimeout(() => p.remove(), 160);
   }
   const onKey = (e) => {
-    if (e.key === "Escape" && panel) closePanel();
+    if (e.key !== "Escape" || !panel || e.defaultPrevented) return;
+    // Esc closes only the top-most panel: settings sits above chat
+    if (document.getElementById("cer-panel-overlay") || document.querySelector(".cer-ctx")) return;
+    closePanel();
   };
 
   function setHead(opts) {
@@ -133,7 +138,19 @@
   function stopPoll() {
     clearInterval(pollTimer);
     pollTimer = null;
+    poller = null;
+    threadToken++; // any load() still in flight for the old thread is ignored
   }
+  function runPoll() {
+    clearInterval(pollTimer);
+    pollTimer = poller && !document.hidden ? setInterval(poller, 5000) : null;
+  }
+  // no ticking while the tab is hidden; catch up at once when it comes back
+  document.addEventListener("visibilitychange", () => {
+    if (!poller) return;
+    if (!document.hidden) poller();
+    runPoll();
+  });
 
   // Roblox's current chat API. Verified live from Roblox's own chat widget:
   //   reads : GET  /v1/get-user-conversations?include_user_data=true&pageSize=30
@@ -153,7 +170,7 @@
     setHead({ title: [h("span", { text: "Chat" })] });
     body.replaceChildren(h("div", { class: "cer-chat-list" }, CER.ui.skeleton("row", 7)));
     const res = await CER.bgFetch(API + "/get-user-conversations?include_user_data=true&pageSize=30");
-    if (!panel || panel.querySelector(".cer-chat-body") !== body) return;
+    if (!panel || panel.querySelector(".cer-chat-body") !== body || body.querySelector(".cer-chat-log")) return;
     if (!res?.ok) {
       body.replaceChildren(CER.ui.empty("Could not load chats.", { icon: "chat" }));
       return;
@@ -164,27 +181,49 @@
       return;
     }
     const list = h("div", { class: "cer-chat-list" });
+    addRows(list, body, convos, res.data?.next_cursor);
+    body.replaceChildren(list);
+  }
+
+  function addRows(list, body, convos, cursor) {
     for (const convo of convos) {
       const partnerId = partnerOf(convo);
       const ud = convo.user_data?.[partnerId];
       const isGroup = (convo.participant_user_ids?.length ?? 0) > 2;
       const name = convo.name || ud?.display_name || ud?.name || "Chat";
+      const unread = !!convo.has_unread_messages || convo.unread_message_count > 0;
       const pic = partnerId && !isGroup ? CER.ui.avatar(partnerId, { size: 44 }) : h("span", { class: "cer-chat-groupic" }, icon("users", 20));
       const row = h(
         "button",
-        { type: "button", class: "cer-chat-row" + (convo.has_unread_messages ? " is-unread" : "") },
+        { type: "button", class: "cer-chat-row" + (unread ? " is-unread" : "") },
         pic,
         h("span", { class: "cer-chat-row-name", text: name }),
-        convo.has_unread_messages && h("span", { class: "cer-chat-unread", title: "New messages" })
+        unread && h("span", { class: "cer-chat-unread", title: "New messages" })
       );
       row.addEventListener("click", () => showThread(body, convo, name, isGroup ? null : partnerId));
       list.appendChild(row);
     }
-    body.replaceChildren(list);
+    if (!cursor) return;
+    // older chats: one quiet row at the end of the list
+    const more = h("button", { type: "button", class: "cer-chat-more", text: "More" });
+    more.addEventListener("click", async () => {
+      more.disabled = true;
+      const r = await CER.bgFetch(API + "/get-user-conversations?include_user_data=true&pageSize=30&cursor=" + encodeURIComponent(cursor));
+      if (!more.isConnected) return;
+      if (!r?.ok) {
+        more.disabled = false;
+        return;
+      }
+      more.remove();
+      addRows(list, body, r.data?.conversations ?? [], r.data?.next_cursor);
+    });
+    list.appendChild(more);
   }
 
   async function showThread(body, convo, name, partnerId) {
     stopPoll();
+    const token = threadToken;
+    const current = () => token === threadToken && log.isConnected;
     const titleKids = [
       partnerId ? CER.ui.avatar(partnerId, { size: 30 }) : h("span", { class: "cer-chat-groupic is-sm" }, icon("users", 16)),
       partnerId ? h("a", { class: "cer-chat-title-link", href: `https://www.roblox.com/users/${partnerId}/profile`, text: name, title: "Open profile" }) : h("span", { text: name }),
@@ -208,7 +247,7 @@
     async function load() {
       if (document.hidden) return;
       const res = await CER.bgFetch(API + "/get-conversation-messages?conversation_id=" + encodeURIComponent(convo.id) + "&pageSize=30").catch(() => null);
-      if (!log.isConnected) return stopPoll();
+      if (!current()) return; // a newer thread (or the list) took over
       if (!res?.ok) {
         if (!lastSig) log.replaceChildren(CER.ui.empty("Could not load messages.", { icon: "chat" }));
         return;
@@ -236,8 +275,9 @@
       log.dataset.loaded = "1";
     }
     await load();
-    if (!log.isConnected) return;
-    pollTimer = setInterval(load, 5000);
+    if (!current()) return;
+    poller = load;
+    runPoll();
 
     async function submit() {
       const text = input.value.trim();

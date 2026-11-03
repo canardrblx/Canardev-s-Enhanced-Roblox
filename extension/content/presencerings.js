@@ -23,7 +23,15 @@
     return "offline";
   }
 
+  // per-node cache: the status icon's class + whether the ring is still on,
+  // so a re-scan skips nodes that didn't change (no getComputedStyle again)
+  const seen = new WeakMap();
+  const CER_OWNED = "#cer-app, .cer-ui, #cer-panel-overlay";
+
   function apply(status) {
+    const sig = (status.querySelector("span, [class*='icon-']") || status).className + "";
+    const prev = seen.get(status);
+    if (prev && prev.sig === sig && (prev.framed || prev.target.classList.contains(prev.ring))) return;
     const state = stateOf(status);
     const avatar = status.closest(".avatar, [class*='avatar-card'], .friends-carousel-tile") || status.parentElement;
     if (!avatar) return;
@@ -37,8 +45,10 @@
     if (tcs.borderRadius === "0px" && tcs.backgroundImage.includes("gradient")) {
       for (const cls of ALL) target.classList.remove(cls);
       status.classList.remove("cer-status-hidden");
+      seen.set(status, { sig, framed: true, target });
       return;
     }
+    seen.set(status, { sig, framed: false, target, ring: RING[state] });
     if (target.classList.contains(RING[state]) && status.classList.contains("cer-status-hidden")) return;
     for (const cls of ALL) target.classList.remove(cls);
     target.classList.add(RING[state]);
@@ -59,14 +69,28 @@
     }
   }
 
-  let raf = null;
+  // at most one scan per 250 ms, however busy the page is
+  let timer = null;
   function scan() {
-    if (raf) return;
-    raf = requestAnimationFrame(() => {
-      raf = null;
-      for (const s of document.querySelectorAll(".avatar-status")) apply(s);
-      modernizeHoverIcons();
-    });
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      requestAnimationFrame(() => {
+        for (const s of document.querySelectorAll(".avatar-status")) if (!s.closest(CER_OWNED)) apply(s);
+        modernizeHoverIcons();
+      });
+    }, 250);
+  }
+  // changes inside CER's own UI (sidebar, chat, settings, CER pages) never
+  // need a re-scan
+  function onMutate(records) {
+    for (const r of records) {
+      const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+      if (!t || t.closest(CER_OWNED)) continue;
+      const nodes = [...r.addedNodes, ...r.removedNodes];
+      if (nodes.length && nodes.every((n) => n.nodeType === 1 && n.matches(CER_OWNED))) continue; // CER panel added/removed
+      return scan();
+    }
   }
   // CER-owned pages (html.cer-takeover) draw their own rings from presence
   // data, so there is nothing to scan there: no page-wide observer at all.
@@ -81,7 +105,7 @@
       return;
     }
     if (!mo) {
-      mo = new MutationObserver(scan);
+      mo = new MutationObserver(onMutate);
       mo.observe(html, { childList: true, subtree: true });
     }
     scan();

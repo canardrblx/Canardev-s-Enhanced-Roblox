@@ -263,13 +263,33 @@ try {
 
 // Our own user ({ id, name, displayName } or null). Fetched once per page and
 // shared; before this, five scripts each fetched it separately on every load.
+// null + CER.loggedOut = true only on a real "not signed in" answer. A rate
+// limit or network blip is retried, and a final failure is not cached, so
+// callers that see null with CER.loggedOut false should not act as logged out.
 CER._meP = null;
+CER.loggedOut = false;
 CER.me = function () {
   if (!CER._meP) {
-    CER._meP = fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => (d && d.id ? d : null))
-      .catch(() => null);
+    CER._meP = (async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt) await new Promise((r) => setTimeout(r, 800 * attempt));
+        try {
+          const r = await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" });
+          if (r.status === 401 || r.status === 403) {
+            CER.loggedOut = true;
+            return null;
+          }
+          if (r.ok) {
+            const d = await r.json();
+            if (d && d.id) return d;
+          }
+        } catch {
+          /* network blip: retry */
+        }
+      }
+      CER._meP = null; // unknown, not logged out: let the next caller try again
+      return null;
+    })();
   }
   return CER._meP;
 };
@@ -301,7 +321,8 @@ CER.me = function () {
 // with window.postMessage({ cer: "dev-reload" }) so changes can be tested
 // without clicking reload on chrome://extensions. Store installs ignore it.
 try {
-  if (!CER.ext.runtime.getManifest().update_url) {
+  CER.dev = !CER.ext.runtime.getManifest().update_url;
+  if (CER.dev) {
     window.addEventListener("message", (e) => {
       if (e.source === window && e.data?.cer === "dev-reload") CER.ext.runtime.sendMessage({ cer: "dev-reload" });
     });

@@ -81,7 +81,12 @@
 
   ui.route("transactions", async () => {
     const me = await api.me();
-    if (!me) return ui.release();
+    if (!me) {
+      // only a real 401/403 means signed out; anything else is a hiccup
+      if (CER.loggedOut) return ui.release();
+      ui.page("transactions", "cer-trx").page.append(ui.empty("Could not load this. Try again soon.", { icon: "refresh" }));
+      return;
+    }
     const { page } = ui.page("transactions", "cer-trx");
 
     let frame = "Month";
@@ -173,9 +178,11 @@
           else CER.toast?.("Could not load more", "error");
           return;
         }
+        list.querySelector(":scope > .cer-empty")?.remove();
         shown += rows.length;
         list.append(...rows.map(txRow));
-        if (!shown) list.replaceChildren(ui.empty(def.pending ? "Nothing waiting." : "Nothing here yet.", { icon: "robux" }));
+        // a cursor means more may come, so no "empty" yet
+        if (!shown && !cursor) list.replaceChildren(ui.empty(def.pending ? "Nothing waiting." : "Nothing here yet.", { icon: "robux" }));
         more.replaceChildren();
         if (cursor) {
           const b = ui.button("Load more", { variant: "soft" });

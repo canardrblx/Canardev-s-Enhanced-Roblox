@@ -227,24 +227,50 @@
     const g = S.heroGame;
     if (!g || !S.hero?.isConnected) return;
     S.hero.querySelector(".home-hero-faces")?.remove();
-    const grp = S.groups?.get(String(g.universeId));
+    const grp = S.groups?.get(String(g.universeId)) ?? S.groups?.get("p" + g.placeId);
     if (grp) S.hero.querySelector(".cer-hero-stats")?.append(h("span", { class: "cer-hero-stat home-hero-faces" }, faces(grp.friends, 4)));
   }
+  // Same games as what is on screen (the cached paint): refresh the numbers in
+  // place, so nothing flickers but playing counts and ratings are never stale.
   function renderContinue(games, heroImg) {
     if (!games.length) return;
     const [first, ...rest] = games;
     S.heroPick = false;
     if (!S.heroGame || String(S.heroGame.universeId) !== String(first.universeId)) renderHero(first, heroImg);
+    else heroStats(first);
     const key = rest.map((g) => g.universeId).join(",");
-    if (S.contKey === key) return;
+    if (S.contKey === key) {
+      const cards = S.contRail.querySelectorAll(".cer-rail-track > .cer-gc");
+      rest.forEach((g, i) => {
+        const old = cards[i]?.querySelector(".cer-gc-meta");
+        const fresh = ui.gameCard(g, { features: feats }).querySelector(".cer-gc-meta");
+        if (old && fresh) old.replaceWith(fresh);
+      });
+      return;
+    }
     S.contKey = key;
     S.contRail.replaceChildren(rest.length ? rail(rest.map((g) => card(g))) : "");
   }
+  // rewrite the hero's player count + rating for fresh numbers of the same game
+  function heroStats(g) {
+    S.heroGame = g;
+    const body = S.hero?.querySelector(".cer-hero-body");
+    if (!body) return;
+    const items = [g.playing != null && ["users", fmt.num(g.playing)], g.rating != null && ["like", g.rating + "%"]].filter(Boolean);
+    let stats = body.querySelector(".cer-hero-stats");
+    if (!stats) {
+      stats = h("div", { class: "cer-hero-stats" });
+      body.insertBefore(stats, body.querySelector(".cer-hero-actions"));
+    }
+    stats.replaceChildren(...items.map(([icon, label]) => h("span", { class: "cer-hero-stat" }, ui.icon(icon, 16), h("span", { text: label }))));
+    heroFaces();
+  }
   // nothing to continue: lead with a pick instead of an empty box
   async function heroFallback(sorts) {
+    const my = gen;
     const pick = recSort(sorts)?.games?.slice(0, 1) ?? [];
     const g = (await fill(pick))[0];
-    if (!S.hero.isConnected) return;
+    if (my !== gen || !S.hero.isConnected || S.heroGame) return;
     if (g) {
       renderHero(g, null, "Try this");
       S.heroPick = true;
@@ -312,7 +338,7 @@
       const p = pres.get(String(f.id));
       if (api.presenceState(p) !== "ingame" || !(p.universeId || p.rootPlaceId)) continue;
       const key = String(p.universeId ?? "p" + p.rootPlaceId);
-      if (!groups.has(key)) groups.set(key, { game: { universeId: p.universeId ?? null, placeId: p.rootPlaceId ?? p.placeId ?? null, name: p.lastLocation || null }, friends: [] });
+      if (!groups.has(key)) groups.set(key, { key, game: { universeId: p.universeId ?? null, placeId: p.rootPlaceId ?? p.placeId ?? null, name: p.lastLocation || null }, friends: [] });
       groups.get(key).friends.push(f);
     }
     return groups;
@@ -321,15 +347,16 @@
     const my = gen;
     const sec = S.playing;
     const list = [...groups.values()].sort((a, b) => b.friends.length - a.friends.length).slice(0, 20);
-    const sig = list.map((g) => g.game.universeId + ":" + g.friends.map((f) => f.id).join(".")).join("|");
+    const sig = list.map((g) => g.key + ":" + g.friends.map((f) => f.id).join(".")).join("|");
     if (S.playSig === sig) return;
     S.playSig = sig;
     if (!list.length) return (sec.hidden = true);
     const games = await fill(list.map((g) => g.game));
     if (my !== gen || S.playSig !== sig) return;
-    const byId = new Map(list.map((g) => [String(g.game.universeId), g]));
+    // fill() hydrates these same objects in place (universeId may start null)
+    const byGame = new Map(list.map((grp) => [grp.game, grp]));
     const cards = games.map((g) => {
-      const grp = byId.get(String(g.universeId));
+      const grp = byGame.get(g);
       const c = card(g);
       if (grp) c.querySelector(".cer-gc-media")?.append(h("span", { class: "home-gc-faces" }, faces(grp.friends, 3)));
       return c;
@@ -343,6 +370,7 @@
     if (!S) return;
     const my = gen;
     await pins.load();
+    if (my !== gen) return;
     const sec = S.pinned;
     const list = pins.list.map((p) => ({ ...p }));
     sec.hidden = !list.length;
@@ -405,14 +433,17 @@
     const cacheP = readCache();
     const me = await api.me();
     if (!alive()) return;
-    if (!me) return ui.release();
+    if (!me) {
+      if (CER.loggedOut) return ui.release();
+      // a hiccup, not logged out: keep our page, offer a retry
+      return page.replaceChildren(ui.empty("Could not load. Try again.", { icon: "refresh", action: ui.button("Try again", { icon: "refresh", onClick: () => start() }) }));
+    }
     feats = (await settingsP).features ?? {};
 
     // everything below runs in parallel
     // null = the call failed, [] = nothing to show
     const omniP = api.json(OMNI, { method: "POST", body: { pageType: "Home", sessionId: crypto.randomUUID() }, bg: true }).then((j) => (j ? parseOmni(j) : null));
-    // raw read first so a failed call is told apart from "no friends" (api.friends hides it); same URL + ttl, so no second request
-    const friendsP = api.json(`https://friends.roblox.com/v1/users/${me.id}/friends`, { ttl: 60000 }).then((j) => (j ? safe(api.friends(me.id)) : null));
+    const friendsP = safe(api.friends(me.id)); // null = failed, [] = no friends
     renderPinned();
 
     // instant hero from the last visit

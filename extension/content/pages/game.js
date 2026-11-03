@@ -53,8 +53,13 @@
   const section = (title, opts = {}) => ui.section(title, { action: opts.action, tools: opts.tools, class: opts.class });
 
   // ------------------------------------------------------------ route
+  // Each visit gets a run id; work from an older visit (SPA navigation)
+  // stops at its next await instead of building into the new page.
+  let runId = 0;
   ui.route("game", async () => {
     runCleanups();
+    const my = ++runId;
+    const live = () => my === runId;
     const placeId = location.pathname.match(/^\/games\/(\d+)/i)?.[1];
     if (!placeId) return ui.release();
 
@@ -69,7 +74,9 @@
     page.append(stage.el, about, tabsHost, panes);
 
     const feats = (await CER.get()).features ?? {};
+    if (!live()) return;
     const universeId = await api.universeOf(placeId);
+    if (!live()) return;
     if (!universeId) {
       stage.fail("We could not find this game.");
       return;
@@ -78,18 +85,19 @@
 
     const infoP = api.game(U);
     const playP = api.json(`https://games.roblox.com/v1/games/multiget-playability-status?universeIds=${U}`, { ttl: 60000 });
-    api.json(thumbsUrl(U), { ttl: 600000 }).then((j) => stage.setGallery(j, U));
+    api.json(thumbsUrl(U), { ttl: 600000 }).then((j) => live() && stage.setGallery(j, U));
 
     const info = await infoP;
+    if (!live()) return;
     if (!info) {
       stage.fail("This game did not load. Try again soon.");
       return;
     }
-    const ctx = { placeId, universeId: U, info, feats, mePromise };
+    const ctx = { placeId, universeId: U, info, feats, mePromise, live };
     stage.fill(info, feats);
-    playP.then((p) => stage.setPlayability(Array.isArray(p) ? p[0] : null, info));
-    mePromise.then((me) => stage.wireSocial(me, U, info));
-    friendsHere(ctx).then((list) => stage.setFriends(list));
+    playP.then((p) => live() && stage.setPlayability(Array.isArray(p) ? p[0] : null, info));
+    mePromise.then((me) => live() && stage.wireSocial(me, U, info));
+    friendsHere(ctx).then((list) => live() && stage.setFriends(list));
 
     // short description, no card, no title
     const desc = (info.description ?? "").trim();
@@ -190,7 +198,8 @@
       clearInterval(timer);
       if (urls.length > 1 && !matchMedia("(prefers-reduced-motion: reduce)").matches)
         timer = setInterval(() => {
-          if (!document.hidden && !stageEl.matches(":hover") && el.isConnected) go(idx + 1);
+          if (!el.isConnected) return clearInterval(timer); // page left
+          if (!document.hidden && !stageEl.matches(":hover")) go(idx + 1);
         }, 7000);
     };
     prev.addEventListener("click", () => go(idx - 1, true));
@@ -302,7 +311,9 @@
           ContextualPlayabilityUnverifiedSeventeenPlusUser: "You need to verify your age.",
         }[s];
         note.hidden = false;
-        note.textContent = msg ?? p.unplayableDisplayText ?? "You may not be able to play this.";
+        note.textContent = msg ?? p.unplayableDisplayText ?? "You can not play this right now.";
+        playBtn.disabled = true; // Roblox says not playable: no launch, no region search
+        playBtn.title = note.textContent;
       },
       // Favorite / Like / Dislike / Notify: small icon buttons, real API
       // writes, only ever on click.
@@ -323,6 +334,7 @@
           favBtn.title = fav ? "Remove from favorites" : "Add to favorites";
           upBtn.classList.toggle("is-on", vote === true);
           downBtn.classList.toggle("is-on", vote === false);
+          for (const b of [upBtn, downBtn]) b.classList.toggle("is-locked", !canVote);
           bellBtn.classList.toggle("is-on", following);
           bellBtn.title = following ? "Stop updates" : "Get updates";
         };
@@ -336,8 +348,9 @@
         ]);
         if (favNow) fav = !!favNow.isFavorited;
         if (voteNow) {
-          vote = voteNow.userVote ?? null;
           canVote = voteNow.canVote !== false;
+          // unplayed games answer { canVote: false, userVote: false }: that is NOT a dislike
+          vote = canVote ? (voteNow.userVote ?? null) : null;
           voteWhy = voteNow.reasonForNotVoteable ?? "";
         }
         if (followNow) {
@@ -361,7 +374,10 @@
           const to = vote === want ? null : want;
           const btn = want ? upBtn : downBtn;
           btn.busy(true);
-          const ok = await write(`https://games.roblox.com/v1/games/${U}/user-votes`, "PATCH", { vote: to }, { bgFirst: true });
+          // Roblox's own game page votes with this request; vote=null removes a vote
+          const asset = info.rootPlaceId ?? placeId;
+          let ok = await write(`https://apis.roblox.com/voting-api/vote/asset/${asset}?vote=${to}`, "POST", {});
+          if (!ok && to !== null) ok = await write(`https://games.roblox.com/v1/games/${U}/user-votes`, "PATCH", { vote: to }, { bgFirst: true });
           btn.busy(false);
           if (!ok) return CER.toast("Could not vote. Try again.", "error");
           vote = to;
@@ -472,7 +488,7 @@
     ctx._friendsP = (async () => {
       const me = await ctx.mePromise;
       if (!me) return [];
-      const friends = await api.friends(me.id).catch(() => []);
+      const friends = (await api.friends(me.id).catch(() => null)) ?? [];
       if (!friends.length) return [];
       const pres = await api.presence(friends.map((f) => f.id));
       const out = [];
@@ -630,8 +646,11 @@
       for (const s of want) {
         const host = list.querySelector(`[data-job="${s.id}"] .gx-heads`);
         if (!host) continue;
-        const urls = s.playerTokens.slice(0, 5).map((t) => tokenCache.get(t)).filter(Boolean);
-        host.replaceChildren(...urls.map((u) => h("span", { class: "gx-head" }, ui.img(u, { alt: "" }))));
+        // keep friend faces (links) first, fill the rest with player heads
+        host.querySelectorAll(".gx-head:not(.is-friend)").forEach((x) => x.remove());
+        const room = Math.max(0, 5 - host.children.length);
+        const urls = s.playerTokens.slice(0, room).map((t) => tokenCache.get(t)).filter(Boolean);
+        host.append(...urls.map((u) => h("span", { class: "gx-head" }, ui.img(u, { alt: "" }))));
       }
     }
 
@@ -678,7 +697,7 @@
         seen = await readSeen(placeId);
         let cursor = "";
         for (let pg = 0; pg < 5; pg++) {
-          if (my !== seq) return;
+          if (my !== seq || !ctx.live()) return;
           const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100&excludeFullGames=true&sortOrder=${order}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
           let res = null;
           for (let attempt = 0; attempt < 2; attempt++) {
@@ -739,6 +758,7 @@
 
     // friends first: their servers come from presence (presence.gameId = jobId)
     friendsHere(ctx).then((fr) => {
+      if (!ctx.live()) return;
       friendJobs = new Map();
       for (const x of fr) {
         if (!x.presence.gameId || String(x.presence.placeId) !== String(placeId)) continue;
@@ -833,7 +853,10 @@
           const old = await api.json(`https://games.roblox.com/v1/games/${U}/game-passes?limit=100&sortOrder=Asc`, { ttl: 120000, bg: true });
           if (!old?.data) return null;
           return { items: old.data.map((p) => ({ id: p.id, name: p.name, displayName: p.displayName ?? p.name, price: p.price, isForSale: p.price != null })), next: null };
-        })()
+        })().then((r) => {
+          if (!r) passCache.delete(key); // failures are retried next time
+          return r;
+        })
       );
     return passCache.get(key);
   }
@@ -844,6 +867,11 @@
     let first = true;
     const more = async (token) => {
       const r = await loadPasses(ctx.universeId, token);
+      if (!r && !first) {
+        // a later page failed: keep what is shown, let them try again
+        foot.querySelector(".cer-btn")?.busy?.(false);
+        return CER.toast("Could not load more. Try again.", "error");
+      }
       if (first) grid.replaceChildren();
       first = false;
       if (!r || (!r.items.length && !grid.children.length)) {
@@ -879,6 +907,10 @@
     let first = true;
     const more = async (cursor) => {
       const r = await loadBadges(ctx.universeId, cursor);
+      if (!r && !first) {
+        foot.querySelector(".cer-btn")?.busy?.(false);
+        return CER.toast("Could not load more. Try again.", "error");
+      }
       if (first) list.replaceChildren();
       first = false;
       if (!r || (!r.items.length && !list.children.length)) {

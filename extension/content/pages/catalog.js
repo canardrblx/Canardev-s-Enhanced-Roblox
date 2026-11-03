@@ -38,6 +38,7 @@
     { id: "gear", label: "Gear", tax: "gUtxkR951g3VPgRkb5ay8u", hidden: true },
   ];
   const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
+  const own = (obj, k) => k != null && Object.hasOwn(obj, k); // ?cat=constructor must not pass
   // Roblox's old ?Category= numbers, so links from elsewhere still land right
   const LEGACY_CAT = { 0: "featured", 1: "featured", 3: "clothing", 11: "accessories", 12: "animations", 17: "featured", 18: "bodies" };
   const LEGACY_SUB = { 20: "hair", 66: "heads", 37: "bodies", 54: "hats", 64: "shoes", 38: "animations", 39: "emotes", 5: "gear" };
@@ -106,12 +107,12 @@
   // Search results page. Returns { data, next } or null on failure.
   async function search(st, cursor) {
     const p = new URLSearchParams();
-    const c = CAT[st.cat] ?? CAT.featured;
+    const c = own(CAT, st.cat) ? CAT[st.cat] : CAT.featured;
     p.set("taxonomy", st.sub || c.tax);
     p.set("salesTypeFilter", st.limited ? "2" : "1");
     p.set("limit", String(PAGE_SIZE));
     if (st.q) p.set("keyword", st.q);
-    const s = SORT[st.sort];
+    const s = own(SORT, st.sort) ? SORT[st.sort] : null;
     if (s && s.type) {
       p.set("sortType", String(s.type));
       if (s.agg) p.set("sortAggregation", String(s.agg));
@@ -217,9 +218,17 @@
 
   function go(url) {
     const u = new URL(url, location.origin);
-    if (u.origin !== location.origin) return void (location.href = url);
+    const site = (host) => host.replace(/^www\./i, "").toLowerCase();
+    if (u.protocol !== location.protocol || site(u.host) !== site(location.host)) return void (location.href = url);
     saveBrowse();
-    history.pushState({ cer: TAG }, "", u.pathname + u.search);
+    // Roblox's page script swaps our history.state, so remember the hop here
+    S.fromBrowse = S.browse?.view.isConnected ? itemKey(u.pathname) : null;
+    S.pushing = true;
+    try {
+      history.pushState({ cer: TAG }, "", u.pathname + u.search);
+    } finally {
+      S.pushing = false;
+    }
     render();
   }
   function saveBrowse() {
@@ -254,6 +263,7 @@
   }
 
   function render() {
+    unguard?.(); // a pending browse-scroll restore must not fight the next view
     const path = location.pathname;
     let m;
     S.key = keyNow();
@@ -266,12 +276,86 @@
 
   // Back / Forward between our own views: render now instead of waiting for
   // the shared 300 ms URL poll (ui.route's later call sees S.key and skips).
-  window.addEventListener("popstate", () => {
-    if (document.getElementById("cer-app")?.dataset.page !== TAG) return;
+  // Roblox's hidden catalog app pushes its own copies of the page we show
+  // (the item again, or the list with its own URL params) and can swallow
+  // popstate for them, so where the Navigation API exists we follow its
+  // traverse events and tag Roblox's pushes as copies (its entry state is
+  // ours alone; Roblox only rewrites history.state).
+  const NAV = (() => {
+    try {
+      return window.navigation?.currentEntry ? window.navigation : null;
+    } catch {
+      return null;
+    }
+  })();
+  const ours = () => document.getElementById("cer-app")?.dataset.page === TAG;
+  const itemKey = (k) => k?.match(/^\/(catalog|bundles)\/(\d+)/i)?.slice(1, 3).join(":").toLowerCase() ?? null;
+  const viewOf = (k) => itemKey(k) ?? (/^\/(catalog|bundles)\/?(\?|$)/i.test(k) ? "list" : "other");
+
+  // dir: -1 back, 1 forward, 0 unknown; dup: the entry is Roblox's copy
+  function onHistoryMove(dir, dup) {
+    if (!ours()) return;
     if (!/^\/(catalog|bundles)(\/|$)/i.test(location.pathname) || /[?&]cer=native\b/.test(location.search)) return;
+    // one view can own several entries: walk past the extras so Back and
+    // Forward take one press
+    const sameItem = S.item?.view.isConnected && itemKey(S.key) && itemKey(S.key) === itemKey(keyNow());
+    const sameList = S.browse?.view.isConnected && (dup || S.browse.key === keyNow());
+    if (sameItem || sameList) {
+      // no Navigation API: Roblox's copy of an item carries { referrer }
+      const back = dir ? dir < 0 : sameItem && !history.state?.referrer;
+      if (back) history.back();
+      else if (dir > 0 && dup) history.forward();
+      else if (sameList && S.browse.key !== keyNow()) history.replaceState(history.state, "", S.browse.key);
+      S.key = keyNow();
+      return;
+    }
     saveBrowse();
     render();
-  });
+  }
+
+  if (NAV) {
+    NAV.addEventListener("currententrychange", (e) => {
+      const cur = NAV.currentEntry;
+      if (e.navigationType === "traverse") return onHistoryMove(Math.sign(cur.index - (e.from?.index ?? cur.index)), !!cur.getState()?.cerDup);
+      // our own updateCurrentEntry below fires this too: ignore it
+      if (e.navigationType !== "push" && e.navigationType !== "replace") return;
+      // a replaceState (ours or Roblox's) drops the tag, so carry it over
+      const copy = e.navigationType === "push" ? !S.pushing && ours() : !!e.from?.getState()?.cerDup;
+      if (!copy) return;
+      NAV.updateCurrentEntry({ state: { cerDup: true } });
+      // Roblox's copy can land late, after a quick Back, with the item's slug
+      // as a relative URL (/that-item-name): put back the URL of what we show
+      const showing = S.item?.view.isConnected ? itemKey(S.key) : S.browse?.view.isConnected ? "list" : null;
+      if (e.navigationType === "push" && showing && viewOf(keyNow()) !== showing) history.replaceState(history.state, "", S.key);
+    });
+  } else {
+    window.addEventListener("popstate", () => onHistoryMove(0, false));
+  }
+
+  // Restore the browse scroll. Roblox's page script smooth-scrolls to the top
+  // about half a second after a history change, and the height settles over a
+  // few frames, so for 2.5 s every frame puts the scroll back. Wheel, touch,
+  // keys or a pointer press hand control back to the user at once.
+  let unguard = null;
+  const USER_INPUT = ["wheel", "touchstart", "keydown", "pointerdown"];
+  function restoreScroll(view, y) {
+    unguard?.();
+    const until = performance.now() + 2500;
+    let raf = 0;
+    const tick = () => {
+      if (!view.isConnected || performance.now() > until) return stop();
+      if (Math.abs(window.scrollY - y) > 2) window.scrollTo({ top: y, behavior: "instant" });
+      raf = requestAnimationFrame(tick);
+    };
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      for (const ev of USER_INPUT) removeEventListener(ev, stop, true);
+      unguard = null;
+    };
+    for (const ev of USER_INPUT) addEventListener(ev, stop, { capture: true, passive: true });
+    unguard = stop;
+    tick();
+  }
 
   function show(view) {
     const root = ui.mount(TAG);
@@ -296,15 +380,20 @@
     };
     let catId = get("cat");
     let sub = get("sub") ?? "";
-    if (!CAT[catId]) {
+    if (!own(CAT, catId)) {
       const tax = get("taxonomy");
       const top = tax && CATS.find((c) => c.tax === tax);
-      const legacySub = LEGACY_SUB[get("Subcategory", "subcategory")];
-      catId = top ? top.id : legacySub ?? LEGACY_CAT[get("Category", "category")] ?? "featured";
+      const subNum = get("Subcategory", "subcategory");
+      const legacySub = own(LEGACY_SUB, subNum) ? LEGACY_SUB[subNum] : null;
+      const legacyCat = get("Category", "category");
+      catId = top ? top.id : legacySub ?? (own(LEGACY_CAT, legacyCat) ? LEGACY_CAT[legacyCat] : "featured");
       if (tax && !top) sub = tax; // a sub-taxonomy from Roblox's own links
     }
     let sort = get("sort");
-    if (!SORT[sort]) sort = LEGACY_SORT[get("SortType", "sortType")] ?? "relevance";
+    if (!own(SORT, sort)) {
+      const t = get("SortType", "sortType");
+      sort = own(LEGACY_SORT, t) ? LEGACY_SORT[t] : "relevance";
+    }
     const num = (v) => (v != null && /^\d+$/.test(v) ? v : "");
     return {
       q: (get("Keyword", "keyword") ?? "").trim(),
@@ -339,8 +428,11 @@
     const key = keyNow();
     if (S.browse && S.browse.key === key) {
       show(S.browse.view);
-      document.title = S.browse.title;
-      window.scrollTo(0, S.browse.scrollY ?? 0);
+      const B = S.browse;
+      document.title = B.title;
+      // Roblox renames the tab a moment after Back
+      setTimeout(() => B.view.isConnected && (document.title = B.title), 1500);
+      restoreScroll(S.browse.view, S.browse.scrollY ?? 0);
       guardUrl();
       return;
     }
@@ -508,7 +600,7 @@
     // --- sub chips (from Roblox's menu)
     async function renderSubs() {
       subRow.replaceChildren();
-      const c = CAT[st.cat];
+      const c = own(CAT, st.cat) ? CAT[st.cat] : null;
       if (!c?.subs) return;
       const nav = await navMenu();
       if (st.cat !== c.id) return;
@@ -554,11 +646,17 @@
     S.item = { view };
     show(view);
     window.scrollTo(0, 0);
-    const myKey = S.key;
-    const stale = () => S.key !== myKey;
+    // stale = another page took over (the slug fix below changes the URL
+    // of THIS item, which must not count)
+    const myItem = kind + ":" + id;
+    const itemOf = (k) => {
+      const m = k?.match(/^\/(catalog|bundles)\/(\d+)/i);
+      return m ? (m[1].toLowerCase() === "bundles" ? "Bundle" : "Asset") + ":" + m[2] : null;
+    };
+    const stale = () => itemOf(S.key) !== myItem || S.item?.view !== view;
 
     // shell with skeletons right away
-    const fromBrowse = !!S.browse && history.state?.cer === TAG;
+    const fromBrowse = !!S.browse && S.fromBrowse === itemKey(keyNow());
     const back = ui.button("", { icon: "arrowLeft", variant: "ghost", class: "cat-back", title: fromBrowse ? "Back" : "Catalog", href: "https://www.roblox.com" + (S.browse?.key ?? "/catalog") });
     back.addEventListener("click", (e) => {
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

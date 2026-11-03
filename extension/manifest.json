@@ -91,17 +91,7 @@
       ],
       "js": [
         "content/gamepage.js",
-        "content/gameredesign.js",
         "content/serverbrowser.js"
-      ],
-      "run_at": "document_end"
-    },
-    {
-      "matches": [
-        "https://www.roblox.com/*"
-      ],
-      "js": [
-        "content/gamesredesign.js"
       ],
       "run_at": "document_end"
     },
@@ -111,15 +101,6 @@
       ],
       "js": [
         "content/avatar.js"
-      ],
-      "run_at": "document_end"
-    },
-    {
-      "matches": [
-        "https://www.roblox.com/users/friends*"
-      ],
-      "js": [
-        "content/friendspage.js"
       ],
       "run_at": "document_end"
     },
@@ -135,15 +116,6 @@
     },
     {
       "matches": [
-        "https://www.roblox.com/transactions*"
-      ],
-      "js": [
-        "content/transactionspage.js"
-      ],
-      "run_at": "document_end"
-    },
-    {
-      "matches": [
         "https://www.roblox.com/my/account*",
         "https://www.roblox.com/my/settings*",
         "https://www.roblox.com/communities/*/configure*",
@@ -152,15 +124,6 @@
       ],
       "js": [
         "content/settingsreskin.js"
-      ],
-      "run_at": "document_end"
-    },
-    {
-      "matches": [
-        "https://www.roblox.com/my/messages*"
-      ],
-      "js": [
-        "content/messagespage.js"
       ],
       "run_at": "document_end"
     },

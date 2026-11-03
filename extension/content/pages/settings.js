@@ -29,7 +29,12 @@
 
   ui.route("settings", async () => {
     const me = await api.me();
-    if (!me) return ui.release();
+    if (!me) {
+      // only a real 401/403 means signed out; anything else is a hiccup
+      if (CER.loggedOut) return ui.release();
+      ui.page("settings", "cer-acct").page.append(ui.empty("Could not load this. Try again soon.", { icon: "refresh" }));
+      return;
+    }
     const { page } = ui.page("settings", "cer-acct");
 
     const account = row({ icon: "user", label: "Account", href: native("info") });

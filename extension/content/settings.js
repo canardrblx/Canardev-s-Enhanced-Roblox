@@ -252,10 +252,12 @@
       dirty = true;
       reloadBtn.hidden = false;
     };
+    const returnFocus = document.activeElement;
     const close = () => {
       overlay.classList.remove("is-in");
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       setTimeout(() => overlay.remove(), 160);
+      if (returnFocus?.isConnected) returnFocus.focus?.({ preventScroll: true });
     };
     const attemptClose = () => {
       if (dirty && !closeArmed) {
@@ -265,7 +267,33 @@
       }
       close();
     };
-    const onKey = (e) => e.key === "Escape" && attemptClose();
+    // Esc closes this panel only (it sits above chat); Tab stays inside it
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const onKey = (e) => {
+      if (!overlay.isConnected || !overlay.classList.contains("is-in")) return;
+      if (e.key === "Escape") {
+        if (e.defaultPrevented || document.querySelector(".cer-ctx")) return; // a menu inside handles it
+        e.preventDefault();
+        e.stopPropagation();
+        attemptClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const els = [...panel.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+      if (!els.length) return;
+      const first = els[0];
+      const last = els[els.length - 1];
+      if (!panel.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
 
     const reloadBtn = CER.ui.button("Reload", { icon: "refresh", variant: "primary", size: "sm", onClick: () => location.reload() });
     reloadBtn.hidden = true;
@@ -282,15 +310,18 @@
     const body = h("div", { class: "cer-sp-body" });
     const panel = h(
       "div",
-      { class: "cer-sp", role: "dialog", "aria-modal": "true", "aria-label": "CER settings" },
+      { class: "cer-sp", role: "dialog", "aria-modal": "true", "aria-label": "CER settings", tabindex: "-1" },
       h("header", { class: "cer-sp-head" }, h("h2", { class: "cer-sp-title", text: "Settings" }), tabs, h("span", { class: "cer-sp-head-end" }, reloadBtn, closeBtn)),
       warn,
       body
     );
     const overlay = h("div", { id: "cer-panel-overlay", class: "cer-ui cer-sp-overlay", onClick: (e) => e.target === overlay && attemptClose() }, panel);
 
-    // any toggle/select edit inside the panel needs a reload to take effect
-    body.addEventListener("change", markDirty);
+    // Feature switches set up the page once on load, so only those need a
+    // reload. Themes, font, join options and the feedback box apply live.
+    body.addEventListener("change", (e) => {
+      if (current === "Features" && e.target.matches?.('input[type="checkbox"]')) markDirty();
+    });
 
     let seq = 0;
     async function show(id) {
@@ -309,8 +340,9 @@
     overlay.showTab = show;
 
     document.body.appendChild(overlay);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     requestAnimationFrame(() => overlay.classList.add("is-in"));
+    panel.focus({ preventScroll: true }); // focus moves inside; Tab starts at the tabs
     await show(current);
   }
 
@@ -492,8 +524,8 @@
     const heat = h("div", { class: "cer-sp-heat" });
     const WEEKS = 26;
     const start = new Date(today);
-    start.setDate(start.getDate() - (WEEKS * 7 - 1));
-    start.setDate(start.getDate() - start.getDay()); // the Sunday of its week
+    // the Sunday of this week, minus 25 weeks: the last column holds today
+    start.setDate(start.getDate() - start.getDay() - (WEEKS - 1) * 7);
     for (let w = 0; w < WEEKS; w++) {
       const col = h("div", { class: "cer-sp-heat-col" });
       for (let d = 0; d < 7; d++) {
@@ -707,7 +739,11 @@
         "div",
         { class: "cer-sp-foot" },
         armed("Reset all settings", "Tap again to reset", async () => {
-          await CER.ext.storage.local.clear();
+          // settings only: playtime, feedback state and caches stay
+          await CER.ext.storage.local.remove(CER.SETTINGS_KEYS);
+          try {
+            localStorage.removeItem("cer:shell");
+          } catch {}
           location.reload();
         })
       )

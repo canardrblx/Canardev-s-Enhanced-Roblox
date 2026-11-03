@@ -22,7 +22,7 @@
   async function write(url, body) {
     let dry = false;
     try {
-      dry = sessionStorage.getItem("cer-dry-writes") === "1";
+      dry = !!CER.dev && sessionStorage.getItem("cer-dry-writes") === "1"; // unpacked test builds only
     } catch {
       /* storage off */
     }
@@ -115,6 +115,21 @@
     while (out.length && !out[out.length - 1].href && !out[out.length - 1].text.trim()) out.pop();
     return out;
   }
+  const bare = (u) =>
+    String(u)
+      .trim()
+      .toLowerCase()
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+      .replace(/^www\./, "")
+      .replace(/\/+$/, "");
+  const sameAsHref = (text, href) => bare(text) === bare(href);
+  const hostOf = (href) => {
+    try {
+      return new URL(href).hostname.replace(/^www\./, "");
+    } catch {
+      return "link";
+    }
+  };
   function bodyNode(raw) {
     const box = h("div", { class: "ms-body" });
     for (const s of segments(raw)) {
@@ -130,6 +145,9 @@
       a.rel = "noopener noreferrer nofollow";
       if (!roblox) a.target = "_blank";
       box.append(a);
+      // Text that hides where a link goes ("Free Robux" -> other-site.com):
+      // show the real site next to it, so kids can see it is not Roblox.
+      if (!roblox && !sameAsHref(s.text, s.href)) box.append(h("span", { class: "ms-link-host", text: " (" + hostOf(s.href) + ")" }));
     }
     if (!box.childNodes.length) box.append(h("span", { class: "ms-muted", text: "This message is empty." }));
     return box;
@@ -306,6 +324,8 @@
         const toArchive = tab === "inbox";
         const b = ui.button("", { icon: toArchive ? "archive" : "mail", variant: "ghost", size: "sm", title: toArchive ? "Archive" : "Move to Inbox" });
         b.addEventListener("click", async () => {
+          const tok = loadTok;
+          const from = tab;
           b.busy(true);
           const res = await write(`${PM}/messages/${toArchive ? "archive" : "unarchive"}`, { messageIds: [m.id] });
           if (!session.alive) return;
@@ -314,9 +334,10 @@
             return CER.toast(res.status === 429 ? "Too fast! Wait a moment." : "Could not move it. Try again.", "error");
           }
           CER.toast(toArchive ? "Moved to Archive" : "Moved to Inbox");
-          if (!m.isRead && toArchive) setUnread((unread ?? 1) - 1);
+          if (!m.isRead && unread != null) setUnread(toArchive ? unread - 1 : unread + 1);
+          if (tok !== loadTok || from !== tab || !data) return; // the list on screen changed meanwhile
           data.collection = data.collection.filter((x) => x.id !== m.id);
-          closeReader();
+          if (String(openId) === String(m.id)) closeReader();
           renderList();
         });
         tools.append(b);
@@ -352,26 +373,32 @@
 
       // mark as read (a write; dry-run switch respected)
       if (!m.isRead && tab !== "sent" && tab !== "news") {
+        const tok = loadTok;
         write(`${PM}/messages/mark-read`, { messageIds: [m.id] }).then((res) => {
           if (!res.ok || !session.alive) return;
           m.isRead = true;
+          if (unread != null) setUnread(unread - 1);
+          if (tok !== loadTok) return; // another list is on screen now
           markRowRead(m.id);
-          setUnread((unread ?? 1) - 1);
           markAll.hidden = !(data?.collection ?? []).some((x) => !x.isRead);
         });
       }
     }
 
     markAll.addEventListener("click", async () => {
-      const ids = (data?.collection ?? []).filter((m) => !m.isRead).map((m) => m.id);
+      const msgs = data?.collection ?? [];
+      const ids = msgs.filter((m) => !m.isRead).map((m) => m.id);
       if (!ids.length) return;
+      const tok = loadTok;
       markAll.busy(true);
       const res = await write(`${PM}/messages/mark-read`, { messageIds: ids });
       markAll.busy(false);
       if (!session.alive) return;
       if (!res.ok) return CER.toast("Could not mark them read. Try again.", "error");
-      for (const m of data.collection) if (ids.includes(m.id)) (m.isRead = true), markRowRead(m.id);
-      setUnread((unread ?? ids.length) - ids.length);
+      for (const m of msgs) if (ids.includes(m.id)) m.isRead = true; // the page's own objects
+      if (unread != null) setUnread(unread - ids.length);
+      if (tok !== loadTok) return; // another list is on screen now
+      ids.forEach(markRowRead);
       markAll.hidden = true;
     });
 
@@ -385,7 +412,7 @@
       tab = id;
       tabs.set(id);
       const want = "#!/" + id;
-      if (push && location.hash !== want) history.replaceState(history.state, "", location.pathname + location.search + want);
+      if (push && location.hash !== want) history.pushState(history.state, "", location.pathname + location.search + want);
       if (changed || !data) {
         pageNo = 0;
         closeReader();

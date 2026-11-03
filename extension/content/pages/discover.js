@@ -86,10 +86,8 @@
   const inflight = new Map();
   function once(k, fn) {
     if (!inflight.has(k)) {
-      const p = fn().then((v) => {
-        if (v == null) inflight.delete(k); // let a retry refetch
-        return v;
-      });
+      // shared only while in flight; once settled the 3 min cache decides
+      const p = fn().finally(() => inflight.delete(k));
       inflight.set(k, p);
     }
     return inflight.get(k);
@@ -172,10 +170,12 @@
     chipRow.addEventListener(
       "wheel",
       (e) => {
-        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && chipRow.scrollWidth > chipRow.clientWidth) {
-          chipRow.scrollLeft += e.deltaY;
-          e.preventDefault();
-        }
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        const max = chipRow.scrollWidth - chipRow.clientWidth;
+        const canMove = e.deltaY > 0 ? chipRow.scrollLeft < max - 1 : chipRow.scrollLeft > 1;
+        if (!canMove) return; // at the end: let the page scroll
+        chipRow.scrollLeft += e.deltaY;
+        e.preventDefault();
       },
       { passive: false }
     );
@@ -381,8 +381,9 @@
 
   // ------------------------------------------------------------ hero
   // One hero element, reused across genres: content swaps with a short fade
-  // and the backdrop cross-fades. The active dot's fill bar is the timer: its
-  // animation runs 8 s (paused on hover via CSS) and its end advances.
+  // and the backdrop cross-fades. A JS clock advances every 8 s (paused on
+  // hover/focus, hidden tab, loading); the dot fill bar only mirrors it, so
+  // rotation still works when reduced motion turns animations off.
   function showHero(games) {
     const list = games.filter((g) => g.placeId).slice(0, 5);
     S.heroSlot.hidden = !list.length;
@@ -422,7 +423,11 @@
     let token = 0;
     const urls = new Map();
     const urlOf = (g) => {
-      if (!urls.has(g.universeId)) urls.set(g.universeId, api.thumb("gameThumb", g.universeId));
+      if (!urls.has(g.universeId)) {
+        const p = api.thumb("gameThumb", g.universeId);
+        urls.set(g.universeId, p);
+        p.then((u) => u == null && urls.get(g.universeId) === p && urls.delete(g.universeId));
+      }
       return urls.get(g.universeId);
     };
     const preload = (url) =>
@@ -449,7 +454,6 @@
             },
             h("span", { class: "dc-dot-fill" })
           );
-          if (i === idx && list.length > 1) d.firstChild.addEventListener("animationend", () => go((idx + 1) % list.length), { once: true });
           return d;
         })
       );
@@ -458,6 +462,7 @@
     async function go(i, first) {
       const my = ++token;
       idx = i;
+      elapsed = 0;
       const g = list[i];
       paintDots();
       const url = await urlOf(g);
@@ -485,7 +490,17 @@
       body.classList.remove("is-swapping");
     }
 
-    // pause the timer while the pointer is on the hero or the tab is hidden
+    // the rotation clock: pauses while the pointer or focus is on the hero,
+    // the tab is hidden, or a genre is loading; stops when the page is gone
+    let elapsed = 0;
+    const STEP = 250;
+    const clock = setInterval(() => {
+      if (!hero.isConnected) return clearInterval(clock); // page left or rebuilt
+      if (document.hidden || list.length < 2) return;
+      if (hero.classList.contains("is-paused") || hero.classList.contains("is-loading")) return;
+      elapsed += STEP;
+      if (elapsed >= 8000) go((idx + 1) % list.length);
+    }, STEP);
     hero.addEventListener("mouseenter", () => hero.classList.add("is-paused"));
     hero.addEventListener("mouseleave", () => hero.classList.remove("is-paused"));
     hero.addEventListener("focusin", () => hero.classList.add("is-paused"));
@@ -573,10 +588,11 @@
     const load = async () => {
       if (!alive(root)) return;
       const me = await api.me();
-      if (!me) return note("Log in to see what friends play.");
-      if (!friends) friends = await api.friends(me.id);
+      if (!me) return note(CER.loggedOut ? "Log in to see what friends play." : "Friends did not load.");
+      if (!friends) friends = await api.friends(me.id); // null on failure: retried next tick
       if (!alive(root)) return;
-      if (!friends?.length) {
+      if (!friends) return note("Friends did not load.");
+      if (!friends.length) {
         note("Add friends to see what they play.");
         return;
       }

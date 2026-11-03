@@ -1019,6 +1019,8 @@ a.cer-card-box:hover {
   background: var(--cer-raise);
   color: var(--cer-text-2);
 }
+/* p.cer-clamp: a Roblox `p` color rule outranks a single class */
+.cer-ui p.cer-clamp,
 .cer-clamp {
   display: -webkit-box;
   -webkit-line-clamp: var(--lines, 4);

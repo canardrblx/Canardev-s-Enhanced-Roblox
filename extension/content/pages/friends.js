@@ -29,16 +29,39 @@
   // Fresh presence (api.presence caches forever; we refresh every 60 s).
   // Sent from the page, not the background worker: the worker's request
   // carries no Roblox session, so every friend came back "offline".
-  async function presenceOf(ids) {
+  // A chunk that fails keeps its ids' previous presence (`prev`), so a
+  // hiccup never flips friends to offline or hides their Join button.
+  async function presenceOf(ids, prev) {
     const out = new Map();
     await Promise.all(
       chunk(ids.map(Number), 50).map(async (c) => {
         const j = await api.json("https://presence.roblox.com/v1/presence/users", { method: "POST", body: { userIds: c } });
-        for (const p of j?.userPresences ?? []) out.set(String(p.userId), p);
+        if (!j?.userPresences) {
+          for (const id of c) if (prev?.has(String(id))) out.set(String(id), prev.get(String(id)));
+          return;
+        }
+        for (const p of j.userPresences) out.set(String(p.userId), p);
       })
     );
     return out;
   }
+
+  // GET with the HTTP status, so "private" (403) and "failed" can differ.
+  async function getJson(url) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await fetch(url, { credentials: "include" });
+        if (r.status === 429 && attempt < 2) {
+          await new Promise((ok) => setTimeout(ok, 600 * (attempt + 1)));
+          continue;
+        }
+        return { status: r.status, data: r.ok ? await r.json().catch(() => null) : null };
+      } catch {
+        return { status: 0, data: null };
+      }
+    }
+  }
+  const isPrivate = (status) => status === 403 || status === 400;
 
   // Game names for in-game presences (by universe id, cached by api.game).
   async function gameNames(presences) {
@@ -65,7 +88,7 @@
   async function write(url, body = {}) {
     let dry = false;
     try {
-      dry = sessionStorage.getItem("cer-dry-writes") === "1";
+      dry = !!CER.dev && sessionStorage.getItem("cer-dry-writes") === "1"; // unpacked test builds only
     } catch {
       /* storage off */
     }
@@ -159,8 +182,10 @@
 
   // ------------------------------------------------------------ progressive grid
   // Renders tiles in pages of 48 as the user scrolls (big friend lists).
+  // Returns a disposer that disconnects the pending sentinel observer.
   function fillGrid(grid, nodes, step = 48) {
     let i = 0;
+    let dispose = null;
     const more = () => {
       const part = nodes.slice(i, i + step);
       i += part.length;
@@ -168,13 +193,17 @@
       if (i < nodes.length) {
         const sentinel = h("div", { class: "fr-sentinel" });
         grid.after(sentinel);
-        ui.whenVisible(sentinel, () => {
+        dispose = ui.whenVisible(sentinel, () => {
           sentinel.remove();
           more();
         });
-      }
+      } else dispose = null;
     };
     more();
+    return () => {
+      if (typeof dispose === "function") dispose();
+      dispose = null;
+    };
   }
   const newGrid = () => h("div", { class: "fr-grid" });
 
@@ -249,39 +278,50 @@
 
     // ---- state
     const tiles = new Map(); // id -> tile (friends)
-    let friends = null; // [{ id, name, displayName }] or false on error
+    let friends = null; // [{ id, name, displayName }], or null while loading / failed
+    let friendsErr = 0; // HTTP status when the friends list failed
+    let pres = new Map(); // last known presence of friends
     const lists = {}; // followers / following / requests
+    const gridStops = []; // disposers for progressive grids on screen
+    const menu = own
+      ? [
+          { label: "Chat", onClick: () => (CER.toggleChat ? CER.toggleChat() : (location.href = "https://www.roblox.com/my/messages")) },
+          { label: "Unfriend", tone: "bad", onClick: (t) => confirmUnfriend(t) },
+        ]
+      : null;
 
-    const friendsReady = (async () => {
-      const j = await api.json(`${FR}/users/${userId}/friends`, { ttl: 60000 });
-      if (!session.alive) return;
-      if (!j) {
-        friends = false;
-        return;
-      }
-      friends = await fillNames((j.data ?? []).map((f) => ({ id: f.id, name: f.name, displayName: f.displayName })));
-      const pres = await presenceOf(friends.map((f) => f.id));
-      const games = await gameNames(pres);
-      if (!session.alive) return;
-      const menu = own
-        ? [
-            { label: "Chat", onClick: () => (CER.toggleChat ? CER.toggleChat() : (location.href = "https://www.roblox.com/my/messages")) },
-            { label: "Unfriend", tone: "bad", onClick: (t) => confirmUnfriend(t) },
-          ]
-        : null;
-      for (const f of friends) {
-        const t = personTile(f, { menu });
-        t.setPresence(pres.get(String(f.id)), games);
-        tiles.set(String(f.id), t);
-      }
-    })();
+    let friendsReady = null;
+    const loadFriends = () =>
+      (friendsReady = (async () => {
+        const r = await getJson(`${FR}/users/${userId}/friends`);
+        if (!session.alive) return;
+        if (!r.data) {
+          friendsErr = r.status || -1;
+          return;
+        }
+        friendsErr = 0;
+        const list = await fillNames((r.data.data ?? []).map((f) => ({ id: f.id, name: f.name, displayName: f.displayName })));
+        pres = await presenceOf(list.map((f) => f.id));
+        const games = await gameNames(pres);
+        if (!session.alive) return;
+        // tiles first, then publish the list (refresh reads both)
+        for (const f of list) {
+          const t = tiles.get(String(f.id)) ?? personTile(f, { menu });
+          t.setPresence(pres.get(String(f.id)), games);
+          tiles.set(String(f.id), t);
+        }
+        friends = list;
+      })());
+    loadFriends();
 
     // Refresh presence every 60 s while the tab is visible.
     async function refresh() {
-      if (!session.alive || document.hidden || !friends?.length) return;
+      if (!session.alive) return;
       if (!document.getElementById("cer-app")?.contains(body)) return session.stop();
-      const next = await presenceOf(friends.map((f) => f.id));
+      if (document.hidden || !friends?.length) return;
+      const next = await presenceOf(friends.map((f) => f.id), pres);
       if (!session.alive || !next.size) return;
+      pres = next;
       const games = await gameNames(next);
       let moved = false;
       for (const f of friends) {
@@ -304,7 +344,8 @@
     // ---- unfriend (own page only, behind a confirm)
     function confirmUnfriend(tile) {
       const name = tile.user.displayName || tile.user.name;
-      ui.modal({
+      let pending = false;
+      const m = ui.modal({
         title: "Unfriend " + name + "?",
         actions: [
           { label: "Cancel", variant: "ghost" },
@@ -312,12 +353,16 @@
             label: "Unfriend",
             variant: "danger",
             onClick: async (close) => {
+              if (pending) return;
+              pending = true;
+              m.el.querySelectorAll(".cer-modal-actions button").forEach((b) => (b.disabled = true));
               const res = await write(`${FR}/users/${tile.user.id}/unfriend`);
               close();
               if (!res.ok) return CER.toast(failMsg(res, "unfriend"), "error");
-              friends = friends.filter((f) => String(f.id) !== String(tile.user.id));
+              if (friends) friends = friends.filter((f) => String(f.id) !== String(tile.user.id));
               tiles.delete(String(tile.user.id));
               tile.remove();
+              if (tab === "friends" && session.alive) render(true); // regroup, or "No friends yet."
             },
           },
         ],
@@ -328,38 +373,61 @@
     const matches = (u) => !query || (u.displayName ?? "").toLowerCase().includes(query) || (u.name ?? "").toLowerCase().includes(query);
     let renderTok = 0;
 
+    // keepScroll: a refresh of what is on screen. Every tile renders at once
+    // (they are cached nodes) and the scroll position comes back after.
     async function render(keepScroll) {
       const tok = ++renderTok;
       const y = window.scrollY;
-      if (!keepScroll) body.replaceChildren(skeletonGrid());
+      const stopGrids = () => gridStops.splice(0).forEach((f) => f());
+      if (!keepScroll) {
+        stopGrids();
+        body.replaceChildren(skeletonGrid());
+      }
       if (tab === "friends") {
         await friendsReady;
         if (tok !== renderTok || !session.alive) return;
-        renderFriends();
-      } else await renderList(tab, tok);
+        stopGrids();
+        renderFriends(keepScroll);
+      } else {
+        const ready = await renderList(tab, tok, keepScroll, stopGrids);
+        if (!ready) return;
+      }
       if (keepScroll && tok === renderTok) window.scrollTo(0, y);
     }
+    const fill = (grid, nodes, all) => gridStops.push(fillGrid(grid, nodes, all ? Infinity : 48));
+    const retry = (fn) => ui.button("Try again", { variant: "soft", size: "sm", onClick: fn });
 
-    function renderFriends() {
-      if (friends === false) return body.replaceChildren(ui.empty(own ? "Could not load friends." : "This list is private.", { icon: own ? "users" : "lock" }));
+    function renderFriends(all) {
+      if (!friends) {
+        if (isPrivate(friendsErr) && !own) return body.replaceChildren(ui.empty("This list is private.", { icon: "lock" }));
+        return body.replaceChildren(
+          ui.empty("Could not load. Try again.", {
+            icon: "users",
+            action: retry(() => {
+              loadFriends();
+              render();
+            }),
+          })
+        );
+      }
       const rank = { ingame: 0, studio: 1, online: 2, offline: 3 };
       const stateOf = (f) => tiles.get(String(f.id))?.state ?? "offline";
       const list = friends.filter(matches).sort((a, b) => rank[stateOf(a)] - rank[stateOf(b)]);
-      if (!list.length) return body.replaceChildren(ui.empty(query ? "No one found." : own ? "No friends yet." : "No friends yet.", { icon: query ? "search" : "users" }));
+      if (!list.length) return body.replaceChildren(ui.empty(query ? "No one found." : "No friends yet.", { icon: query ? "search" : "users" }));
       const on = list.filter((f) => stateOf(f) !== "offline");
       const off = list.filter((f) => stateOf(f) === "offline");
       // one plain grid while searching; Online / Offline groups otherwise
       const groups = query || !on.length || !off.length ? [[null, list]] : [["Online", on], ["Offline", off]];
-      body.replaceChildren(
-        ...groups.map(([title, items]) => {
-          const grid = newGrid();
-          queueMicrotask(() => fillGrid(grid, items.map((f) => tiles.get(String(f.id)))));
-          if (!title) return grid;
-          const s = ui.section(title, { class: "fr-group" });
-          s.body.append(grid);
-          return s;
-        })
-      );
+      const filled = groups.map(([title, items]) => {
+        const grid = newGrid();
+        const nodes = items.map((f) => tiles.get(String(f.id))).filter(Boolean);
+        if (!title) return [grid, grid, nodes];
+        const s = ui.section(title, { class: "fr-group" });
+        s.body.append(grid);
+        return [s, grid, nodes];
+      });
+      body.replaceChildren(...filled.map((x) => x[0]));
+      for (const [, grid, nodes] of filled) fill(grid, nodes, all); // in the page now, so sentinels can sit after
     }
 
     // followers / following / requests: cursor pages with "Load more"
@@ -369,16 +437,20 @@
       requests: (c) => `${FR}/my/friends/requests?limit=50&sortOrder=Desc${c ? "&cursor=" + encodeURIComponent(c) : ""}`,
     };
 
+    // Resolves "ok", "private" or "error".
     async function loadPage(kind) {
-      const l = (lists[kind] ??= { items: [], cursor: null, done: false, tiles: new Map(), loading: null, failed: false });
+      const l = (lists[kind] ??= { items: [], cursor: null, done: false, tiles: new Map(), loading: null });
       if (l.loading) return l.loading;
-      if (l.done) return;
+      if (l.done) return "ok";
       l.loading = (async () => {
-        const j = await api.json(LIST[kind](l.cursor));
+        const r = await getJson(LIST[kind](l.cursor));
+        const j = r.data;
         if (!j) {
-          l.failed = !l.items.length;
-          if (l.items.length) CER.toast("Could not load more. Try again.", "error");
-          return;
+          if (l.items.length) {
+            CER.toast("Could not load more. Try again.", "error");
+            return "ok";
+          }
+          return isPrivate(r.status) && kind !== "requests" ? "private" : "error";
         }
         const fresh = (j.data ?? []).map((d) => ({ id: d.id, name: d.name, displayName: d.displayName })).filter((u) => !l.tiles.has(String(u.id)));
         await fillNames(fresh);
@@ -392,31 +464,34 @@
         }
         l.cursor = j.nextPageCursor ?? null;
         l.done = !l.cursor;
+        return "ok";
       })();
       try {
-        await l.loading;
+        return await l.loading;
       } finally {
         l.loading = null;
       }
     }
 
-    async function renderList(kind, tok) {
-      if (!lists[kind]?.items.length) await loadPage(kind);
-      if (tok !== renderTok || !session.alive) return;
+    // Returns true when it drew the list (so render may restore scroll).
+    async function renderList(kind, tok, all, stopGrids) {
+      let state = "ok";
+      if (!lists[kind]?.items.length) state = await loadPage(kind);
+      if (tok !== renderTok || !session.alive) return false;
+      stopGrids();
+      if (state === "private") return body.replaceChildren(ui.empty("This list is private.", { icon: "lock" })), false;
+      if (state === "error") return body.replaceChildren(ui.empty("Could not load. Try again.", { icon: "users", action: retry(() => render()) })), false;
       const l = lists[kind];
-      if (l.failed) {
-        l.failed = false;
-        return body.replaceChildren(ui.empty(kind === "requests" ? "Could not load requests." : "This list is private.", { icon: kind === "requests" ? "userPlus" : "lock" }));
-      }
       const items = l.items.filter(matches);
       if (!items.length && (l.done || !query)) {
         const msg = query ? "No one found." : kind === "requests" ? "No friend requests." : kind === "followers" ? "No followers yet." : "Not following anyone.";
-        return body.replaceChildren(ui.empty(msg, { icon: query ? "search" : kind === "requests" ? "userPlus" : "users" }));
+        body.replaceChildren(ui.empty(msg, { icon: query ? "search" : kind === "requests" ? "userPlus" : "users" }));
+        return false;
       }
       const grid = newGrid();
       const foot = h("div", { class: "fr-foot" });
       body.replaceChildren(grid, foot);
-      fillGrid(grid, items.map((u) => l.tiles.get(String(u.id))));
+      fill(grid, items.map((u) => l.tiles.get(String(u.id))), all);
       if (!l.done) {
         const btn = ui.button("Load more", { variant: "soft" });
         btn.addEventListener("click", async () => {
@@ -427,6 +502,21 @@
         });
         foot.append(btn);
       }
+      return true;
+    }
+
+    // A just-accepted friend shows up on the Friends tab right away.
+    async function addFriend(u) {
+      await friendsReady;
+      if (!session.alive || !friends || friends.some((f) => String(f.id) === String(u.id))) return;
+      const f = { id: u.id, name: u.name, displayName: u.displayName };
+      const t = personTile(f, { menu });
+      const p = await presenceOf([f.id]);
+      if (!session.alive) return;
+      if (p.has(String(f.id))) pres.set(String(f.id), p.get(String(f.id)));
+      t.setPresence(p.get(String(f.id)), await gameNames(p));
+      tiles.set(String(f.id), t);
+      friends = [...friends, f];
     }
 
     // A friend request: Accept (primary) and a quiet Decline.
@@ -434,16 +524,17 @@
       const t = personTile(u, { noStatus: true });
       const accept = ui.button("Accept", { variant: "primary", size: "sm" });
       const decline = ui.button("", { icon: "x", variant: "soft", size: "sm", title: "Decline" });
-      const settle = (text) => {
+      const settle = (text, accepted) => {
         t.actions.replaceChildren(h("span", { class: "fr-done", text }));
         t.classList.add("is-done");
-        setReqCount((reqCount ?? 1) - 1);
+        if (reqCount != null) setReqCount(reqCount - 1);
+        if (accepted) addFriend(u);
       };
       const act = async (btn, other, verb, done) => {
         btn.busy(true);
         other.disabled = true;
         const res = await write(`${FR}/users/${u.id}/${verb}-friend-request`);
-        if (res.ok) return settle(done);
+        if (res.ok) return settle(done, verb === "accept");
         btn.busy(false);
         other.disabled = false;
         CER.toast(failMsg(res, verb), "error");
@@ -460,7 +551,7 @@
       tab = id;
       tabs.set(id);
       const want = "#!/" + TAB_HASH[id];
-      if (push && location.hash !== want) history.replaceState(history.state, "", location.pathname + location.search + want);
+      if (push && location.hash !== want) history.pushState(history.state, "", location.pathname + location.search + want);
       render();
     }
     session.onHash = () => {
