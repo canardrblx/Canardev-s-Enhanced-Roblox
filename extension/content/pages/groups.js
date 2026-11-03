@@ -4,6 +4,8 @@
 // Data comes from Roblox's web APIs only. The only write is Join (official
 // API). There is NO leave / transfer / delete UI here, on purpose.
 // No wall section: /v1 + /v2 wall/posts return 404 (Roblox retired walls).
+// Posts (announcements + forums) and Events are read here; writing a post,
+// replying, voting or reacting opens Roblox's own page.
 //
 // Why "#mine": Roblox's SERVER 302s /communities → /my/communities → your
 // primary group (or /search/communities when logged out), so a plain
@@ -41,8 +43,8 @@
   })();
 
   // ---------------------------------------------------------------- tabs in the URL
-  const TABS = ["overview", "games", "members", "store", "allies"];
-  const HASH_TABS = { about: "overview", store: "store", affiliates: "allies", allies: "allies", games: "games", members: "members" };
+  const TABS = ["overview", "posts", "events", "games", "members", "store", "allies"];
+  const HASH_TABS = { about: "overview", announcements: "posts", forums: "posts", events: "events", store: "store", affiliates: "allies", allies: "allies", games: "games", members: "members" };
   function tabFromUrl() {
     const q = new URLSearchParams(location.search).get("tab");
     if (q && TABS.includes(q)) return q;
@@ -138,6 +140,38 @@
     const cur = cursor ? "&cursor=" + encodeURIComponent(cursor) : "";
     const v2 = await api.json(`https://catalog.roblox.com/v2/search/items/details?Category=All&CreatorTargetId=${gid}&CreatorType=Group&Limit=30${cur}`, { ttl: 5 * 60000 });
     return Array.isArray(v2?.data) ? { items: v2.data, next: v2.nextPageCursor ?? null } : null;
+  }
+
+  // Posts: announcements are their own list; forum channels hold posts, and
+  // a post's first comment is its body. All lists use cursors.
+  const cur = (c) => (c ? "&cursor=" + encodeURIComponent(c) : "");
+  const loadNews = (gid, cursor = "") => api.json(`${GROUPS}/v1/groups/${gid}/announcements?limit=10${cur(cursor)}`, { ttl: TTL });
+  const loadChannels = (gid) =>
+    api.json(`${GROUPS}/v1/groups/${gid}/forums`, { ttl: TTL }).then((j) =>
+      j ? (j.data ?? []).filter((c) => c.id && !c.archivedAt && !c.deletedAt).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)) : null
+    );
+  const loadPosts = (gid, cid, cursor = "") => api.json(`${GROUPS}/v1/groups/${gid}/forums/${cid}/posts?limit=25&includeCommentCount=true${cur(cursor)}`);
+  const loadPinned = (gid, cid) => api.json(`${GROUPS}/v1/groups/${gid}/forums/${cid}/posts/pinned?includeCommentCount=true`, { ttl: TTL });
+  const loadComments = (gid, cid, pid, cursor = "") => api.json(`${GROUPS}/v1/groups/${gid}/forums/${cid}/posts/${pid}/comments?limit=25${cur(cursor)}`);
+  const loadEvents = (gid) => api.json(`https://apis.roblox.com/virtual-events/v1/virtual-events/groups/${gid}?limit=25`, { ttl: TTL });
+
+  // Roblox's own forum links: #!/forums/{name}-{shortId}/post/{title}-{shortId}
+  const urlSlug = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+/, "").slice(0, 30) || "post";
+  const channelUrl = (gid, ch) => ui.nativeUrl(`https://www.roblox.com/communities/${gid}#!/forums/${urlSlug(ch.name)}-${ch.shortId}`);
+  const postUrl = (gid, ch, p) => ui.nativeUrl(`https://www.roblox.com/communities/${gid}#!/forums/${urlSlug(ch.name)}-${ch.shortId}/post/${urlSlug(p.name)}-${p.shortId ?? String(p.id).slice(0, 8)}`);
+  const newsUrl = (gid) => ui.nativeUrl(`https://www.roblox.com/communities/${gid}#!/announcements`);
+
+  // Post text: plain text, else markdown, else Roblox's rich-text (Slate) JSON
+  function postText(c) {
+    if (!c) return "";
+    if (c.plainText) return c.plainText;
+    if (c.markdown) return c.markdown;
+    const walk = (n) => (typeof n?.text === "string" ? n.text : (n?.children ?? []).map(walk).join(n?.type === "document" ? "\n" : ""));
+    try {
+      return walk(JSON.parse(c.slate)).trim();
+    } catch {
+      return "";
+    }
   }
 
   const loadAllies = (gid, start = 0) =>
@@ -274,6 +308,9 @@
     const rolesP = api.json(`${GROUPS}/v1/groups/${gid}/roles`, { ttl: TTL });
     const socialP = api.json(`${GROUPS}/v1/groups/${gid}/social-links`, { ttl: TTL });
     const alliesP = loadAllies(gid);
+    const newsP = loadNews(gid);
+    const channelsP = loadChannels(gid);
+    const eventsP = loadEvents(gid);
     const memP = meP.then((me) => membership(gid, me));
 
     let info = await infoP;
@@ -296,7 +333,7 @@
         if (alive() && s?.items.length && !has.store) ((has.store = true), renderTabs());
         return s;
       }));
-    const ctx = { gid, info, gamesP, hydratedP, rolesP, socialP, alliesP, store, memP, alive, state };
+    const ctx = { gid, info, gamesP, hydratedP, rolesP, socialP, alliesP, newsP, channelsP, eventsP, store, memP, alive, state };
 
     // ---- hero: icon, name, members, owner, one action
     const heroImage = gamesP
@@ -371,26 +408,26 @@
     memP.then(renderActions);
 
     // ---- tabs (only the ones with something in them)
-    const has = { overview: true, games: false, members: true, store: false, allies: false };
+    const has = { overview: true, posts: false, events: false, games: false, members: true, store: false, allies: false };
     // Overview with nothing but games is the Games tab twice: drop it. Only
     // when we know (a failed allies or links call keeps it).
     if (state.tab === "overview" && !info.description?.trim()) {
-      const [g, a, s] = await Promise.all([gamesP, alliesP, socialP]);
+      const [g, a, s, n] = await Promise.all([gamesP, alliesP, socialP, newsP]);
       if (!alive()) return;
-      if (g?.length && a && !a.relatedGroups?.length && s && !(s.data ?? []).some((l) => safeHref(l.url))) {
+      if (g?.length && a && !a.relatedGroups?.length && s && !(s.data ?? []).some((l) => safeHref(l.url)) && n && !n.data?.length) {
         has.overview = false;
         has.games = true;
         state.tab = "games";
         store(); // the Store tab still shows up if it sells something
       }
     }
-    const LABEL = { overview: "Overview", games: "Games", members: "Members", store: "Store", allies: "Allies" };
+    const LABEL = { overview: "Overview", posts: "Posts", events: "Events", games: "Games", members: "Members", store: "Store", allies: "Allies" };
     const renderTabs = () => {
       if (!alive()) return;
       const items = TABS.filter((t) => has[t] || t === state.tab).map((id) => ({ id, label: LABEL[id] }));
       tabSlot.replaceChildren(ui.tabs(items, state.tab, (id) => setTab(id)));
     };
-    const BUILD = { overview: buildOverview, games: buildGames, store: buildStore, members: buildMembers, allies: buildAllies };
+    const BUILD = { overview: buildOverview, posts: buildPosts, events: buildEvents, games: buildGames, store: buildStore, members: buildMembers, allies: buildAllies };
     function setTab(id, write = true) {
       if (!TABS.includes(id)) id = "overview";
       if (id === "overview" && !has.overview) id = "games";
@@ -411,6 +448,8 @@
 
     gamesP.then((g) => ((has.games = !!g?.length), renderTabs()));
     alliesP.then((a) => ((has.allies = !!a?.relatedGroups?.length), renderTabs()));
+    Promise.all([newsP, channelsP]).then(([n, c]) => ((has.posts = !!n?.data?.length || !!c?.length), renderTabs()));
+    eventsP.then((e) => ((has.events = !!e?.data?.length), renderTabs()));
   }
 
   function featuredGame(g) {
@@ -494,6 +533,17 @@
   function buildOverview(ctx, pane, setTab) {
     const { info } = ctx;
 
+    // the newest announcement leads (Roblox's replacement for the shout)
+    const news = ui.section("Announcement");
+    news.hidden = true;
+    ctx.newsP.then((n) => {
+      const first = n?.data?.[0];
+      if (!ctx.alive() || !first) return news.remove();
+      news.hidden = false;
+      news.body.append(newsCard(ctx, first));
+      news.head.querySelector(".cer-block-tools")?.append(ui.link("See all", { onClick: () => setTab("posts") }));
+    });
+
     const games = ui.section("Games");
     games.body.append(ui.rail(ui.skeleton("card", 4), { item: 280 }));
     ctx.hydratedP.then((list) => {
@@ -545,13 +595,259 @@
       );
     });
 
-    pane.append(games, store, allies, about);
+    pane.append(news, games, store, allies, about);
     // the store section stays until it is seen (lazy), and re-checks when it goes
-    Promise.all([ctx.hydratedP, ctx.alliesP, ctx.socialP]).then(quiet);
+    Promise.all([ctx.hydratedP, ctx.alliesP, ctx.socialP, ctx.newsP]).then(quiet);
   }
 
   function socialIcon(type) {
     return { Discord: "chat", Twitter: "send", YouTube: "play", Twitch: "gamepad", Facebook: "users", Guilded: "shield", RobloxGroup: "users" }[type] ?? "link";
+  }
+
+  // ---------------------------------------------------------------- posts tab
+  // Chips: Announcements, then each forum channel. A post opens in place with
+  // its replies; writing, replying and voting go to Roblox's page.
+  function buildPosts(ctx, pane) {
+    const { gid } = ctx;
+    const bar = h("div", { class: "cer-gp-postbar" }, ui.skeleton("line"));
+    const list = h("div", { class: "cer-gp-postwrap" });
+    pane.append(bar, list);
+    const views = new Map(); // channel id ("news" = announcements) → its list
+
+    // Roblox's own link (#!/forums/x-{short}/post/y-{short}) opens that post
+    const deep = location.hash.match(/forums\/[^/?]*-([0-9a-f]{8})(?:\/post\/[^/?]*-([0-9a-f]{8}))?/i);
+
+    Promise.all([ctx.newsP, ctx.channelsP, ctx.memP]).then(([news, channels, mem]) => {
+      if (!ctx.alive()) return;
+      const hasNews = !!news?.data?.length;
+      if (!hasNews && !channels?.length) {
+        bar.remove();
+        const failed = news == null && channels == null;
+        list.replaceChildren(ui.empty(failed ? "We could not load the posts." : "No posts yet.", { icon: "chat" }));
+        return;
+      }
+      channels = channels ?? [];
+      const items = [...(hasNews ? [{ id: "news", label: "Announcements" }] : []), ...channels.map((c) => ({ id: c.id, label: c.name }))];
+      let first = items[0].id;
+      if (deep) first = channels.find((c) => c.shortId?.toLowerCase() === deep[1].toLowerCase())?.id ?? first;
+      const tools = h("div", { class: "cer-gp-postbar-tools" });
+      bar.replaceChildren(ui.chips(items, first, show, { wrap: true }), tools);
+      function show(id) {
+        const ch = channels.find((c) => c.id === id);
+        // members write in the forums on Roblox's page
+        tools.replaceChildren(...(ch && mem?.role ? [ui.button("New post", { variant: "soft", icon: "edit", href: channelUrl(gid, ch) })] : []));
+        if (!views.has(id)) views.set(id, ch ? channelView(ctx, ch, deep?.[2]?.toLowerCase()) : newsView(ctx, news));
+        list.replaceChildren(views.get(id));
+      }
+      show(first);
+    });
+  }
+
+  function newsView(ctx, first) {
+    const wrap = h("div", { class: "cer-gp-posts" }, first.data.map((a) => newsCard(ctx, a)));
+    let cursor = first.nextPageCursor;
+    if (cursor)
+      wrap.append(
+        loadMoreButton(async () => {
+          const more = await loadNews(ctx.gid, cursor);
+          if (!more) return null;
+          const got = more.data ?? [];
+          wrap.querySelector(":scope > .cer-gp-more")?.before(...got.map((a) => newsCard(ctx, a)));
+          cursor = more.nextPageCursor;
+          return !!cursor && got.length > 0;
+        })
+      );
+    return wrap;
+  }
+
+  // Who wrote it + when. Forum posts only carry the user id: the name fills in.
+  function byline(userId, who, at) {
+    const tag = h("span", { class: "cer-gp-post-name" });
+    const put = (u) => u && tag.replaceChildren(ui.nameTag({ type: "user", id: userId, name: u.displayName || u.name || "", verified: u.hasVerifiedBadge, size: "sm" }));
+    if (who?.displayName) put(who);
+    else if (userId) api.user(userId).then(put);
+    return h(
+      "div",
+      { class: "cer-gp-post-by" },
+      userId ? h("a", { class: "cer-gp-post-who", href: profileUrl(userId) }, ui.avatar(userId, { size: 28 }), tag) : tag,
+      who?.groupRoleName && h("span", { class: "cer-gp-post-role", text: who.groupRoleName }),
+      at && h("span", { class: "cer-gp-post-when", text: fmt.ago(at), title: fmt.date(at) })
+    );
+  }
+
+  function newsCard(ctx, a) {
+    const m = a.message ?? {};
+    const text = postText(m.content);
+    const title = a.nameToDisplay || a.name;
+    return h(
+      "article",
+      { class: "cer-gp-post is-news" },
+      byline(a.createdBy, a.creatorInfo, a.createdAt),
+      title && title !== text && h("h3", { class: "cer-gp-post-title" }, h("span", { text: title })),
+      text && ui.clamp(text, 6),
+      m.media?.assetId && m.media.isApproved !== false && h("div", { class: "cer-gp-post-media" }, ui.thumb("assetWide", m.media.assetId, { alt: "" })),
+      m.form && poll(ctx, m.form)
+    );
+  }
+
+  // A poll's results (read only). Voting happens on Roblox's page.
+  function poll(ctx, form) {
+    const opts = form.results?.fieldResults?.[0]?.optionResults ?? [];
+    if (!opts.length) return null;
+    const total = form.results.totalResponses ?? 0;
+    return h(
+      "div",
+      { class: "cer-gp-poll" },
+      form.title && h("div", { class: "cer-gp-poll-q", text: form.title }),
+      opts.map((o) =>
+        h(
+          "div",
+          { class: "cer-gp-poll-row", style: { "--pct": Math.max(0, Math.min(100, o.percentage ?? 0)) + "%" } },
+          h("span", { class: "cer-gp-poll-label", text: o.label ?? "" }),
+          h("span", { class: "cer-gp-poll-pct", text: (o.percentage ?? 0) + "%" })
+        )
+      ),
+      h("div", { class: "cer-gp-poll-foot" }, h("span", { text: fmt.num(total) + (total === 1 ? " vote" : " votes") }), !form.userResponse && ui.link("Vote", { href: newsUrl(ctx.gid) }))
+    );
+  }
+
+  function channelView(ctx, ch, openShort) {
+    const wrap = h("div", { class: "cer-gp-posts" }, ui.skeleton("card", 3));
+    const seen = new Set();
+    const cards = (posts) => posts.filter((p) => p?.id && !seen.has(p.id) && seen.add(p.id)).map((p) => postCard(ctx, ch, p));
+    Promise.all([loadPinned(ctx.gid, ch.id), loadPosts(ctx.gid, ch.id)]).then(([pin, j]) => {
+      if (!ctx.alive()) return;
+      if (!j) return wrap.replaceChildren(ui.empty("We could not load these posts.", { icon: "chat", action: ui.button("Open on Roblox", { variant: "soft", href: channelUrl(ctx.gid, ch) }) }));
+      const first = cards([...(pin?.data ?? []), ...(j.data ?? [])]);
+      if (!first.length) return wrap.replaceChildren(ui.empty("No posts here yet.", { icon: "chat" }));
+      wrap.replaceChildren(...first);
+      let cursor = j.nextPageCursor;
+      if (cursor)
+        wrap.append(
+          loadMoreButton(async () => {
+            const more = await loadPosts(ctx.gid, ch.id, cursor);
+            if (!more) return null;
+            wrap.querySelector(":scope > .cer-gp-more")?.before(...cards(more.data ?? []));
+            cursor = more.nextPageCursor;
+            return !!cursor && (more.data ?? []).length > 0;
+          })
+        );
+      const target = openShort && first.find((c) => c.dataset.short === openShort);
+      if (target) {
+        target.toggle();
+        target.scrollIntoView({ block: "center" });
+      }
+    });
+    return wrap;
+  }
+
+  // One forum post. Its first comment is the body; the rest are replies.
+  function postCard(ctx, ch, p) {
+    const body = p.firstComment;
+    const text = postText(body?.content);
+    const n = Math.max(0, (p.commentCount ?? 1) - 1);
+    const replies = h("div", { class: "cer-gp-replies", hidden: true });
+    const head = h(
+      "div",
+      { class: "cer-gp-post-open", role: "button", tabindex: "0", "aria-expanded": "false" },
+      h("h3", { class: "cer-gp-post-title" }, p.isPinned && ui.icon("pin", 15), h("span", { text: p.nameToDisplay || p.name || "Post" })),
+      text && h("p", { class: "cer-gp-post-text", text }),
+      h("span", { class: "cer-gp-post-foot" }, ui.icon("chat", 15), h("span", { text: n === 1 ? "1 reply" : fmt.num(n) + " replies" }), p.isLocked && ui.icon("lock", 14))
+    );
+    const card = h(
+      "article",
+      { class: "cer-gp-post is-forum", "data-short": String(p.shortId ?? String(p.id).slice(0, 8)).toLowerCase() },
+      byline(body?.createdBy ?? p.createdBy, body?.creatorInfo, body?.createdAt ?? p.createdAt),
+      head,
+      replies
+    );
+    let loaded = false;
+    card.toggle = () => {
+      const open = !card.classList.contains("is-open");
+      card.classList.toggle("is-open", open);
+      head.setAttribute("aria-expanded", String(open));
+      replies.hidden = !open;
+      if (open && !loaded) {
+        loaded = true;
+        loadReplies();
+      }
+    };
+    head.addEventListener("click", card.toggle);
+    head.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      card.toggle();
+    });
+
+    const foot = h("div", { class: "cer-gp-replies-foot" }, !p.isLocked && ui.button("Reply on Roblox", { variant: "soft", icon: "chat", href: postUrl(ctx.gid, ch, p) }));
+    async function loadReplies() {
+      replies.replaceChildren(ui.skeleton("line"), foot);
+      let cursor = "";
+      const page = async () => {
+        const j = await loadComments(ctx.gid, ch.id, p.id, cursor);
+        if (!ctx.alive()) return false;
+        replies.querySelectorAll(":scope > .cer-sk").forEach((x) => x.remove());
+        if (!j) return null;
+        const got = (j.data ?? []).filter((c) => c.id !== body?.id && !c.deletedAt);
+        foot.before(...got.map((c) => h("div", { class: "cer-gp-reply" }, byline(c.createdBy, c.creatorInfo, c.createdAt), h("p", { class: "cer-gp-reply-text", text: postText(c.content) }))));
+        cursor = j.nextPageCursor;
+        return !!cursor && (j.data ?? []).length > 0;
+      };
+      const more = await page();
+      if (more === null) foot.before(h("p", { class: "cer-gp-replies-none", text: "We could not load the replies." }));
+      else if (!replies.querySelector(".cer-gp-reply") && !more) foot.before(h("p", { class: "cer-gp-replies-none", text: "No replies yet." }));
+      if (more) foot.prepend(loadMoreButton(page));
+    }
+    return card;
+  }
+
+  // ---------------------------------------------------------------- events tab
+  function buildEvents(ctx, pane) {
+    pane.append(ui.grid(ui.skeleton("card", 3), { min: 300, gap: 20 }));
+    ctx.eventsP.then((j) => {
+      if (!ctx.alive()) return;
+      if (!j) return pane.replaceChildren(ui.empty("We could not load the events.", { icon: "calendar" }));
+      const now = Date.now();
+      const t = (iso) => new Date(iso).getTime() || 0;
+      const all = (j.data ?? []).filter((e) => e.id && e.eventTime);
+      if (!all.length) return pane.replaceChildren(ui.empty("No events yet.", { icon: "calendar" }));
+      const soon = all.filter((e) => t(e.eventTime.endUtc) > now).sort((a, b) => t(a.eventTime.startUtc) - t(b.eventTime.startUtc));
+      const past = all.filter((e) => t(e.eventTime.endUtc) <= now).sort((a, b) => t(b.eventTime.endUtc) - t(a.eventTime.endUtc));
+      pane.replaceChildren();
+      for (const [title, list] of [["Coming up", soon], ["Past", past]]) {
+        if (!list.length) continue;
+        const s = ui.section(title);
+        s.body.append(ui.grid(list.map(eventCard), { min: 300, gap: 20 }));
+        pane.append(s);
+      }
+    });
+  }
+
+  function eventCard(e) {
+    const now = Date.now();
+    const start = new Date(e.eventTime.startUtc);
+    const end = new Date(e.eventTime.endUtc);
+    const live = start <= now && end > now;
+    const when = live
+      ? "Live now"
+      : end <= now
+        ? "Ended " + fmt.date(end)
+        : start.toLocaleString("en", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const media = e.thumbnails?.[0]?.mediaId;
+    const name = e.displayTitle || e.title || "Event";
+    const sub = e.displaySubtitle || e.subtitle;
+    return h(
+      "a",
+      { class: "cer-gp-event" + (live ? " is-live" : end <= now ? " is-past" : ""), href: `https://www.roblox.com/events/${e.id}`, title: name },
+      h("div", { class: "cer-gp-event-media" }, media ? ui.thumb("assetWide", media, { alt: "" }) : e.universeId ? ui.thumb("gameThumb", e.universeId, { alt: "" }) : null),
+      h(
+        "div",
+        { class: "cer-gp-event-body" },
+        h("span", { class: "cer-gp-event-when" }, ui.icon(live ? "zap" : "calendar", 14), h("span", { text: when })),
+        h("span", { class: "cer-gp-event-name", text: name }),
+        sub && h("span", { class: "cer-gp-event-sub", text: sub })
+      )
+    );
   }
 
   // ---------------------------------------------------------------- games tab

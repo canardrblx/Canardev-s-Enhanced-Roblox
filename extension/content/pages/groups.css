@@ -485,3 +485,282 @@
 [data-page="groups"] .cer-mg-none {
   grid-column: 1 / -1;
 }
+
+/* ------------------------------------------------------------ posts */
+[data-page="groups"] .cer-gp-postbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+[data-page="groups"] .cer-gp-postbar > .cer-sk-line {
+  width: 320px;
+  height: 36px;
+}
+[data-page="groups"] .cer-gp-postbar-tools {
+  flex: none;
+}
+[data-page="groups"] .cer-gp-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+}
+[data-page="groups"] .cer-gp-post {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-surface);
+  min-width: 0;
+}
+[data-page="groups"] .cer-block-body > .cer-gp-post {
+  max-width: 760px;
+}
+[data-page="groups"] .cer-gp-post-by {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+  font-size: 13.5px;
+}
+[data-page="groups"] .cer-gp-post-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--cer-text) !important;
+  font-weight: 700;
+}
+[data-page="groups"] .cer-gp-post-who:hover .cer-gp-post-name {
+  text-decoration: underline;
+}
+[data-page="groups"] .cer-gp-post-role {
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--cer-surface-2);
+  color: var(--cer-text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+[data-page="groups"] .cer-gp-post-when {
+  color: var(--cer-text-3);
+}
+[data-page="groups"] .cer-gp-post-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+[data-page="groups"] .cer-gp-post-title .cer-icon {
+  flex: none;
+  color: var(--cer-text-3);
+}
+[data-page="groups"] .cer-gp-post .cer-clamp,
+[data-page="groups"] .cer-gp-post-text,
+[data-page="groups"] .cer-gp-reply-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--cer-text-2);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+[data-page="groups"] .cer-gp-post-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+[data-page="groups"] .cer-gp-post.is-open .cer-gp-post-text {
+  display: block;
+}
+[data-page="groups"] .cer-gp-post-open {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: -6px -8px;
+  padding: 6px 8px;
+  border-radius: var(--cer-r-m);
+  cursor: pointer;
+}
+[data-page="groups"] .cer-gp-post-open:hover {
+  background: var(--cer-hover);
+}
+[data-page="groups"] .cer-gp-post-foot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cer-text-3);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+[data-page="groups"] .cer-gp-post-media {
+  overflow: hidden;
+  border-radius: var(--cer-r-m);
+  background: var(--cer-surface-2);
+  aspect-ratio: 16 / 9;
+}
+[data-page="groups"] .cer-gp-post-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* replies, under an open post */
+[data-page="groups"] .cer-gp-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--cer-line);
+}
+[data-page="groups"] .cer-gp-replies[hidden] {
+  display: none;
+}
+[data-page="groups"] .cer-gp-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 36px;
+}
+[data-page="groups"] .cer-gp-reply .cer-gp-post-by {
+  margin-left: -36px;
+}
+[data-page="groups"] .cer-gp-replies-none {
+  margin: 0;
+  color: var(--cer-text-3);
+  font-size: 14px;
+}
+[data-page="groups"] .cer-gp-replies-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+[data-page="groups"] .cer-gp-replies-foot .cer-gp-more {
+  margin: 0;
+}
+
+/* poll results */
+[data-page="groups"] .cer-gp-poll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+[data-page="groups"] .cer-gp-poll-q {
+  font-weight: 800;
+}
+[data-page="groups"] .cer-gp-poll-row {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  overflow: hidden;
+  border-radius: var(--cer-r-s);
+  background: var(--cer-surface-2);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+[data-page="groups"] .cer-gp-poll-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--pct);
+  background: var(--cer-acc-soft);
+}
+[data-page="groups"] .cer-gp-poll-row > span {
+  position: relative;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-page="groups"] .cer-gp-poll-pct {
+  flex: none;
+  color: var(--cer-text-2);
+}
+[data-page="groups"] .cer-gp-poll-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--cer-text-3);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------ events */
+[data-page="groups"] .cer-gp-event {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  color: var(--cer-text) !important;
+}
+[data-page="groups"] .cer-gp-event-media {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-surface);
+  transition: transform 0.22s var(--cer-ease), box-shadow 0.22s;
+}
+[data-page="groups"] .cer-gp-event-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+[data-page="groups"] .cer-gp-event:hover .cer-gp-event-media {
+  transform: translateY(-3px);
+  box-shadow: var(--cer-shadow);
+}
+[data-page="groups"] .cer-gp-event.is-past .cer-gp-event-media {
+  opacity: 0.7;
+}
+[data-page="groups"] .cer-gp-event-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+[data-page="groups"] .cer-gp-event-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cer-text-3);
+  font-size: 13px;
+  font-weight: 700;
+}
+[data-page="groups"] .cer-gp-event.is-live .cer-gp-event-when {
+  color: var(--cer-good);
+}
+[data-page="groups"] .cer-gp-event-name {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-page="groups"] .cer-gp-event-sub {
+  color: var(--cer-text-2);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  [data-page="groups"] .cer-gp-postbar {
+    flex-direction: column;
+  }
+  [data-page="groups"] .cer-gp-post {
+    padding: 14px;
+  }
+}

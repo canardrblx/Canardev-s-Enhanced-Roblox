@@ -475,6 +475,7 @@
     groupIcon: ["groups/icons", "groupIds", "150x150"],
     groupIconLg: ["groups/icons", "groupIds", "420x420"],
     asset: ["assets", "assetIds", "420x420"],
+    assetWide: ["assets", "assetIds", "768x432"],
     bundle: ["bundles/thumbnails", "bundleIds", "420x420"],
     badge: ["badges/icons", "badgeIds", "150x150"],
     pass: ["game-passes", "gamePassIds", "150x150"],

@@ -37,7 +37,8 @@ and Sunny, plus Roblox's own Light and Dark. Pick one and the whole site follows
 
 **Quality of life.** Verified, Premium and Plus badges on every name. Pin games
 to Home. Sort friend requests by mutual friends, followers or verified. Select
-all in messages. A search dropdown across games, people, catalog and groups.
+all in messages. Read group posts, announcements, polls and events. A search
+dropdown across games, people, catalog and groups.
 Presence rings on avatars. A local playtime tracker. Communities renamed back to
 Groups.
 
