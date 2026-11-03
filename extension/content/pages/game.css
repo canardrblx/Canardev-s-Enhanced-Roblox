@@ -395,6 +395,15 @@
 }
 
 /* ------------------------------------------------------------ servers */
+[data-page="game"] .gx-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+[data-page="game"] .gx-grow {
+  flex: 1;
+}
 [data-page="game"] .gx-servers {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
@@ -435,6 +444,14 @@
   font-weight: 900;
   color: var(--cer-text);
   margin-right: 1px;
+}
+[data-page="game"] .gx-sv-who {
+  font-size: 17px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 [data-page="game"] .gx-ping {
   font-size: 13px;

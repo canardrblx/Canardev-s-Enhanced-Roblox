@@ -43,10 +43,40 @@
     if (owned) {
       root.classList.add("cer-takeover");
       root.dataset.cerPage = owned.tag;
+      // Stop Roblox's own app for this page from starting at all: its mount
+      // point inside #content is removed while the HTML parses, before the
+      // app's scripts run. No hidden duplicate page burning CPU, rate limits,
+      // rewriting the URL or the tab title under ours. Scripts are kept.
+      root.dataset.cerGutted = "1";
+      const gut = (c) => {
+        for (const ch of [...c.children]) if (ch.tagName !== "SCRIPT") ch.remove();
+      };
+      let inner = null;
+      const outer = new MutationObserver(() => {
+        const c = document.getElementById("content");
+        if (!c) return;
+        outer.disconnect();
+        gut(c);
+        inner = new MutationObserver(() => gut(c));
+        inner.observe(c, { childList: true });
+      });
+      outer.observe(root, { childList: true, subtree: true });
+      document.addEventListener(
+        "DOMContentLoaded",
+        () => {
+          outer.disconnect();
+          inner?.disconnect();
+          const c = document.getElementById("content");
+          if (c) gut(c);
+        },
+        { once: true }
+      );
+      // Roblox's page is gone, so giving it back means reloading it natively
       const giveBack = () => {
         if (!document.getElementById("cer-app")) {
-          root.classList.remove("cer-takeover");
-          delete root.dataset.cerPage;
+          const u = new URL(location.href);
+          u.searchParams.set("cer", "native");
+          location.replace(u.toString());
         }
       };
       const arm = () => setTimeout(giveBack, 6000);

@@ -3409,6 +3409,7 @@ html.cer-own-theme #theme-background {
 /* ---------------------------------------------------------- sidebar */
 .cer-custom-nav {
   position: fixed;
+  overscroll-behavior: contain;
   top: 0;
   left: 0;
   bottom: 0;
@@ -3763,6 +3764,7 @@ html.cer-own-theme #theme-background {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px 26px 26px;
 }
 .cer-sp-view {
@@ -4124,6 +4126,7 @@ label.cer-sp-row:hover {
   gap: 2px;
   padding: 4px 8px 8px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .cer-chat-list > .cer-sk-row {
   flex: none;
@@ -4189,6 +4192,7 @@ label.cer-sp-row:hover {
   gap: 6px;
   padding: 12px 14px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .cer-chat-log > :first-child {
   margin-top: auto; /* short threads sit at the bottom, by the composer */

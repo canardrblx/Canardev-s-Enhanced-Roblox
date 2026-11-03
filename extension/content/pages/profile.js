@@ -153,16 +153,8 @@
     return btn;
   }
 
-  // Verified mark drawn only in currentColor (outline seal + check), so it
-  // reads on light and dark. ui.icon("verified") paints its check in #fff.
-  const verified = (size) => {
-    const s = ui.icon("verified", size, "pf-verified");
-    const [seal, tick] = s.querySelectorAll("path");
-    seal?.setAttribute("fill", "none");
-    seal?.setAttribute("stroke", "currentColor");
-    tick?.setAttribute("stroke", "currentColor");
-    return s;
-  };
+  // ui.icon("verified") already draws in currentColor (seal) + page bg (check)
+  const verified = (size) => ui.icon("verified", size, "pf-verified");
 
   const gameGrid = (games) => ui.grid(games.map((g) => ui.gameCard(g)), { min: 240, gap: 18 });
   const skelGrid = (n = 6, kind = "card", min = 240) => ui.grid(ui.skeleton(kind, n), { min, gap: 18 });

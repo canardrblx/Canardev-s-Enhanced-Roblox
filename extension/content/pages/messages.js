@@ -66,9 +66,18 @@
     if (last < text.length) out.push({ text: text.slice(last) });
     return out;
   }
+  // Plain-text bodies and subjects still carry HTML entities (I&#39;m).
+  // Decode only those, by table: no parser, no markup.
+  const NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0", "#39": "'" };
+  const decode = (t) =>
+    String(t ?? "").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+      if (e[0] !== "#") return NAMED[e.toLowerCase()] ?? m;
+      const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m;
+    });
   function segments(raw) {
     raw = String(raw ?? "");
-    if (!/<\/?[a-z][^>]*>/i.test(raw)) return linkify(raw.replace(/\r\n?/g, "\n"), []);
+    if (!/<\/?[a-z][^>]*>/i.test(raw)) return linkify(decode(raw).replace(/\r\n?/g, "\n"), []);
     const doc = new DOMParser().parseFromString(raw, "text/html");
     const out = [];
     const nl = () => {
@@ -149,6 +158,7 @@
     const markAll = ui.button("Mark all read", { variant: "ghost", size: "sm", class: "ms-markall" });
     markAll.hidden = true;
     const head = ui.header({ title: "Messages" });
+    document.title = "Messages - Roblox";
     const tabSlot = h("div", { class: "cer-sk ms-sk-tabs" });
     const toolbar = h("div", { class: "ms-toolbar" }, tabSlot, markAll);
     const listBody = h("div", { class: "ms-list-body" }, rowSkeletons());
@@ -239,7 +249,7 @@
       if (openId && !msgs.some((m) => String(m.id) === String(openId))) closeReader();
       // wide screens: fill the reader with the newest message, but only one
       // that is already read (opening an unread one would mark it read)
-      if (!openId && !split.classList.contains("is-narrow") && msgs[0] && (msgs[0].isRead || tab === "sent" || tab === "news")) open(msgs[0]);
+      if (!openId && !split.classList.contains("is-narrow") && msgs[0] && (msgs[0].isRead || tab === "sent" || tab === "news")) open(msgs[0], true);
     }
 
     function other(m) {
@@ -259,7 +269,7 @@
           "span",
           { class: "ms-row-main" },
           h("span", { class: "ms-row-top" }, h("span", { class: "ms-from", text: (tab === "sent" ? "To " : "") + (who.displayName || who.name || "Roblox") }), h("span", { class: "ms-date", text: shortDate(m.created) })),
-          h("span", { class: "ms-subj", text: m.subject || "No subject" })
+          h("span", { class: "ms-subj", text: decode(m.subject) || "No subject" })
         )
       );
       r.msg = m;
@@ -283,9 +293,10 @@
       listBody.querySelectorAll(".ms-row.is-active").forEach((r) => r.classList.remove("is-active"));
     }
 
-    function open(m) {
+    // auto: filled in for wide screens, so a narrow screen keeps the list
+    function open(m, auto) {
       openId = m.id;
-      split.classList.add("is-reading");
+      if (!auto) split.classList.add("is-reading");
       listBody.querySelectorAll(".ms-row").forEach((r) => r.classList.toggle("is-active", String(r.dataset.id) === String(m.id)));
       const who = other(m) ?? {};
       const profile = who.id ? `https://www.roblox.com/users/${who.id}/profile` : null;
@@ -332,7 +343,7 @@
             ),
             tools
           ),
-          h("h2", { class: "ms-read-subject", text: m.subject || "No subject" }),
+          h("h2", { class: "ms-read-subject", text: decode(m.subject) || "No subject" }),
           bodyNode(m.body)
         )
       );

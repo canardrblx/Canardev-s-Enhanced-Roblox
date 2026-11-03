@@ -585,8 +585,9 @@
     const list = h("div", { class: "gx-servers" });
     const footer = h("div", { class: "gx-foot" });
     const sentinel = h("div", { class: "gx-sentinel" });
-    const main = section("Servers", { tools: [sortSel, byId, refresh, best] });
-    main.body.append(list, footer, sentinel);
+    // no "Servers" title: the tab already says it
+    const tools = h("div", { class: "gx-tools" }, sortSel, byId, refresh, h("span", { class: "gx-grow" }), best);
+    const main = h("div", { class: "gx-main" }, tools, list, footer, sentinel);
     pane.append(friendsSec, main, privHost);
 
     // show more when the bottom comes into view
@@ -636,7 +637,7 @@
 
     function serverCard(s, friendsIn = friendJobs.get(s.id)) {
       const pct = s.maxPlayers > 0 ? Math.min(100, Math.round((s.playing / s.maxPlayers) * 100)) : 0;
-      const full = s.playing >= s.maxPlayers;
+      const full = s.playing != null && s.maxPlayers > 0 && s.playing >= s.maxPlayers;
       const ping = s.ping != null ? Math.round(s.ping) : null;
       const tone = ping == null ? "" : ping <= 90 ? "good" : ping <= 180 ? "warn" : "bad";
       const heads = h("div", { class: "gx-heads" });
@@ -648,10 +649,12 @@
         h(
           "div",
           { class: "gx-sv-top" },
-          h("span", { class: "gx-sv-count" }, h("b", { text: s.playing ?? "?" }), "/" + (s.maxPlayers ?? "?")),
+          s.playing == null
+            ? h("span", { class: "gx-sv-who", text: (friendsIn ?? []).map((x) => x.friend.displayName).join(", ") })
+            : h("span", { class: "gx-sv-count" }, h("b", { text: s.playing }), "/" + (s.maxPlayers ?? "?")),
           ping != null && h("span", { class: "gx-ping is-" + tone, title: "Ping" }, ping + " ms")
         ),
-        h("div", { class: "gx-sv-track" }, h("span", { style: { width: pct + "%" } })),
+        s.playing != null && h("div", { class: "gx-sv-track" }, h("span", { style: { width: pct + "%" } })),
         h(
           "div",
           { class: "gx-sv-foot" },
@@ -710,6 +713,7 @@
           return;
         }
         render();
+        renderFriends();
         const fresh = await markSeen(placeId, servers.map((s) => s.id));
         if (fresh && my === seq) seen = fresh;
       })();
@@ -742,16 +746,21 @@
         friendJobs.get(x.presence.gameId).push(x);
       }
       if (!friendJobs.size) return;
-      friendsSec.body.append(
+      friendsSec.hidden = false;
+      renderFriends();
+      render();
+    });
+    // friend cards use the real server row once the list has it
+    function renderFriends() {
+      if (!friendJobs.size) return;
+      friendsSec.body.replaceChildren(
         h(
           "div",
           { class: "gx-servers" },
-          [...friendJobs.entries()].map(([job, f]) => serverCard(servers.find((x) => x.id === job) ?? { id: job, playing: null, maxPlayers: ctx.info.maxPlayers }, f))
+          [...friendJobs.entries()].map(([job, f]) => serverCard(servers.find((x) => x.id === job) ?? { id: job, playing: null, maxPlayers: null }, f))
         )
       );
-      friendsSec.hidden = false;
-      render();
-    });
+    }
 
     buildPrivate(privHost, ctx);
     load();

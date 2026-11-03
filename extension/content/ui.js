@@ -233,6 +233,12 @@
   };
   // Give the page back to Roblox (feature off, logged out, unsupported view).
   ui.release = function () {
+    // theme.js removed Roblox's own app for this page, so it has to be
+    // reloaded natively to come back
+    if (document.documentElement.dataset.cerGutted) {
+      location.replace(ui.nativeUrl());
+      return;
+    }
     document.getElementById("cer-app")?.remove();
     document.documentElement.classList.remove("cer-takeover");
     delete document.documentElement.dataset.cerPage;
