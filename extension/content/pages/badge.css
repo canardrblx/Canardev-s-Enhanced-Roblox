@@ -1,1 +1,365 @@
-/* CER badge page */
+/* CER badge page (pages/badge.js). Achievement screen: the badge art is the
+   hero. Text on the hero is white (it always sits on darkened art); the rest
+   follows the theme tokens. Scoped under [data-page="badge"], bx- prefix. */
+
+[data-page="badge"] .bx {
+  gap: 24px;
+  container-type: inline-size;
+  container-name: bx;
+}
+
+/* ------------------------------------------------------------ hero */
+[data-page="badge"] .bx-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--cer-r-xl);
+  background: #101117;
+  color: #fff;
+  min-height: 380px;
+  display: flex;
+  align-items: center;
+}
+[data-page="badge"] .bx-bg {
+  position: absolute;
+  inset: -80px;
+  z-index: -2;
+  background: center / cover no-repeat;
+  filter: blur(70px) saturate(1.6);
+  transform: scale(1.15);
+  opacity: 0;
+  transition: opacity 0.6s var(--cer-ease);
+}
+[data-page="badge"] .bx-hero.has-image .bx-bg {
+  opacity: 0.9;
+}
+[data-page="badge"] .bx-shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(6, 7, 12, 0.35) 0%, rgba(6, 7, 12, 0.6) 45%, rgba(6, 7, 12, 0.78) 100%), linear-gradient(0deg, rgba(6, 7, 12, 0.45), transparent 60%);
+}
+[data-page="badge"] .bx-inner {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: clamp(28px, 4cqw, 56px);
+  padding: 44px clamp(28px, 4.5cqw, 64px);
+}
+
+/* the badge itself: big, round, glowing */
+[data-page="badge"] .bx-art {
+  flex: none;
+  position: relative;
+  width: clamp(190px, 21cqw, 270px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+[data-page="badge"] .bx-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transform: scale(0.94);
+  transition: opacity 0.4s var(--cer-ease), transform 0.5s var(--cer-ease);
+}
+[data-page="badge"] .bx-art img.is-in {
+  opacity: 1;
+  transform: none;
+}
+[data-page="badge"] .bx-art.is-loading,
+[data-page="badge"] .bx-sk {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.06));
+  background-size: 200% 100%;
+  animation: cer-shimmer 1.3s ease-in-out infinite;
+}
+[data-page="badge"] .bx-art.is-empty::after {
+  content: "";
+  position: absolute;
+  inset: 32%;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.18);
+}
+/* owned: a ring of the "good" color around the art */
+[data-page="badge"] .bx-hero.is-owned .bx-art {
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 4px var(--cer-good);
+}
+
+[data-page="badge"] .bx-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+[data-page="badge"] .bx-eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.75);
+  min-height: 20px;
+}
+[data-page="badge"] .bx-game-link,
+[data-page="badge"] .bx-creator {
+  color: rgba(255, 255, 255, 0.86) !important;
+  transition: color 0.15s;
+}
+[data-page="badge"] .bx-game-link:hover,
+[data-page="badge"] a.bx-creator:hover {
+  color: #fff !important;
+}
+[data-page="badge"] .bx-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+}
+[data-page="badge"] .bx-title {
+  font-size: clamp(32px, 4cqw, 56px);
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  color: #fff;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.4);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+[data-page="badge"] .bx-desc {
+  max-width: 640px;
+}
+[data-page="badge"] .bx-desc p.cer-clamp {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+}
+[data-page="badge"] .bx-desc .cer-clamp-more {
+  color: #fff !important;
+}
+[data-page="badge"] .bx-desc:empty {
+  display: none;
+}
+[data-page="badge"] .bx-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 26px;
+  margin-top: 4px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.75);
+}
+[data-page="badge"] .bx-stats b {
+  color: #fff;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+[data-page="badge"] .bx-rare {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+[data-page="badge"] .bx-rare b {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+[data-page="badge"] .bx-word {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+[data-page="badge"] .bx-own:empty {
+  display: none;
+}
+[data-page="badge"] .bx-own > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 15px;
+  font-weight: 800;
+}
+[data-page="badge"] .bx-have {
+  color: var(--cer-good);
+}
+[data-page="badge"] .bx-not,
+[data-page="badge"] .bx-off {
+  color: rgba(255, 255, 255, 0.6);
+}
+[data-page="badge"] .bx-sk {
+  display: block;
+  border-radius: 8px;
+}
+[data-page="badge"] .bx-sk-title {
+  width: min(420px, 70%);
+  height: 48px;
+}
+[data-page="badge"] .bx-sk-line {
+  width: 260px;
+  height: 18px;
+}
+
+/* ------------------------------------------------------------ game strip */
+[data-page="badge"] .bx-game-sk {
+  height: 112px;
+  border-radius: var(--cer-r-l);
+  background: linear-gradient(90deg, var(--cer-raise) 0%, var(--cer-hover) 50%, var(--cer-raise) 100%);
+  background-size: 200% 100%;
+  animation: cer-shimmer 1.3s ease-in-out infinite;
+}
+[data-page="badge"] .bx-game-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 20px 12px 12px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-raise);
+  color: var(--cer-text) !important;
+  transition: background 0.15s;
+  min-width: 0;
+}
+[data-page="badge"] .bx-game-card:hover {
+  background: var(--cer-hover);
+}
+[data-page="badge"] .bx-game-art {
+  flex: none;
+  width: 156px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--cer-r-m);
+  overflow: hidden;
+  background: var(--cer-surface-2);
+}
+[data-page="badge"] .bx-game-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+[data-page="badge"] .bx-game-name {
+  font-size: 19px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-page="badge"] .bx-game-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: 14px;
+  color: var(--cer-text-3);
+  min-height: 18px;
+}
+[data-page="badge"] .bx-game-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+[data-page="badge"] .bx-game-meta b {
+  color: var(--cer-text);
+  font-weight: 800;
+}
+[data-page="badge"] .bx-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cer-ingame);
+}
+[data-page="badge"] .bx-play {
+  flex: none;
+  min-width: 150px;
+}
+
+/* ------------------------------------------------------------ more badges */
+[data-page="badge"] .bx-more-host {
+  min-height: 1px;
+}
+[data-page="badge"] .bx-more-host .cer-rail {
+  --rail-arrow-top: 36%;
+}
+[data-page="badge"] .bx-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 4px;
+  text-align: center;
+  color: var(--cer-text) !important;
+}
+[data-page="badge"] .bx-tile-art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--cer-raise);
+  transition: transform 0.2s var(--cer-ease);
+}
+[data-page="badge"] .bx-tile-art .cer-img {
+  border-radius: 50%;
+}
+[data-page="badge"] .bx-tile:hover .bx-tile-art {
+  transform: translateY(-3px);
+}
+[data-page="badge"] .bx-tile-check {
+  position: absolute;
+  right: 4%;
+  bottom: 4%;
+  width: 28px;
+  height: 28px;
+  display: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cer-good);
+  color: #062b16;
+  box-shadow: 0 0 0 3px var(--cer-bg);
+}
+[data-page="badge"] .bx-tile.is-owned .bx-tile-check {
+  display: grid;
+}
+[data-page="badge"] .bx-tile-name {
+  max-width: 100%;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+[data-page="badge"] .bx-tile-sub {
+  margin-top: -4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cer-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------ narrow */
+@container bx (max-width: 560px) {
+  [data-page="badge"] .bx-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 28px;
+  }
+  [data-page="badge"] .bx-art {
+    width: 170px;
+  }
+  [data-page="badge"] .bx-game-art {
+    width: 112px;
+  }
+  [data-page="badge"] .bx-play {
+    min-width: 0;
+  }
+}

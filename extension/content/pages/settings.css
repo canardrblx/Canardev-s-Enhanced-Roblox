@@ -22,6 +22,7 @@
   min-width: 0;
 }
 [data-page="settings"] .cer-acct-name {
+  max-width: 100%;
   font-size: 30px;
   line-height: 1.15;
   font-weight: 800;
@@ -104,5 +105,22 @@
 }
 [data-page="settings"] .cer-acct-row:hover .cer-acct-row-go {
   transform: translateX(2px);
+  color: var(--cer-text-2);
+}
+
+/* theme: the shared picker (styles in styles.css, .cer-tp-*) */
+[data-page="settings"] .cer-acct-theme {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 4px 0;
+}
+[data-page="settings"] .cer-acct-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+[data-page="settings"] .cer-acct-theme .cer-tp-title {
+  font-size: 15px;
   color: var(--cer-text-2);
 }

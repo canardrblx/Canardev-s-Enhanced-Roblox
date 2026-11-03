@@ -144,7 +144,6 @@
     api.json(`${GROUPS}/v1/groups/${gid}/relationships/allies?model.startRowIndex=${start}&model.maxRows=50`, { ttl: TTL });
 
   // ---------------------------------------------------------------- small parts
-  const verified = (size = 18) => h("span", { class: "cer-gp-verified", title: "Verified" }, ui.icon("verified", size));
 
   // Group tile: the icon IS the tile, name under it. Crown = you own it.
   function groupTile(g, opts = {}) {
@@ -152,7 +151,7 @@
       "a",
       { class: "cer-gp-tile", href: groupUrl(g.id, g.name), title: g.name },
       h("span", { class: "cer-gp-tile-art" }, ui.thumb("groupIconLg", g.id, { alt: "" }), opts.owner && h("span", { class: "cer-gp-tile-crown", title: "You own this" }, ui.icon("crown", 14))),
-      h("span", { class: "cer-gp-tile-name" }, h("span", { text: g.name ?? "" }), g.hasVerifiedBadge && verified(15))
+      ui.nameTag({ type: "group", id: g.id, name: g.name ?? "", verified: g.hasVerifiedBadge, size: "sm", cls: "cer-gp-tile-name", title: g.name })
     );
   }
 
@@ -259,14 +258,13 @@
               "a",
               { href: profileUrl(owner.userId), class: "cer-gp-owner" },
               ui.avatar(owner.userId, { size: 24 }),
-              h("span", { text: owner.displayName || owner.username }),
-              owner.hasVerifiedBadge && verified(14)
+              ui.nameTag({ type: "user", id: owner.userId, name: owner.displayName || owner.username, verified: owner.hasVerifiedBadge })
             )
         ),
         actions,
       ],
     });
-    if (info.hasVerifiedBadge) hero.querySelector(".cer-hero-title")?.append(" ", verified(30));
+    hero.querySelector(".cer-hero-title")?.replaceChildren(ui.nameTag({ type: "group", id: gid, name: info.name, verified: info.hasVerifiedBadge, size: "lg" }));
     if (info.shout?.body) hero.append(shoutCard(info.shout));
     else
       hydratedP.then((list) => {
@@ -360,7 +358,7 @@
       "div",
       { class: "cer-gp-shout" },
       h("p", { class: "cer-gp-shout-body", text: shout.body }),
-      p && h("a", { class: "cer-gp-shout-by", href: profileUrl(p.userId) }, ui.avatar(p.userId, { size: 22 }), h("span", { text: p.displayName || p.username }))
+      p && h("a", { class: "cer-gp-shout-by", href: profileUrl(p.userId) }, ui.avatar(p.userId, { size: 22 }), ui.nameTag({ type: "user", id: p.userId, name: p.displayName || p.username, verified: p.hasVerifiedBadge, size: "sm" }))
     );
   }
 
@@ -556,7 +554,7 @@
         c.users.push(...users);
         c.cursor = j.nextPageCursor;
         c.done = !c.cursor;
-        c.grid.append(...users.map((u) => ui.userTile({ id: u.userId, name: u.username, displayName: u.displayName }, { size: 84, sub: "" })));
+        c.grid.append(...users.map((u) => ui.userTile({ id: u.userId, name: u.username, displayName: u.displayName, hasVerifiedBadge: u.hasVerifiedBadge }, { size: 84, sub: "" })));
         if (!c.users.length) c.wrap.replaceChildren(ui.empty("Nobody here yet.", { icon: "users" }));
         else if (!c.done && !c.wrap.querySelector(".cer-gp-more")) c.wrap.append(loadMoreButton(() => loadPage(role, c)));
         return !c.done;

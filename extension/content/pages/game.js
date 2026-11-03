@@ -52,6 +52,72 @@
   // plain bold title, no icon / count / subtitle
   const section = (title, opts = {}) => ui.section(title, { action: opts.action, tools: opts.tools, class: opts.class });
 
+  // ------------------------------------------------------------ pins
+  // Same storage key and shape as pages/home.js ("Pinned" rail):
+  // [{ universeId: number, placeId, name, at }], newest first, max 40.
+  const PIN_KEY = "pinnedGames";
+  const MAX_PINS = 40;
+  async function readPins() {
+    try {
+      const o = await CER.ext.storage.local.get(PIN_KEY);
+      return Array.isArray(o?.[PIN_KEY]) ? o[PIN_KEY].filter((p) => p?.universeId) : [];
+    } catch {
+      return [];
+    }
+  }
+  // → true pinned, false unpinned, null nothing changed
+  async function togglePin(g) {
+    const list = await readPins(); // fresh read: Home may have changed it
+    const on = !list.some((p) => String(p.universeId) === String(g.universeId));
+    if (on && list.length >= MAX_PINS) {
+      CER.toast("Too many pins. Unpin one first.", "error");
+      return null;
+    }
+    const next = on ? [{ universeId: g.universeId, placeId: g.placeId, name: g.name, at: Date.now() }, ...list] : list.filter((p) => String(p.universeId) !== String(g.universeId));
+    try {
+      await CER.ext.storage.local.set({ [PIN_KEY]: next });
+    } catch {
+      CER.toast("Could not save. Reload the page.", "error");
+      return null;
+    }
+    return on;
+  }
+
+  // Small "more" button with a pop-up list of rarely used tools.
+  // items: [{ icon, label, onClick }]
+  function moreMenu(items) {
+    const btn = ui.button("", { icon: "more", variant: "glass", title: "More", class: "gx-qbtn" });
+    btn.setAttribute("aria-haspopup", "menu");
+    btn.setAttribute("aria-expanded", "false");
+    const list = h(
+      "div",
+      { class: "gx-menu", role: "menu", hidden: true },
+      items.map((it) =>
+        h("button", { type: "button", class: "gx-menu-item", role: "menuitem", onClick: () => (close(), it.onClick()) }, ui.icon(it.icon, 17), h("span", { text: it.label }))
+      )
+    );
+    const el = h("div", { class: "gx-more" }, btn, list);
+    const outside = (e) => !el.contains(e.target) && close();
+    const onKey = (e) => e.key === "Escape" && (close(), btn.focus());
+    function open() {
+      list.hidden = false;
+      btn.classList.add("is-open");
+      btn.setAttribute("aria-expanded", "true");
+      document.addEventListener("pointerdown", outside, true);
+      document.addEventListener("keydown", onKey);
+    }
+    function close() {
+      list.hidden = true;
+      btn.classList.remove("is-open");
+      btn.setAttribute("aria-expanded", "false");
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", onKey);
+    }
+    btn.addEventListener("click", () => (list.hidden ? open() : close()));
+    onCleanup(close);
+    return { el, close };
+  }
+
   // ------------------------------------------------------------ route
   // Each visit gets a run id; work from an older visit (SPA navigation)
   // stops at its next await instead of building into the new page.
@@ -95,6 +161,7 @@
     }
     const ctx = { placeId, universeId: U, info, feats, mePromise, live };
     stage.fill(info, feats);
+    stage.wirePin(U, info);
     playP.then((p) => live() && stage.setPlayability(Array.isArray(p) ? p[0] : null, info));
     mePromise.then((me) => live() && stage.wireSocial(me, U, info));
     friendsHere(ctx).then((list) => live() && stage.setFriends(list));
@@ -163,8 +230,14 @@
     const playSlot = h("div", { class: "gx-play-slot" }, playBtn);
     const social = h("div", { class: "gx-quiet" });
     const quiet = (icon, title, onClick) => ui.button("", { icon, variant: "glass", title, class: "gx-qbtn", onClick });
-    const share = quiet("link", "Copy link", () => ui.copy(`https://www.roblox.com/games/${placeId}`, "Link copied!"));
-    const opts = quiet("sliders", "Join options", () => CER.openSettings?.("Join"));
+    // Pin to Home: local only (same "pinnedGames" list home.js reads)
+    const pinBtn = quiet("pin", "Pin to Home");
+    pinBtn.hidden = true;
+    // rarely used tools live in one small menu instead of two more circles
+    const more = moreMenu([
+      { icon: "link", label: "Copy link", onClick: () => ui.copy(`https://www.roblox.com/games/${placeId}`, "Link copied!") },
+      { icon: "sliders", label: "Join options", onClick: () => CER.openSettings?.("Join") },
+    ]);
 
     const overlay = h(
       "div",
@@ -172,7 +245,7 @@
       creator,
       title,
       meta,
-      h("div", { class: "gx-actions" }, playSlot, social, share, opts),
+      h("div", { class: "gx-actions" }, playSlot, pinBtn, social, more.el),
       note
     );
     const stageEl = h("div", { class: "gx-stage is-loading", tabindex: "0" }, slides, h("div", { class: "gx-shade" }), prev, next, overlay, strip);
@@ -251,14 +324,16 @@
         const c = info.creator ?? {};
         const href = c.type === "Group" ? `https://www.roblox.com/communities/${c.id}` : `https://www.roblox.com/users/${c.id}/profile`;
         creator.replaceChildren(
-          h("a", { class: "gx-creator-link", href }, h("span", { text: c.name ?? "" }), c.hasVerifiedBadge && h("span", { class: "gx-verified", title: "Verified" }, ui.icon("verified", 15)))
+          c.id
+            ? ui.nameTag({ type: c.type === "Group" ? "group" : "user", id: c.id, name: c.name ?? "", verified: !!c.hasVerifiedBadge, size: "sm", href, cls: "gx-creator-link" })
+            : h("span", { class: "gx-creator-link", text: c.name ?? "" })
         );
         title.replaceChildren(CER.cleanTitle(info.name ?? "", feats));
         title.title = info.name ?? "";
         // one quiet line of real info: playing, rating, server size, genre
         const bits = [h("span", { class: "gx-live" }, h("i", { class: "gx-dot" }), h("b", { text: fmt.full(info.playing ?? 0) }), " playing")];
         if (info.rating != null) bits.push(h("span", { title: `${fmt.full(info.up)} likes, ${fmt.full(info.down)} dislikes` }, ui.icon("like", 15), h("b", { text: info.rating + "%" })));
-        if (info.maxPlayers) bits.push(h("span", {}, ui.icon("users", 15), h("b", { text: info.maxPlayers }), " per server"));
+        // (server size is on every server card already, so not repeated here)
         const g = genreOf(info);
         if (g) bits.push(h("span", { text: g }));
         meta.replaceChildren(...bits);
@@ -269,8 +344,45 @@
         title.replaceChildren(text);
         meta.replaceChildren();
         playBtn.remove();
-        share.remove();
-        opts.remove();
+        pinBtn.remove();
+        more.el.remove();
+      },
+      // Pin / Unpin: reads and writes the same list as Home's Pinned rail
+      wirePin(U, info) {
+        let on = false;
+        const paint = () => {
+          pinBtn.classList.toggle("is-on", on);
+          pinBtn.title = on ? "Unpin from Home" : "Pin to Home";
+          pinBtn.setAttribute("aria-label", pinBtn.title);
+          pinBtn.setAttribute("aria-pressed", on ? "true" : "false");
+        };
+        readPins().then((list) => {
+          on = list.some((p) => String(p.universeId) === U);
+          paint();
+          pinBtn.hidden = false;
+        });
+        pinBtn.addEventListener("click", async () => {
+          pinBtn.busy(true);
+          const r = await togglePin({ universeId: Number(U), placeId: info.rootPlaceId ?? Number(placeId), name: info.name ?? null });
+          pinBtn.busy(false);
+          if (r == null) return;
+          on = r;
+          paint();
+          CER.toast(on ? "Pinned to Home" : "Unpinned");
+        });
+        // pinned or unpinned in another tab (Home)
+        const onChange = (ch, area) => {
+          if ((area && area !== "local") || !ch[PIN_KEY]) return;
+          const next = Array.isArray(ch[PIN_KEY].newValue) ? ch[PIN_KEY].newValue : [];
+          on = next.some((p) => String(p?.universeId) === U);
+          paint();
+        };
+        try {
+          CER.ext.storage.onChanged.addListener(onChange);
+          onCleanup(() => CER.ext.storage.onChanged.removeListener(onChange));
+        } catch {
+          /* context invalidated */
+        }
       },
       setFriends(list) {
         if (!list.length) return;
@@ -669,7 +781,13 @@
           "div",
           { class: "gx-sv-top" },
           s.playing == null
-            ? h("span", { class: "gx-sv-who", text: (friendsIn ?? []).map((x) => x.friend.displayName).join(", ") })
+            ? h(
+                "span",
+                { class: "gx-sv-who" },
+                (friendsIn ?? []).map(({ friend }) =>
+                  ui.nameTag({ type: "user", id: friend.id, name: friend.displayName || friend.name || "", verified: friend.hasVerifiedBadge, size: "md", href: `https://www.roblox.com/users/${friend.id}/profile` })
+                )
+              )
             : h("span", { class: "gx-sv-count" }, h("b", { text: s.playing }), "/" + (s.maxPlayers ?? "?")),
           ping != null && h("span", { class: "gx-ping is-" + tone, title: "Ping" }, ping + " ms")
         ),
@@ -830,6 +948,7 @@
               { class: "gx-private-row", href: native },
               s.owner?.id ? ui.avatar(s.owner.id, { size: 32 }) : null,
               h("b", { text: s.name || "Private server" }),
+              s.owner?.id && ui.nameTag({ type: "user", id: s.owner.id, name: s.owner.displayName || s.owner.name || "", verified: s.owner.hasVerifiedBadge, size: "sm", cls: "gx-private-owner" }),
               h("span", { class: "gx-muted", text: s.playing ? `${s.playing}/${s.maxPlayers}` : "" })
             )
           )

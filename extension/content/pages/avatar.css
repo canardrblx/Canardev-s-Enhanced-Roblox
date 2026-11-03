@@ -1,305 +1,405 @@
-/* CER avatar editor skin (content/avatar.js). Scoped under the editor root,
-   `.cer-avatar-inline.cer-ui`, so it out-ranks the old avatar block in
-   styles.css (that block is dead once this ships). Colors are CER tokens. */
+/* CER avatar editor (content/avatar.js): a game-style character screen.
+   [ stage: big avatar + what you wear ] [ category picker | item tiles ]
+   Scoped under #cer-app[data-page="avatar"]; the name/confirm popover lives
+   on <body> as .cer-av-pop. Colors are CER tokens only. */
 
-.cer-avatar-inline.cer-ui {
-  --av-tile: 128px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  width: 100%;
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 28px clamp(16px, 3vw, 44px) 96px;
-  color: var(--cer-text);
-  animation: cer-view-in 0.28s var(--cer-ease) both;
+[data-page="avatar"] .cer-av {
+  --av-tile: 138px;
+  max-width: 1640px;
+  gap: 0;
+  padding-top: 24px;
+  container-type: inline-size;
 }
-
-/* ---- layout: sticky stage on the left, closet on the right ---- */
-.cer-avatar-inline.cer-ui .cer-avatar-body {
+[data-page="avatar"] .cer-av-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
-  gap: 28px;
+  grid-template-columns: clamp(260px, 36%, 560px) minmax(0, 1fr);
+  gap: clamp(20px, 2.4vw, 40px);
   align-items: start;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-side {
+[data-page="avatar"] .cer-av-h {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--cer-text);
+}
+
+/* ------------------------------------------------------------ stage */
+[data-page="avatar"] .cer-av-stage {
   position: sticky;
   top: 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   min-width: 0;
 }
-
-/* stage */
-.cer-avatar-inline.cer-ui .cer-avatar-preview {
+[data-page="avatar"] .cer-av-preview {
   position: relative;
-  aspect-ratio: 1 / 1;
   width: 100%;
+  aspect-ratio: 1 / 1.08;
+  min-height: 240px;
+  max-height: calc(100vh - 270px);
   border-radius: var(--cer-r-xl);
   overflow: hidden;
-  background: var(--cer-raise);
+  background: radial-gradient(90% 70% at 50% 38%, var(--cer-hover), transparent 72%), var(--cer-raise);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-preview::after {
-  /* soft floor shadow under the character */
-  content: "";
+/* soft floor shadow under the character */
+[data-page="avatar"] .cer-av-floor {
   position: absolute;
-  left: 22%;
-  right: 22%;
-  bottom: 7%;
-  height: 7%;
+  left: 24%;
+  right: 24%;
+  bottom: 6%;
+  height: 8%;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.28), transparent);
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.3), transparent);
   pointer-events: none;
-  z-index: 0;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-preview-img {
-  position: relative;
-  z-index: 1;
-  display: block;
+[data-page="avatar"] .cer-av-img {
+  position: absolute;
+  inset: 5% 0 2%;
   width: 100%;
-  height: 100%;
+  height: 93%;
   object-fit: contain;
   opacity: 0;
   transition: opacity 0.25s ease;
+  user-select: none;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-preview-ready .cer-avatar-preview-img {
+[data-page="avatar"] .cer-av-preview.is-ready .cer-av-img {
   opacity: 1;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-preview-busy .cer-avatar-preview-img {
+[data-page="avatar"] .cer-av-preview.is-busy .cer-av-img {
   opacity: 0.5;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-spinner {
-  z-index: 2;
-  border: 3px solid var(--cer-line-2);
-  border-top-color: var(--cer-acc);
-}
-.cer-avatar-inline.cer-ui .cer-avatar-refresh {
-  z-index: 3;
-  top: 12px;
-  right: 12px;
-  width: 38px;
-  height: 38px;
-  border: 0;
+[data-page="avatar"] .cer-av-spin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
   border-radius: 50%;
-  background: transparent;
-  color: var(--cer-text-3);
+  border: 3px solid var(--cer-line-2);
+  border-top-color: var(--cer-text);
+  animation: cer-spin 0.8s linear infinite;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-refresh:hover {
-  background: var(--cer-hover);
+[data-page="avatar"] .cer-av-preview.is-busy .cer-av-spin,
+[data-page="avatar"] .cer-av-preview:not(.is-ready) .cer-av-spin {
+  opacity: 1;
+}
+[data-page="avatar"] .cer-av-top {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 1;
+}
+[data-page="avatar"] .cer-av-name {
+  min-width: 0;
+}
+[data-page="avatar"] .cer-av-name .cer-name {
+  max-width: 100%;
+  font-size: 19px;
+  font-weight: 800;
   color: var(--cer-text);
-  transform: rotate(-30deg);
+  /* stays readable where the render (a hat, a flame) reaches the top */
+  text-shadow: 0 0 10px var(--cer-bg), 0 0 3px var(--cer-bg);
+}
+[data-page="avatar"] .cer-av-name .cer-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-page="avatar"] .cer-av-redraw {
+  flex: none;
+  color: var(--cer-text-3) !important;
+}
+[data-page="avatar"] .cer-av-redraw:hover .cer-icon {
+  transform: rotate(-40deg);
+}
+[data-page="avatar"] .cer-av-redraw .cer-icon {
+  transition: transform 0.2s var(--cer-ease);
+}
+[data-page="avatar"] .cer-av-bodybtn {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--cer-surface-2);
+  color: var(--cer-text);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: var(--cer-shadow);
+  transition: background 0.15s, color 0.15s, transform 0.12s var(--cer-ease);
+}
+[data-page="avatar"] .cer-av-bodybtn:hover {
+  background: var(--cer-press);
+}
+[data-page="avatar"] .cer-av-bodybtn:active {
+  transform: scale(0.96);
+}
+[data-page="avatar"] .cer-av-bodybtn.is-on {
+  background: var(--cer-acc);
+  color: var(--cer-acc-ink);
 }
 
-/* wearing */
-.cer-avatar-inline.cer-ui .cer-avatar-wearing {
-  padding: 4px 0 0;
-}
-.cer-avatar-inline.cer-ui .cer-avatar-wearing .cer-h3 {
-  margin: 0 0 12px;
-  padding: 0;
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: none;
-  opacity: 1;
-  color: var(--cer-text);
-}
-.cer-avatar-inline.cer-ui .cer-avatar-strip {
+/* wearing: art squares, click one to take it off */
+[data-page="avatar"] .cer-av-wearing {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 240px;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+[data-page="avatar"] .cer-av-worn {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 8px;
+  max-height: 136px;
   overflow-y: auto;
   scrollbar-width: thin;
+  padding: 2px;
+  margin: -2px;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-strip .cer-hint {
-  margin: 0;
-  opacity: 1;
+[data-page="avatar"] .cer-av-worn .cer-av-note {
+  grid-column: 1 / -1;
+}
+[data-page="avatar"] .cer-av-worn > .cer-btn {
+  justify-self: start;
+  grid-column: 1 / -1;
+}
+[data-page="avatar"] .cer-av-worn-sk {
+  aspect-ratio: 1;
+  border-radius: var(--cer-r-s);
+}
+[data-page="avatar"] .cer-av-worn-item {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cer-r-s);
+  background: var(--cer-raise);
+  cursor: pointer;
+  overflow: hidden;
+  transition: background 0.15s, transform 0.12s var(--cer-ease);
+}
+[data-page="avatar"] .cer-av-worn-img {
+  object-fit: contain;
+  padding: 5px;
+}
+[data-page="avatar"] .cer-av-worn-x {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cer-surface-2);
+  color: var(--cer-text-2);
+  opacity: 0.9;
+  transition: background 0.15s, color 0.15s;
+}
+[data-page="avatar"] .cer-av-worn-x .cer-icon {
+  stroke-width: 3;
+}
+[data-page="avatar"] .cer-av-worn-item:hover {
+  background: color-mix(in srgb, var(--cer-bad) 18%, transparent);
+}
+[data-page="avatar"] .cer-av-worn-item:hover .cer-av-worn-x {
+  background: var(--cer-bad);
+  color: #fff;
+}
+[data-page="avatar"] .cer-av-worn-item:active {
+  transform: scale(0.94);
+}
+[data-page="avatar"] .cer-av-note {
   color: var(--cer-text-3);
   font-size: 14px;
   font-weight: 600;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-wornchip {
-  height: 34px;
-  max-width: 100%;
-  padding: 0 12px 0 3px;
-  gap: 8px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--cer-raise);
-  color: var(--cer-text-2);
+[data-page="avatar"] .cer-av-classic {
+  align-self: flex-start;
+  color: var(--cer-text-3);
   font-size: 13px;
   font-weight: 700;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-wornchip img {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  background: var(--cer-surface-2);
-}
-.cer-avatar-inline.cer-ui .cer-avatar-wornchip:hover {
-  background: color-mix(in srgb, var(--cer-bad) 16%, transparent);
+[data-page="avatar"] .cer-av-classic:hover {
   color: var(--cer-text);
 }
 
-/* ---- closet ---- */
-.cer-avatar-inline.cer-ui .cer-avatar-main {
+/* ------------------------------------------------------------ closet */
+[data-page="avatar"] .cer-av-closet {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+  min-width: 0;
+}
+[data-page="avatar"] .cer-av-cats {
+  position: sticky;
+  top: 20px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-width: 0;
+  gap: 4px;
+  padding: 6px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-raise);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  scrollbar-width: none;
 }
-/* categories: plain bold words (launcher style); the active one is ink + bar */
-.cer-avatar-inline.cer-ui .cer-avatar-tabs {
+[data-page="avatar"] .cer-av-cat {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 22px;
-  padding: 0;
-  overflow: visible;
-}
-.cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab {
-  position: relative;
-  flex: none;
-  height: 40px;
-  padding: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  /* all 9 fit beside the sticky stage, even in a short window */
+  height: clamp(48px, calc((100vh - 110px) / 9), 64px);
+  padding: 0 2px;
   border: 0;
-  border-radius: 0;
-  background: none;
+  border-radius: var(--cer-r-m);
+  background: transparent;
   color: var(--cer-text-3);
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 800;
+  line-height: 1;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.12s var(--cer-ease);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab:hover {
-  background: none;
-  color: var(--cer-text-2);
+[data-page="avatar"] .cer-av-cat span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab-active,
-.cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab-active:hover {
-  background: none;
+[data-page="avatar"] .cer-av-cat:hover {
+  background: var(--cer-hover);
   color: var(--cer-text);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-tabs .cer-tab-active::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 2px;
-  height: 3px;
-  border-radius: 3px;
-  background: var(--cer-acc);
+[data-page="avatar"] .cer-av-cat:active {
+  transform: scale(0.95);
 }
-/* sub categories: ui.chips */
-.cer-avatar-inline.cer-ui .cer-avatar-subrow {
+[data-page="avatar"] .cer-av-cat.is-on,
+[data-page="avatar"] .cer-av-cat.is-on:hover {
+  background: var(--cer-acc);
+  color: var(--cer-acc-ink);
+}
+
+[data-page="avatar"] .cer-av-shelf {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 18px;
   min-width: 0;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-subrow:empty {
+[data-page="avatar"] .cer-av-sub:empty {
   display: none;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-subrow .cer-chips {
-  min-width: 0;
-  flex-wrap: wrap;
-  overflow: visible;
-}
-.cer-avatar-inline.cer-ui .cer-avatar-subrow .cer-chip {
-  height: 32px;
-  padding: 0 14px;
-  font-size: 13.5px;
-}
 
-/* item grid */
-.cer-avatar-inline.cer-ui .cer-avatar-grid {
+/* item tiles: art first, name under it */
+[data-page="avatar"] .cer-av-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--av-tile), 1fr));
-  gap: 12px;
+  gap: 18px 14px;
   align-content: start;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-grid > .cer-sk-tile {
-  aspect-ratio: 0.82;
-  border-radius: var(--cer-r-m);
+[data-page="avatar"] .cer-av-grid.is-big {
+  --av-tile: 184px;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-grid > .cer-empty,
-.cer-avatar-inline.cer-ui .cer-avatar-grid > .cer-hint,
-.cer-avatar-inline.cer-ui .cer-avatar-grid > .cer-skel-row,
-.cer-avatar-inline.cer-ui .cer-avatar-grid > .cer-scale-panel,
-.cer-avatar-inline.cer-ui .cer-avatar-more,
-.cer-avatar-inline.cer-ui .cer-avatar-create {
+[data-page="avatar"] .cer-av-grid.is-panel {
+  display: block;
+}
+[data-page="avatar"] .cer-av-grid > .cer-sk-tile {
+  border-radius: var(--cer-r-l);
+}
+[data-page="avatar"] .cer-av-grid > .cer-empty,
+[data-page="avatar"] .cer-av-grid > .cer-av-more {
   grid-column: 1 / -1;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-grid > .cer-hint {
-  margin: 0;
-  opacity: 1;
-  padding: 40px 12px;
-  text-align: center;
-  color: var(--cer-text-3);
-  font-weight: 600;
-}
-.cer-avatar-inline.cer-ui .cer-avatar-create {
-  justify-self: start;
-  margin-bottom: 4px;
-}
-.cer-avatar-inline.cer-ui .cer-avatar-more {
+[data-page="avatar"] .cer-av-grid > .cer-av-more {
   justify-self: center;
-  margin-top: 8px;
-  padding: 0 28px;
+  min-width: 160px;
+  margin-top: 6px;
 }
 
-.cer-avatar-inline.cer-ui .cer-avatar-item {
-  gap: 8px;
-  padding: 8px 8px 10px;
-  border: 2px solid transparent;
-  border-radius: var(--cer-r-m);
+[data-page="avatar"] .cer-av-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+[data-page="avatar"] .cer-av-tile-art {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--cer-r-l);
   background: var(--cer-raise);
-  box-shadow: none;
-  color: var(--cer-text);
-  font-size: 13px;
-  transition: background 0.15s, transform 0.18s var(--cer-ease), box-shadow 0.18s, border-color 0.15s;
+  overflow: hidden;
+  transition: background 0.15s, transform 0.18s var(--cer-ease), box-shadow 0.15s;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-item:hover {
+[data-page="avatar"] .cer-av-tile-art .cer-img {
+  object-fit: contain;
+  padding: 9%;
+}
+[data-page="avatar"] .cer-av-tile:hover .cer-av-tile-art {
   background: var(--cer-hover);
-  transform: translateY(-2px);
-  box-shadow: none;
+  transform: translateY(-3px);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-item:focus-visible {
-  outline: 2px solid var(--cer-acc);
-  outline-offset: 2px;
+[data-page="avatar"] .cer-av-tile:active .cer-av-tile-art {
+  transform: scale(0.97);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-item img {
-  border-radius: var(--cer-r-s);
-  background: none;
+[data-page="avatar"] .cer-av-tile:focus-visible .cer-av-tile-art {
+  box-shadow: 0 0 0 2px var(--cer-bg), 0 0 0 4px var(--cer-acc);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-item span {
-  font-weight: 700;
+[data-page="avatar"] .cer-av-tile-name {
+  padding: 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--cer-text-2);
+  font-size: 13.5px;
+  font-weight: 700;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-item-worn,
-.cer-avatar-inline.cer-ui .cer-avatar-item-worn:hover {
-  border-color: var(--cer-acc);
+/* worn: accent ring + check (drawn in the accent's ink) */
+[data-page="avatar"] .cer-av-tile.is-worn .cer-av-tile-art {
+  box-shadow: inset 0 0 0 3px var(--cer-acc);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-item-worn span {
+[data-page="avatar"] .cer-av-tile.is-worn .cer-av-tile-name {
   color: var(--cer-text);
 }
-/* worn check: accent dot + a check drawn in the accent's ink (the old
-   styles.css badge had a white check, invisible on the white Default ink) */
-.cer-avatar-inline.cer-ui .cer-avatar-item-worn::after {
-  top: 8px;
-  right: 8px;
-  width: 22px;
-  height: 22px;
+[data-page="avatar"] .cer-av-tile.is-worn .cer-av-tile-art::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   background: var(--cer-acc);
-  box-shadow: none;
 }
-.cer-avatar-inline.cer-ui .cer-avatar-item-worn::before {
+[data-page="avatar"] .cer-av-tile.is-worn .cer-av-tile-art::before {
   content: "";
   position: absolute;
   z-index: 1;
-  top: 12px;
-  right: 12px;
+  top: 14px;
+  right: 14px;
   width: 14px;
   height: 14px;
   background: var(--cer-acc-ink);
@@ -307,123 +407,262 @@
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
-/* outfit tile buttons */
-.cer-avatar-inline.cer-ui .cer-outfit-controls {
-  top: 8px;
-  left: 8px;
+/* outfit cards: the saved look's render on the stage backdrop */
+[data-page="avatar"] .cer-av-tile.is-outfit .cer-av-tile-art {
+  background: radial-gradient(90% 70% at 50% 38%, var(--cer-hover), transparent 72%), var(--cer-raise);
 }
-.cer-avatar-inline.cer-ui .cer-outfit-btn {
-  width: 30px;
-  height: 30px;
+[data-page="avatar"] .cer-av-tile.is-outfit .cer-av-tile-art .cer-img {
+  padding: 4%;
+}
+[data-page="avatar"] .cer-av-card-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+[data-page="avatar"] .cer-av-tile:hover .cer-av-card-tools,
+[data-page="avatar"] .cer-av-tile:focus-within .cer-av-card-tools {
+  opacity: 1;
+}
+@media (hover: none) {
+  [data-page="avatar"] .cer-av-card-tools {
+    opacity: 1;
+  }
+}
+[data-page="avatar"] .cer-av-card-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: 50%;
   background: var(--cer-surface-2);
   color: var(--cer-text);
+  box-shadow: var(--cer-shadow);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
-.cer-avatar-inline.cer-ui .cer-outfit-btn:hover {
+[data-page="avatar"] .cer-av-card-btn:hover {
   background: var(--cer-acc);
   color: var(--cer-acc-ink);
 }
-.cer-avatar-inline.cer-ui .cer-outfit-del:hover {
+[data-page="avatar"] .cer-av-card-btn.is-del:hover {
   background: var(--cer-bad);
   color: #fff;
 }
-
-/* body tab */
-.cer-avatar-inline.cer-ui .cer-scale-panel {
-  gap: 18px;
-  max-width: 620px;
-  padding: 22px;
-  border-radius: var(--cer-r-l);
-  background: var(--cer-raise);
-  border: 0;
-}
-.cer-avatar-inline.cer-ui .cer-scale-sliders {
-  gap: 16px;
-}
-.cer-avatar-inline.cer-ui .cer-scale-row {
-  grid-template-columns: 120px minmax(0, 1fr) 56px;
-  gap: 14px;
-}
-.cer-avatar-inline.cer-ui .cer-scale-label {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--cer-text-2);
-}
-.cer-avatar-inline.cer-ui .cer-scale-slider {
-  accent-color: var(--cer-acc);
-  cursor: pointer;
-}
-.cer-avatar-inline.cer-ui .cer-scale-val {
-  font-weight: 700;
+/* "Save look": the first card */
+[data-page="avatar"] .cer-av-tile.is-save .cer-av-tile-art {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--cer-line-2);
   color: var(--cer-text-3);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-typeswitch {
-  display: inline-flex;
-  justify-self: start;
-  gap: 2px;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--cer-hover);
-  border: 0;
-}
-.cer-avatar-inline.cer-ui .cer-avatar-typebtn {
-  height: 32px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--cer-text-2);
-  font-size: 14px;
-  font-weight: 700;
-  transition: background 0.15s, color 0.15s;
-}
-.cer-avatar-inline.cer-ui .cer-avatar-typebtn:hover {
-  background: var(--cer-hover);
+[data-page="avatar"] .cer-av-tile.is-save:hover .cer-av-tile-art {
+  background: var(--cer-raise);
   color: var(--cer-text);
 }
-.cer-avatar-inline.cer-ui .cer-avatar-typebtn-on,
-.cer-avatar-inline.cer-ui .cer-avatar-typebtn-on:hover {
-  background: var(--cer-surface-2);
+[data-page="avatar"] .cer-av-save-art {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cer-hover);
+}
+[data-page="avatar"] .cer-av-tile.is-save .cer-av-tile-name {
   color: var(--cer-text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+[data-page="avatar"] .cer-av-tile.is-busy {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
-/* yes/no popover (lives on <body>, tagged .cer-ui for the tokens) */
-.cer-confirm-pop.cer-ui {
-  width: 260px;
-  padding: 14px;
-  border-radius: var(--cer-r-m);
-  background: var(--cer-surface-2);
+/* ------------------------------------------------------------ body panel */
+[data-page="avatar"] .cer-av-grid > .cer-sk-hero {
+  max-width: 640px;
+  height: 380px;
+}
+[data-page="avatar"] .cer-av-body {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 640px;
+  padding: 26px 28px 30px;
+  border-radius: var(--cer-r-xl);
+  background: var(--cer-raise);
+}
+[data-page="avatar"] .cer-av-body-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+[data-page="avatar"] .cer-av-body .cer-av-h {
+  font-size: 22px;
+}
+[data-page="avatar"] .cer-av-type .cer-chip {
+  min-width: 64px;
+  justify-content: center;
+}
+[data-page="avatar"] .cer-av-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  transition: opacity 0.2s;
+}
+[data-page="avatar"] .cer-av-sliders.is-off {
+  opacity: 0.4;
+  pointer-events: none;
+}
+[data-page="avatar"] .cer-av-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  font-weight: inherit;
+}
+[data-page="avatar"] .cer-av-slider-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--cer-text);
+  font-size: 15px;
+  font-weight: 800;
+}
+[data-page="avatar"] .cer-av-val {
+  color: var(--cer-text-3);
+  font-variant-numeric: tabular-nums;
+}
+/* chunky slider: filled track up to the thumb (--fill set by avatar.js) */
+[data-page="avatar"] .cer-av-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+[data-page="avatar"] .cer-av-range::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--cer-acc) var(--fill, 0%), var(--cer-press) var(--fill, 0%));
+}
+[data-page="avatar"] .cer-av-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: transform 0.12s var(--cer-ease);
+}
+[data-page="avatar"] .cer-av-range:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+[data-page="avatar"] .cer-av-range::-moz-range-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--cer-press);
+}
+[data-page="avatar"] .cer-av-range::-moz-range-progress {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--cer-acc);
+}
+[data-page="avatar"] .cer-av-range::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
   border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+[data-page="avatar"] .cer-av-range:focus-visible {
+  outline: none;
+}
+[data-page="avatar"] .cer-av-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--cer-bg), 0 0 0 5px var(--cer-acc);
+}
+
+/* ------------------------------------------------------------ popover */
+/* yes/no or name field, anchored to a card (lives on <body>) */
+.cer-av-pop.cer-ui {
+  position: fixed;
+  z-index: 2147482000;
+  width: 260px;
+  padding: 16px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-surface-2);
   color: var(--cer-text);
   box-shadow: var(--cer-shadow-lg);
+  animation: cer-av-pop-in 0.16s var(--cer-ease) both;
 }
-.cer-confirm-pop.cer-ui .cer-confirm-msg {
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-bottom: 12px;
+@keyframes cer-av-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.cer-av-pop.cer-ui .cer-av-pop-msg {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--cer-text);
+}
+.cer-av-pop.cer-ui .cer-av-pop-input {
+  display: block;
+  width: 100%;
+  height: 42px;
+  margin: 0 0 12px;
+  padding: 0 14px;
+  border: 1px solid var(--cer-line-2);
+  border-radius: var(--cer-r-s);
+  background: var(--cer-raise);
+  color: var(--cer-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  outline: none;
+}
+.cer-av-pop.cer-ui .cer-av-pop-input:focus {
+  border-color: var(--cer-acc);
+}
+.cer-av-pop.cer-ui .cer-av-pop-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-@media (max-width: 1000px) {
-  .cer-avatar-inline.cer-ui .cer-avatar-body {
-    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
-    gap: 20px;
-  }
-  .cer-avatar-inline.cer-ui {
+/* ------------------------------------------------------------ narrow */
+@container (max-width: 860px) {
+  [data-page="avatar"] .cer-av-layout {
     --av-tile: 112px;
+    grid-template-columns: minmax(230px, 38%) minmax(0, 1fr);
+    gap: 18px;
   }
-}
-@media (max-width: 760px) {
-  .cer-avatar-inline.cer-ui .cer-avatar-body {
-    grid-template-columns: minmax(0, 1fr);
+  [data-page="avatar"] .cer-av-closet {
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 14px;
   }
-  .cer-avatar-inline.cer-ui .cer-avatar-side {
-    position: static;
+  [data-page="avatar"] .cer-av-cat {
+    height: clamp(46px, calc((100vh - 110px) / 9), 56px);
+    font-size: 11px;
   }
-  .cer-avatar-inline.cer-ui .cer-avatar-preview {
-    max-width: 360px;
-    margin: 0 auto;
+  [data-page="avatar"] .cer-av-grid.is-big {
+    --av-tile: 140px;
+  }
+  [data-page="avatar"] .cer-av-grid {
+    gap: 14px 10px;
+  }
+  [data-page="avatar"] .cer-av-body {
+    padding: 20px;
   }
 }

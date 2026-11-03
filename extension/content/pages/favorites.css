@@ -1,1 +1,52 @@
-/* CER favorites page */
+/* CER favorites page. Scoped under [data-page="favorites"]. Item tiles and
+   the lazy grid (.inv-item, .inv-grid, .inv-person) are styled in
+   inventory.css, which covers both pages. */
+
+[data-page="favorites"] .fav {
+  gap: 22px;
+}
+[data-page="favorites"] .fav-head {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+}
+[data-page="favorites"] .fav-head > * {
+  flex: 1;
+  min-width: 0;
+}
+[data-page="favorites"] .fav-tabbar {
+  display: flex;
+  min-height: 44px;
+}
+[data-page="favorites"] .fav-tabbar .cer-chip {
+  padding: 0 22px;
+}
+[data-page="favorites"] .fav-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  min-width: 0;
+  animation: cer-view-in 0.22s var(--cer-ease) both;
+}
+[data-page="favorites"] .fav-panel[hidden] {
+  display: none;
+}
+[data-page="favorites"] .fav-chips {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+/* big game cards, Play always showing: it is the point of this page */
+[data-page="favorites"] .inv-grid.fav-games {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 26px 20px;
+}
+[data-page="favorites"] .fav-games .cer-gc-play {
+  opacity: 1;
+  transform: none;
+  width: 46px;
+  height: 46px;
+}
+[data-page="favorites"] .fav-games .cer-gc-name {
+  font-size: 16px;
+}

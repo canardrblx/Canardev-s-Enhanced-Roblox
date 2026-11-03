@@ -307,7 +307,7 @@
       "a",
       { class: "home-friend is-" + state, href: `https://www.roblox.com/users/${f.id}/profile`, title: game ? name + ": " + game : name },
       h("span", { class: "home-friend-av" }, ui.avatar(f.id, { size: 76, presence: p }), join),
-      h("span", { class: "home-friend-name", text: name }),
+      ui.nameTag({ type: "user", id: f.id, name, verified: f.hasVerifiedBadge, size: "sm", cls: "home-friend-name", title: game ? name + ": " + game : name }),
       h("span", { class: "home-friend-game", text: game || " " })
     );
   }

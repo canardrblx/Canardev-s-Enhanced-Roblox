@@ -101,3 +101,37 @@ REMOVED clutter and useless info. Every element must earn its place.
 What you built (sections/features), files touched, old scripts you retired, dead selectors in
 `styles.css` that the owner of that file should delete, shared components worth promoting,
 anything you could not finish or verify.
+
+## ROUND 2 (2026-11-03, owner feedback after round 1). Read this too.
+Owner: "looks awesome", but several areas were only reskinned, not redesigned. Reskinning the old
+layout with modern colors does NOT count. Redesign means: decide from scratch what a kid on a game
+platform needs on this page, cut the rest, new layout, art first (see LOOK above).
+
+### Shared name component (use it everywhere)
+Every display name, username or group name must show its Roblox badges (Verified, Premium, Plus).
+Use `CER.ui.nameTag({ type: "user"|"group", id, name, sub, verified, size, href })` from ui.js
+(and `ui.nameBadges(o)` for custom layouts). It fetches what you don't pass, in batches. The verified
+mark is Roblox's own verified badge shape recolored to the theme (not a generic check). Until the
+identity agent finishes it renders plain names; keep calling it anyway.
+
+### Ownership (round 2): edit ONLY your files
+- identity agent: ui.js (identity section + internal components), ui.css (badge styles), home.js,
+  search.js, transactions.js, pages/groups.js, customsidebar.js, chat.js
+- catalog agent: pages/catalog.*, catalogpage.js
+- avatar agent: avatar.js, pages/avatar.css, the old avatar block in styles.css
+- group settings agent: pages/groupconfig.*, settingsreskin.js (configure parts)
+- social agent: pages/messages.*, pages/profile.*, pages/friends.*
+- settings+themes agent: settings.js (CER panel), shared.js, theme.js, pages/settings.*, the shell
+  section of styles.css
+- game agent: pages/game.*
+- discover agent: pages/discover.*
+- skipped-pages agents: pages/badge.*, pages/pass.* / pages/inventory.*, pages/favorites.*, pages/trades.*
+Routes for groupconfig, badge, pass, inventory, favorites, trades already exist in CER.PAGES and the
+manifest (stub files). Need another route or a ui.js change? Put it in your report; don't edit ui.js.
+
+### Account safety (unchanged, stricter)
+Owner's REAL account. No writes of any kind while testing (no saves, joins, trades, purchases, avatar
+or group changes, settings or theme changes, messages, friend actions). Money flows (Robux payouts,
+group funds, purchases, trades) are never built as CER actions: link them to Roblox with
+`ui.nativeUrl()`. Never build leave-group, transfer-ownership or delete UI. Don't burst-probe
+sensitive endpoints (security, billing, sessions); one read at a time.

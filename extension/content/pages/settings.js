@@ -50,9 +50,11 @@
         "a",
         { class: "cer-acct-me", href: `https://www.roblox.com/users/${me.id}/profile` },
         ui.avatar(me.id, { size: 88 }),
-        h("span", { class: "cer-acct-me-text" }, h("span", { class: "cer-acct-name", text: me.displayName || me.name }), h("span", { class: "cer-acct-handle", text: "@" + me.name }))
+        h("span", { class: "cer-acct-me-text" }, ui.nameTag({ type: "user", id: me.id, name: me.displayName || me.name, size: "lg", cls: "cer-acct-name" }), h("span", { class: "cer-acct-handle", text: "@" + me.name }))
       ),
       h("nav", { class: "cer-acct-list" }, account, security, privacy, notes, billing, parents),
+      // every theme, Roblox's and CER's, in the same picker as CER settings
+      h("section", { class: "cer-acct-theme" }, h("h2", { class: "cer-acct-title", text: "Theme" }), CER.themePicker()),
       h("nav", { class: "cer-acct-list" }, cer)
     );
 

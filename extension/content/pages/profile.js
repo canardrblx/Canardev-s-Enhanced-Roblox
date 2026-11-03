@@ -7,7 +7,8 @@
 //             quiet friend / follower counts, ONE primary action + a menu
 //   tabs      Overview · Games · Friends · Badges (panels built on first open)
 //
-// Promotable bits built here: menu() (popover menu that escapes clipping).
+// Promotable bits built here: menu() (popover menu that escapes clipping),
+// personTile() (userTile with a nameTag), aboutText() (clamp that starts open).
 
 (function () {
   if (typeof CER === "undefined" || !CER.ui) return;
@@ -199,8 +200,46 @@
     return btn;
   }
 
-  // ui.icon("verified") already draws in currentColor (seal) + page bg (check)
-  const verified = (size) => ui.icon("verified", size, "pf-verified");
+  // Person tile (like ui.userTile) whose name is a ui.nameTag, so the
+  // verified / Premium / Plus badges show next to every friend.
+  function personTile(f, opts = {}) {
+    const p = f.presence;
+    const state = p ? api.presenceState(p) : null;
+    const sub = opts.sub ?? "";
+    return h(
+      "a",
+      { class: "cer-user pf-person", href: `${RB}/users/${f.id}/profile`, title: f.displayName ?? f.name },
+      ui.avatar(f.id, { size: opts.size ?? 84, presence: p }),
+      h(
+        "span",
+        { class: "cer-user-text" },
+        ui.nameTag({ type: "user", id: f.id, name: f.displayName || f.name || "", verified: f.hasVerifiedBadge, size: "sm", cls: "pf-person-name" }),
+        sub && h("span", { class: "cer-user-sub is-" + (state ?? "none"), text: sub })
+      )
+    );
+  }
+
+  // About text. Starts OPEN (owner: show it all by default) with a working
+  // "Show less". Built here, not with ui.clamp: ui.clamp starts closed, and
+  // its .is-open rule loses to ".cer-ui p.cer-clamp" (0,2,1 vs 0,2,0), so
+  // "Show more" never unclamped the text.
+  function aboutText(text, lines = 4) {
+    const p = h("p", { class: "pf-bio is-open", style: { "--lines": lines }, text });
+    const more = h("button", { type: "button", class: "pf-bio-more", hidden: true, text: "Show less" });
+    more.addEventListener("click", () => {
+      const open = p.classList.toggle("is-open");
+      more.textContent = open ? "Show less" : "Show more";
+      if (!open && p.getBoundingClientRect().top < 0) p.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    // the toggle only when the text is longer than `lines` (measured once it
+    // has a size: a hidden tab is 0 x 0)
+    new ResizeObserver(() => {
+      if (!p.clientWidth) return;
+      const lh = parseFloat(getComputedStyle(p).lineHeight) || 24;
+      more.hidden = p.scrollHeight <= lh * lines + 4;
+    }).observe(p);
+    return h("div", { class: "pf-bio-wrap" }, p, more);
+  }
 
   const gameGrid = (games) => ui.grid(games.map((g) => ui.gameCard(g)), { min: 240, gap: 18 });
   const skelGrid = (n = 6, kind = "card", min = 240) => ui.grid(ui.skeleton(kind, n), { min, gap: 18 });
@@ -351,7 +390,7 @@
     function overviewPanel(panel) {
       // bio: plain text, no card. Quiet join line under it.
       const about = h("div", { class: "pf-about" });
-      if (user.description?.trim()) about.appendChild(ui.clamp(user.description.trim(), 3));
+      if (user.description?.trim()) about.appendChild(aboutText(user.description.trim(), 4));
       const meta = h("div", { class: "pf-meta" }, h("span", { text: "Joined " + fmt.date(user.created) }));
       about.appendChild(meta);
       // social links, only if they set any (rare)
@@ -375,7 +414,7 @@
       friendsP.then((list) => {
         if (!alive()) return;
         if (!list?.length) return friends.remove();
-        ui.clear(friends.body, ui.rail(list.slice(0, 24).map((f) => ui.userTile(f, { presence: f.presence, size: 84, sub: friendSub(f) })), { item: 104 }));
+        ui.clear(friends.body, ui.rail(list.slice(0, 24).map((f) => personTile(f, { size: 84, sub: friendSub(f) })), { item: 104 }));
       });
 
       const groups = section("Groups");
@@ -467,7 +506,7 @@
         if (query) rows = rows.filter((f) => (f.displayName ?? "").toLowerCase().includes(query) || (f.name ?? "").toLowerCase().includes(query));
         grid.classList.toggle("is-empty", !rows.length);
         if (!rows.length) grid.replaceChildren(ui.empty("No one here.", { icon: "users" }));
-        else grid.replaceChildren(...rows.slice(0, limit).map((f) => ui.userTile(f, { presence: f.presence, sub: friendSub(f) })));
+        else grid.replaceChildren(...rows.slice(0, limit).map((f) => personTile(f, { sub: friendSub(f) })));
         foot.hidden = rows.length <= limit;
       };
       Promise.all([allFriends(), countsP]).then(([l, [count]]) => {
@@ -523,7 +562,7 @@
       "a",
       { class: "pf-group", href: `${RB}/communities/${r.group.id}`, title: r.group.name },
       h("div", { class: "pf-group-icon" }, ui.thumb("groupIconLg", r.group.id)),
-      h("span", { class: "pf-group-name" }, h("span", { text: r.group.name }), r.group.hasVerifiedBadge && verified(14))
+      ui.nameTag({ type: "group", id: r.group.id, name: r.group.name, verified: r.group.hasVerifiedBadge, size: "sm", cls: "pf-group-name" })
     );
   }
 
@@ -589,7 +628,7 @@
         "div",
         { class: "pf-hero-main" },
         status,
-        h("h1", { class: "pf-name" }, h("span", { text: user.displayName }), user.hasVerifiedBadge && verified(28)),
+        h("h1", { class: "pf-name" }, ui.nameTag({ type: "user", id, name: user.displayName, verified: !!user.hasVerifiedBadge, size: "lg" })),
         h("div", { class: "pf-handle", text: "@" + user.name }),
         counts,
         playing,

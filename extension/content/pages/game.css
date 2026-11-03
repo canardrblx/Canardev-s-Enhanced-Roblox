@@ -27,6 +27,9 @@
 }
 [data-page="game"] .gx-stage {
   position: relative;
+  /* definite width: without it min-height + aspect-ratio grow the WIDTH
+     (818 px stage in a 622 px column at a 1000 px window) */
+  width: 100%;
   aspect-ratio: 16 / 7;
   min-height: 440px;
   max-height: 76vh;
@@ -150,9 +153,25 @@
 [data-page="game"] .gx-creator-link:hover {
   color: #fff !important;
 }
-[data-page="game"] .gx-verified {
-  display: inline-flex;
-  color: currentColor;
+/* names (ui.nameTag): text follows the spot it sits in; on the art the
+   badges stay white so they read on any picture */
+[data-page="game"] .gx-creator .cer-name-text {
+  color: inherit;
+}
+[data-page="game"] .gx-creator .cer-name-badges {
+  color: #fff;
+}
+[data-page="game"] .gx-sv-who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+[data-page="game"] .gx-sv-who .cer-name {
+  max-width: 100%;
+  color: var(--cer-text) !important;
+}
+[data-page="game"] .gx-sv-who .cer-name:hover .cer-name-text {
+  text-decoration: underline;
 }
 [data-page="game"] .gx-title {
   font-size: clamp(34px, 4.4vw, 62px);
@@ -253,6 +272,58 @@
 [data-page="game"] .gx-qbtn.cer-btn.is-on {
   background: #fff;
   color: #0b0c10 !important;
+}
+[data-page="game"] .gx-qbtn.cer-btn[hidden] {
+  display: none;
+}
+[data-page="game"] .gx-qbtn.cer-btn.is-open {
+  background: rgba(255, 255, 255, 0.26);
+  color: #fff !important;
+}
+/* "more" pop-up: dark glass on the art, opens upward */
+[data-page="game"] .gx-more {
+  position: relative;
+}
+[data-page="game"] .gx-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 5;
+  min-width: 190px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--cer-r-l);
+  background: rgba(16, 17, 22, 0.82);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+[data-page="game"] .gx-menu[hidden] {
+  display: none;
+}
+[data-page="game"] .gx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 42px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--cer-r-m);
+  background: none;
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+[data-page="game"] .gx-menu-item:hover,
+[data-page="game"] .gx-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  outline: none;
 }
 [data-page="game"] .gx-note {
   font-size: 15px;
@@ -558,6 +629,12 @@
 }
 [data-page="game"] .gx-private-row:hover {
   background: var(--cer-raise);
+}
+[data-page="game"] .gx-private-owner {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--cer-text-3);
 }
 [data-page="game"] .gx-private-row > b {
   flex: 1;

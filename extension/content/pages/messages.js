@@ -3,7 +3,10 @@
 // Two panes: message list on the left, reader on the right (one pane on
 // narrow screens). Message bodies are NEVER parsed into the live page as HTML:
 // they become text nodes, and links become <a> elements we build ourselves.
-// Writes (mark read, mark all read, archive, unarchive) go through `write()`,
+// Selection: a checkbox per row (on hover, or on every row while selecting),
+// a select-all box and a count in the list head; bulk actions (mark read,
+// mark unread, archive, move to Inbox) show only while something is picked.
+// Writes (mark read / unread, mark all read, archive, unarchive) go through `write()`,
 // which honours the dev dry-run switch: sessionStorage["cer-dry-writes"] = "1"
 // logs the request instead of sending it.
 (function () {
@@ -169,7 +172,14 @@
   // ------------------------------------------------------------ page
   ui.route("messages", async () => {
     S?.stop();
-    const session = (S = { alive: true, stop() { this.alive = false; window.removeEventListener("hashchange", this.onHash); } });
+    const session = (S = {
+      alive: true,
+      stop() {
+        this.alive = false;
+        window.removeEventListener("hashchange", this.onHash);
+        document.removeEventListener("keydown", this.onKey);
+      },
+    });
 
     // shell first
     const { page } = ui.page("messages", "ms-view");
@@ -178,10 +188,16 @@
     const head = ui.header({ title: "Messages" });
     document.title = "Messages - Roblox";
     const tabSlot = h("div", { class: "cer-sk ms-sk-tabs" });
-    const toolbar = h("div", { class: "ms-toolbar" }, tabSlot, markAll);
+    const toolbar = h("div", { class: "ms-toolbar" }, tabSlot);
+    // list head: select-all box + count, then Mark all read OR the bulk bar
+    const selAll = checkBox("Select all");
+    const selText = h("span", { class: "ms-sel-text" });
+    const selLabel = h("span", { class: "ms-sel" }, selAll, selText);
+    const bar = h("div", { class: "ms-bar" });
+    const listHead = h("div", { class: "ms-list-head", hidden: true }, selLabel, h("div", { class: "ms-head-right" }, markAll, bar));
     const listBody = h("div", { class: "ms-list-body" }, rowSkeletons());
     const pager = h("div", { class: "ms-pager" });
-    const listPane = h("section", { class: "ms-pane ms-list", "aria-label": "Messages" }, listBody, pager);
+    const listPane = h("section", { class: "ms-pane ms-list", "aria-label": "Messages" }, listHead, listBody, pager);
     const reader = h("section", { class: "ms-pane ms-reader", "aria-live": "polite" }, readerIdle());
     const split = h("div", { class: "ms-split" }, listPane, reader);
     page.append(head, toolbar, split);
@@ -209,12 +225,16 @@
     let unread = null;
     let news = null; // announcements collection, or null when the API has none
     let loadTok = 0;
+    const sel = new Set(); // selected message ids (strings), this page only
+    let anchor = null; // last ticked id, for shift-click ranges
+    const selectable = () => tab === "inbox" || tab === "archive";
 
     const setUnread = (n) => {
       if (n == null || !session.alive) return;
       unread = Math.max(0, n);
       tabItems[0].count = unread || null;
       tabs.set(tab);
+      if (data) syncSel();
     };
     api.json(`${PM}/messages/unread/count`).then((j) => setUnread(j?.count));
 
@@ -230,6 +250,8 @@
     // ---- list
     async function loadList() {
       const tok = ++loadTok;
+      sel.clear();
+      listHead.hidden = true;
       listBody.replaceChildren(rowSkeletons());
       pager.replaceChildren();
       if (tab === "news") {
@@ -250,12 +272,14 @@
 
     function renderList() {
       const msgs = data?.collection ?? [];
-      const unreadHere = msgs.filter((m) => !m.isRead && tab !== "sent" && tab !== "news");
-      markAll.hidden = !unreadHere.length;
+      for (const id of [...sel]) if (!msgs.some((m) => String(m.id) === id)) sel.delete(id);
+      listHead.hidden = !selectable() || !msgs.length;
+      listBody.classList.toggle("can-select", selectable());
       if (!msgs.length) {
         const empty = { inbox: pageNo ? "No more messages." : "No messages.", sent: "No sent messages.", archive: "Archive is empty.", news: "No news." }[tab];
         listBody.replaceChildren(ui.empty(empty, { icon: tab === "archive" ? "archive" : tab === "news" ? "megaphone" : "mail" }));
       } else listBody.replaceChildren(...msgs.map(row));
+      syncSel();
       // pager
       const total = data?.totalPages ?? (msgs.length < PAGE_SIZE ? pageNo + 1 : pageNo + 2);
       if (tab !== "news" && (pageNo > 0 || total > 1)) {
@@ -278,21 +302,130 @@
     function row(m) {
       const who = other(m) ?? {};
       const isUnread = !m.isRead && tab !== "sent" && tab !== "news";
-      const r = h(
+      const id = String(m.id);
+      const name = who.displayName || who.name || "Roblox";
+      const openBtn = h(
         "button",
-        { type: "button", class: "ms-row" + (isUnread ? " is-unread" : "") + (String(m.id) === String(openId) ? " is-active" : ""), dataset: { id: m.id }, onClick: () => open(m) },
+        { type: "button", class: "ms-open", onClick: () => open(m) },
         h("span", { class: "ms-dot", "aria-label": isUnread ? "Unread" : null }),
         ui.avatar(who.id ?? 1, { size: 40 }),
         h(
           "span",
           { class: "ms-row-main" },
-          h("span", { class: "ms-row-top" }, h("span", { class: "ms-from", text: (tab === "sent" ? "To " : "") + (who.displayName || who.name || "Roblox") }), h("span", { class: "ms-date", text: shortDate(m.created) })),
+          h(
+            "span",
+            { class: "ms-row-top" },
+            h("span", { class: "ms-from" }, tab === "sent" && h("span", { class: "ms-to", text: "To " }), ui.nameTag({ type: "user", id: who.id, name, verified: who.hasVerifiedBadge, size: "sm" })),
+            h("span", { class: "ms-date", text: shortDate(m.created) })
+          ),
           h("span", { class: "ms-subj", text: decode(m.subject) || "No subject" })
         )
       );
+      const r = h("div", { class: "ms-row" + (isUnread ? " is-unread" : "") + (id === String(openId) ? " is-active" : ""), dataset: { id } });
+      if (selectable()) {
+        const box = checkBox("Select");
+        box.addEventListener("click", (e) => tick(id, e.shiftKey));
+        r.append(box);
+        r.box = box;
+      }
+      r.append(openBtn);
       r.msg = m;
       return r;
     }
+
+    // ---- selection
+    function tick(id, range) {
+      const msgs = data?.collection ?? [];
+      const on = !sel.has(id);
+      const ids = msgs.map((m) => String(m.id));
+      if (range && anchor && ids.includes(anchor)) {
+        const [a, b] = [ids.indexOf(anchor), ids.indexOf(id)].sort((x, y) => x - y);
+        for (const x of ids.slice(a, b + 1)) on ? sel.add(x) : sel.delete(x);
+      } else on ? sel.add(id) : sel.delete(id);
+      anchor = id;
+      syncSel();
+    }
+    function clearSel() {
+      sel.clear();
+      anchor = null;
+      syncSel();
+    }
+    selAll.addEventListener("click", () => {
+      const msgs = data?.collection ?? [];
+      if (sel.size && sel.size === msgs.length) return clearSel();
+      for (const m of msgs) sel.add(String(m.id));
+      syncSel();
+    });
+    // rows, head box, count and the bulk bar follow the selection
+    function syncSel() {
+      const msgs = data?.collection ?? [];
+      const picked = msgs.filter((m) => sel.has(String(m.id)));
+      for (const r of listBody.querySelectorAll(".ms-row")) {
+        const on = sel.has(r.dataset.id);
+        r.classList.toggle("is-selected", on);
+        r.box?.setAttribute("aria-checked", on ? "true" : "false");
+      }
+      listBody.classList.toggle("is-selecting", sel.size > 0);
+      selAll.setAttribute("aria-checked", !sel.size ? "false" : sel.size === msgs.length ? "true" : "mixed");
+      selText.textContent = sel.size ? sel.size + " selected" : "Select all";
+      // Mark all read when nothing is picked; the bulk bar while picking
+      const anyUnread = (unread ?? 0) > 0 && tab === "inbox";
+      markAll.hidden = !!sel.size || !(anyUnread || msgs.some((m) => !m.isRead && selectable()));
+      bar.replaceChildren();
+      if (!sel.size) return;
+      const act = (label, kind) => ui.button(label, { variant: "soft", size: "sm", onClick: () => bulk(kind) });
+      if (picked.some((m) => !m.isRead)) bar.append(act("Read", "read"));
+      if (picked.some((m) => m.isRead)) bar.append(act("Unread", "unread"));
+      bar.append(tab === "archive" ? act("To Inbox", "unarchive") : act("Archive", "archive"));
+      bar.append(ui.button("", { icon: "x", variant: "ghost", size: "sm", title: "Clear", class: "ms-bar-x", onClick: clearSel }));
+    }
+    session.onKey = (e) => {
+      if (e.key === "Escape" && sel.size && !document.querySelector(".cer-modal-overlay")) clearSel();
+    };
+    document.addEventListener("keydown", session.onKey);
+
+    const BULK = { read: "mark-read", unread: "mark-unread", archive: "archive", unarchive: "unarchive" };
+    async function bulk(kind) {
+      const msgs = data?.collection ?? [];
+      let pick = msgs.filter((m) => sel.has(String(m.id)));
+      if (kind === "read") pick = pick.filter((m) => !m.isRead);
+      if (kind === "unread") pick = pick.filter((m) => m.isRead);
+      if (!pick.length) return;
+      const ids = pick.map((m) => m.id);
+      const tok = loadTok;
+      const from = tab;
+      bar.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      let res = { ok: true };
+      for (let i = 0; i < ids.length && res.ok; i += 20) res = await write(`${PM}/messages/${BULK[kind]}`, { messageIds: ids.slice(i, i + 20) });
+      if (!session.alive) return;
+      if (!res.ok) {
+        syncSel();
+        return CER.toast(res.status === 429 ? "Too fast! Wait a moment." : "Could not do that. Try again.", "error");
+      }
+      const n = ids.length;
+      if (kind === "read" || kind === "unread") {
+        for (const m of pick) m.isRead = kind === "read";
+        if (unread != null && from === "inbox") setUnread(unread + (kind === "read" ? -n : n));
+        CER.toast(kind === "read" ? "Marked read" : "Marked unread");
+      } else {
+        const unreadMoved = pick.filter((m) => !m.isRead).length;
+        if (unreadMoved && unread != null) setUnread(unread + (kind === "archive" ? -unreadMoved : unreadMoved));
+        CER.toast(kind === "archive" ? (n === 1 ? "Moved to Archive" : n + " moved to Archive") : n === 1 ? "Moved to Inbox" : n + " moved to Inbox");
+      }
+      if (!res.dry) recount();
+      if (tok !== loadTok || from !== tab || !data) return; // the list on screen changed meanwhile
+      sel.clear();
+      anchor = null;
+      if (kind === "read" || kind === "unread") return renderList();
+      if (ids.some((x) => String(x) === String(openId))) closeReader();
+      data.collection = msgs.filter((m) => !ids.includes(m.id));
+      // a page emptied out: step back one; otherwise reload it so it fills up
+      if (!data.collection.length && pageNo > 0) pageNo -= 1;
+      if (res.dry) return renderList(); // dry run: the server still has them
+      loadList();
+    }
+    // the real unread number, after a write (local math can drift)
+    const recount = () => api.json(`${PM}/messages/unread/count`).then((j) => session.alive && j && (setUnread(j.count), syncSel()));
 
     function markRowRead(id) {
       const r = listBody.querySelector(`.ms-row[data-id="${CSS.escape(String(id))}"]`);
@@ -358,7 +491,7 @@
                 "div",
                 { class: "ms-read-name" },
                 tab === "sent" && h("span", { class: "ms-muted", text: "To " }),
-                profile ? h("a", { href: profile, class: "ms-name-link", text: who.displayName || who.name || "Roblox" }) : h("span", { text: who.displayName || who.name || "Roblox" })
+                ui.nameTag({ type: "user", id: who.id, name: who.displayName || who.name || "Roblox", verified: who.hasVerifiedBadge, href: profile, cls: "ms-name-link" })
               ),
               h("div", { class: "ms-read-date", text: longDate(m.created) })
             ),
@@ -380,26 +513,44 @@
           if (unread != null) setUnread(unread - 1);
           if (tok !== loadTok) return; // another list is on screen now
           markRowRead(m.id);
-          markAll.hidden = !(data?.collection ?? []).some((x) => !x.isRead);
+          syncSel();
         });
       }
     }
 
+    // Mark all read: every unread message in this tab, not just this page.
+    // Unread ones are found page by page (newest first) until the unread
+    // count is reached, then marked in batches of 20.
     markAll.addEventListener("click", async () => {
-      const msgs = data?.collection ?? [];
-      const ids = msgs.filter((m) => !m.isRead).map((m) => m.id);
-      if (!ids.length) return;
       const tok = loadTok;
+      const from = tab;
       markAll.busy(true);
-      const res = await write(`${PM}/messages/mark-read`, { messageIds: ids });
+      const want = from === "inbox" && unread ? unread : 0;
+      const ids = [];
+      const here = data?.collection ?? [];
+      const add = (list) => list.forEach((m) => !m.isRead && !ids.includes(m.id) && ids.push(m.id));
+      add(here);
+      for (let p = 0, pages = data?.totalPages ?? 1; ids.length < want && p < Math.min(pages, 50); p++) {
+        if (p === pageNo) continue;
+        const j = await api.json(`${PM}/messages?pageNumber=${p}&pageSize=${PAGE_SIZE}&messageTab=${from}`);
+        if (!session.alive) return;
+        if (!j?.collection) break;
+        add(j.collection);
+        pages = j.totalPages ?? pages;
+        await api.sleep(120);
+      }
+      let res = { ok: true };
+      for (let i = 0; i < ids.length && res.ok; i += 20) res = await write(`${PM}/messages/mark-read`, { messageIds: ids.slice(i, i + 20) });
       markAll.busy(false);
       if (!session.alive) return;
-      if (!res.ok) return CER.toast("Could not mark them read. Try again.", "error");
-      for (const m of msgs) if (ids.includes(m.id)) m.isRead = true; // the page's own objects
-      if (unread != null) setUnread(unread - ids.length);
+      if (!res.ok) return CER.toast(res.status === 429 ? "Too fast! Wait a moment." : "Could not mark them read. Try again.", "error");
+      for (const m of here) if (ids.includes(m.id)) m.isRead = true; // the page's own objects
+      if (unread != null && from === "inbox") setUnread(want && ids.length >= want ? 0 : unread - ids.length);
+      if (ids.length) CER.toast("All read");
+      if (!res.dry) recount();
       if (tok !== loadTok) return; // another list is on screen now
       ids.forEach(markRowRead);
-      markAll.hidden = true;
+      syncSel();
     });
 
     // one pane below ~760 px of column width
@@ -427,6 +578,11 @@
 
     loadList();
   });
+
+  // Round-cornered checkbox button (role=checkbox, aria-checked true/false/mixed).
+  function checkBox(label) {
+    return h("button", { type: "button", class: "ms-check", role: "checkbox", "aria-checked": "false", "aria-label": label, title: label }, h("span", { class: "ms-check-box" }, ui.icon("check", 14, "ms-check-on"), ui.icon("minus", 14, "ms-check-mixed")));
+  }
 
   function rowSkeletons() {
     return h(

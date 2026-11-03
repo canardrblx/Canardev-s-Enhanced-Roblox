@@ -145,6 +145,12 @@
 [data-page="transactions"] a.cer-trx-name:hover {
   text-decoration: underline !important;
 }
+[data-page="transactions"] .cer-trx-name.cer-name {
+  align-self: flex-start;
+}
+[data-page="transactions"] .cer-trx-who {
+  vertical-align: top;
+}
 [data-page="transactions"] .cer-trx-sub {
   font-size: 13px;
   font-weight: 600;

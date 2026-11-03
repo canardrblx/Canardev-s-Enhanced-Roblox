@@ -107,7 +107,12 @@
     );
     const showMe = (me) => {
       if (!me) return;
-      nameEl.textContent = me.displayName || me.name || "";
+      const name = me.displayName || me.name || "";
+      // your name with its Roblox badges (verified, Plus, Premium)
+      if (nameEl.dataset.for !== me.id + ":" + name) {
+        nameEl.dataset.for = me.id + ":" + name;
+        nameEl.replaceChildren(CER.ui?.nameTag ? CER.ui.nameTag({ type: "user", id: me.id, name, title: name }) : name);
+      }
       meLink.href = "https://www.roblox.com/users/" + me.id + "/profile";
     };
 
@@ -119,7 +124,11 @@
       robuxAmt
     );
     const showRobux = (n) => {
-      robuxAmt.textContent = n == null ? "" : Number(n).toLocaleString();
+      // millions go short (1.22M) so your name and its badges keep their room;
+      // the exact amount is in the tooltip
+      const v = Number(n);
+      robuxAmt.textContent = n == null ? "" : v >= 1e6 ? new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 }).format(v) : v.toLocaleString();
+      robuxBtn.title = n == null ? "Robux" : v.toLocaleString() + " Robux";
       robuxBtn.classList.toggle("is-loading", n == null);
     };
     robuxBtn.addEventListener("click", (e) => {
@@ -212,7 +221,7 @@
       { id: "groups", label: prefs.groupsLabel, icon: "shield", href: "https://www.roblox.com/communities#mine", match: (p) => /^\/(communities|groups)(\/|$)/i.test(p) },
       { id: "messages", label: "Messages", icon: "mail", href: "https://www.roblox.com/my/messages", match: (p) => /^\/my\/messages/i.test(p) },
       // optional ones: hidden unless turned on (sidebarPrefs[label] === "show")
-      { id: "inventory", label: "Inventory", icon: "box", href: "https://www.roblox.com/users/inventory", opt: true, match: (p) => /^\/users\/(\d+\/)?inventory/i.test(p) },
+      { id: "inventory", label: "Inventory", icon: "box", href: myId ? `https://www.roblox.com/users/${myId}/inventory` : "https://www.roblox.com/users/inventory", opt: true, match: (p) => /^\/users\/(\d+\/)?inventory/i.test(p) },
       { id: "trade", label: "Trade", icon: "swap", href: "https://www.roblox.com/trades", opt: true, match: (p) => /^\/trades/i.test(p) },
     ];
 
@@ -224,7 +233,7 @@
     function item({ label, icon: name, href, onClick, badge, id }) {
       const a = h(
         href ? "a" : "button",
-        { class: "cer-cnav-item", href, type: href ? null : "button", "data-id": id },
+        { class: "cer-cnav-item", href, type: href ? null : "button", "data-id": id, title: label }, // title: the narrow icon-only rail has no labels
         h("span", { class: "cer-cnav-ic" }, ic(name, 20)),
         h("span", { class: "cer-cnav-label", text: label }),
         badge

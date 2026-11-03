@@ -12,6 +12,31 @@
   position: relative;
   min-width: 0;
   margin-top: -6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+[data-page="discover"] .dc-chips-clip {
+  flex: 1;
+  min-width: 0;
+}
+/* the way back to the friends column: only while it is hidden */
+[data-page="discover"] .dc-fg-show {
+  flex: none;
+  display: none;
+  color: var(--cer-text-3) !important;
+}
+[data-page="discover"] .dc-fg-show:hover {
+  color: var(--cer-text) !important;
+}
+[data-page="discover"] .dc-chips.dc-fg-off .dc-fg-show {
+  display: inline-flex;
+}
+[data-page="discover"] .cer-cols.dc-fg-off {
+  grid-template-columns: minmax(0, 1fr);
+}
+[data-page="discover"] .cer-cols.dc-fg-off > .cer-col-side {
+  display: none;
 }
 [data-page="discover"] .dc-chip-row {
   padding: 2px 2px 4px;
@@ -57,6 +82,28 @@
 [data-page="discover"] .dc-hero.is-loading .cer-hero-art {
   opacity: 0.35;
   transition: opacity 0.2s;
+}
+/* creator under the title: small and quiet, white over the art */
+[data-page="discover"] .dc-hero-by {
+  min-height: 22px;
+  margin-top: -4px;
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 700;
+}
+[data-page="discover"] .dc-hero-by .cer-name {
+  color: rgba(255, 255, 255, 0.82) !important;
+  min-width: 0;
+  max-width: 100%;
+}
+[data-page="discover"] .dc-hero-by .cer-name:hover {
+  color: #fff !important;
+}
+[data-page="discover"] .dc-hero-by .cer-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 [data-page="discover"] .dc-hero .cer-hero-actions .cer-btn-light .cer-icon {
   margin-left: -2px;
@@ -190,6 +237,27 @@
   flex-direction: column;
   gap: 10px;
 }
+[data-page="discover"] .dc-fg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+/* quiet: faint until the column is hovered */
+[data-page="discover"] .dc-fg-hide {
+  flex: none;
+  margin-right: -6px;
+  color: var(--cer-text-3) !important;
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+}
+[data-page="discover"] .dc-fg:hover .dc-fg-hide,
+[data-page="discover"] .dc-fg-hide:focus-visible {
+  opacity: 1;
+}
+[data-page="discover"] .dc-fg-hide:hover {
+  color: var(--cer-text) !important;
+}
 [data-page="discover"] .dc-fg-title {
   font-size: 18px;
 }
@@ -288,12 +356,29 @@
   position: relative;
 }
 [data-page="discover"] .dc-fg-who {
+  display: flex;
+  align-items: center;
   font-size: 12.5px;
   color: var(--cer-text-3);
-  white-space: nowrap;
+  white-space: pre;
+  overflow: hidden;
+  min-width: 0;
+}
+/* names stay one line: the first one gives way (ellipsis) before the rest */
+[data-page="discover"] .dc-fg-who .cer-name {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  font-size: inherit;
+  color: inherit !important;
+}
+[data-page="discover"] .dc-fg-who .cer-name:hover .cer-name-text {
+  color: var(--cer-text);
+}
+[data-page="discover"] .dc-fg-who .cer-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  white-space: nowrap;
 }
 [data-page="discover"] .dc-fg-join {
   flex: none;

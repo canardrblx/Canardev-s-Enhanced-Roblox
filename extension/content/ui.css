@@ -947,6 +947,101 @@ a.cer-card-box:hover {
   flex: 1;
 }
 
+/* ------------------------------------------------------------ identity */
+/* ui.nameTag: a name + its Roblox badges. Badges are 1em of the name's own
+   font, so they follow whatever text size the page uses. Verified is Roblox's
+   own badge shape, recolored: plate = accent, check = accent ink (light, dark
+   and CER tints all work). Premium / Plus use the text color. */
+.cer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+.cer-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cer-name-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cer-text-3, var(--color-content-muted, #8e93a3));
+  font-weight: 500;
+}
+.cer-name-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22em;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.cer-name-badges.is-empty {
+  display: none;
+}
+.cer-name-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.cer-name-badge > svg {
+  display: block;
+  width: 1.05em;
+  height: 1.05em;
+}
+.cer-name-badges[data-size="sm"] .cer-name-badge > svg {
+  width: 1em;
+  height: 1em;
+}
+.cer-name-badges[data-size="lg"] .cer-name-badge > svg {
+  width: 0.82em;
+  height: 0.82em;
+}
+.cer-name-badge.is-premium,
+.cer-name-badge.is-robloxPlus {
+  color: inherit;
+}
+.cer-vb-plate {
+  fill: var(--cer-acc, var(--cer-accent, var(--color-content-emphasis, currentColor)));
+}
+.cer-vb-check {
+  fill: var(--cer-acc-ink, var(--cer-accent-ink, var(--color-surface-0, #111216)));
+}
+.cer-vb-plate,
+.cer-vb-check {
+  stroke: none !important; /* older page rules stroked the last path of the old icon */
+}
+/* white text over hero art: the badge follows that text, not the page theme */
+.cer-hero .cer-vb-plate {
+  fill: var(--cer-accent, #fff);
+}
+.cer-hero .cer-vb-check {
+  fill: var(--cer-accent-ink, #0b0c12);
+}
+/* big titles wrap like text, badges ride after the last word */
+.cer-name-lg {
+  display: inline;
+}
+.cer-name-lg > .cer-name-text {
+  white-space: normal;
+  overflow: visible;
+}
+.cer-name-lg > .cer-name-badges {
+  margin-left: 0.22em;
+  vertical-align: -0.06em;
+}
+.cer-name-lg > .cer-name-sub {
+  margin-left: 0.3em;
+}
+.cer-user:not(.is-row) .cer-name {
+  justify-content: center;
+}
+
 /* ------------------------------------------------------------ bits */
 .cer-stat {
   display: flex;
@@ -1032,6 +1127,7 @@ a.cer-card-box:hover {
   color: var(--cer-text-2);
   font-size: 15px;
 }
+.cer-ui p.cer-clamp.is-open,
 .cer-clamp.is-open {
   -webkit-line-clamp: unset;
   display: block;

@@ -28,20 +28,6 @@
   gap: 16px;
 }
 
-/* verified mark: fill follows the text, check is knocked out */
-[data-page="groups"] .cer-gp-verified {
-  display: inline-flex;
-  vertical-align: middle;
-  flex: none;
-  color: currentColor;
-}
-[data-page="groups"] .cer-gp-verified .cer-icon path:last-child {
-  stroke: var(--cer-bg);
-}
-[data-page="groups"] .cer-hero .cer-gp-verified .cer-icon path:last-child {
-  stroke: rgba(6, 7, 12, 0.85);
-}
-
 /* ------------------------------------------------------------ hero */
 [data-page="groups"] .cer-gp-hero {
   min-height: 300px;
@@ -65,9 +51,6 @@
 [data-page="groups"] .cer-gp-hero .cer-hero-title {
   font-size: clamp(30px, 3.2vw, 46px);
 }
-[data-page="groups"] .cer-gp-hero .cer-hero-title .cer-gp-verified {
-  transform: translateY(-3px);
-}
 [data-page="groups"] .cer-gp-meta {
   display: flex;
   align-items: center;
@@ -89,7 +72,7 @@
 [data-page="groups"] .cer-gp-owner:hover {
   color: #fff !important;
 }
-[data-page="groups"] .cer-gp-owner > span:not(.cer-avatar):not(.cer-gp-verified) {
+[data-page="groups"] .cer-gp-owner > .cer-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -435,14 +418,15 @@
   line-height: 1.3;
 }
 [data-page="groups"] .cer-gp-tile-name > span:first-child {
+  white-space: normal;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
 }
-[data-page="groups"] .cer-gp-tile-name .cer-gp-verified {
-  margin-top: 2px;
+[data-page="groups"] .cer-gp-tile-name .cer-name-badges {
+  margin-top: 0.12em;
 }
 
 /* ------------------------------------------------------------ my groups */

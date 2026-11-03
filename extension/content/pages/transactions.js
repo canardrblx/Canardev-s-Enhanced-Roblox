@@ -58,8 +58,14 @@
     const amt = t.currency?.amount ?? 0;
     const title = d.name || d.place?.name || a.name || "Robux";
     const href = itemHref(d);
+    // the other side of the deal, with its Roblox badges
+    const agentTag = (cls) =>
+      ui.nameTag({ type: a.type === "Group" ? "group" : "user", id: a.type === "User" || a.type === "Group" ? a.id : null, name: a.name, size: "sm", cls });
+    const isAgentTitle = !d.name && !d.place?.name && !!a.name;
     // buyer's name only where it tells you something (your sales)
-    const sub = [/Sale/.test(t.transactionType ?? "") && a.name, shortDate(t.created)].filter(Boolean).join(" · ");
+    const date = shortDate(t.created);
+    const buyer = /Sale/.test(t.transactionType ?? "") && a.name && !isAgentTitle;
+    const sub = buyer ? [agentTag("cer-trx-who"), date && " · " + date] : date;
     return h(
       "div",
       { class: "cer-trx-row" },
@@ -67,8 +73,8 @@
       h(
         "div",
         { class: "cer-trx-main" },
-        href ? h("a", { class: "cer-trx-name", href, title, text: title }) : h("span", { class: "cer-trx-name", title, text: title }),
-        h("span", { class: "cer-trx-sub", text: sub })
+        href ? h("a", { class: "cer-trx-name", href, title, text: title }) : isAgentTitle ? agentTag("cer-trx-name") : h("span", { class: "cer-trx-name", title, text: title }),
+        h("span", { class: "cer-trx-sub" }, sub)
       ),
       h(
         "span",

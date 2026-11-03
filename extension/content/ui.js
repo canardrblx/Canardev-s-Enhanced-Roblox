@@ -32,6 +32,8 @@
     { tag: "messages", feat: "messagesPage", test: (p) => /^\/my\/messages/i.test(p) },
     { tag: "settings", feat: "settingsPage", test: (p) => /^\/my\/account/i.test(p) && !/^#!\/(?!info\b)\w/.test(location.hash) },
     { tag: "transactions", feat: "transactionsPage", test: (p) => /^\/transactions/i.test(p) },
+    // avatar.js (own manifest entry) mounts it; listed so Roblox's editor is never started
+    { tag: "avatar", feat: "avatarEditor", test: (p) => /^\/my\/avatar/i.test(p) },
     { tag: "groupconfig", feat: "groupConfigPage", test: (p) => /^\/(communities|groups)\/(\d+\/)?configure/i.test(p) },
     { tag: "badge", feat: "badgePage", test: (p) => /^\/badges\/\d+/i.test(p) },
     { tag: "pass", feat: "passPage", test: (p) => /^\/game-pass\/\d+/i.test(p) },
@@ -53,7 +55,7 @@
   CER.takeover = (async () => {
     try {
       const { features = {} } = await CER.ext.storage.local.get("features");
-      return CER.pageFor(location.pathname, location.search, features)?.tag ?? null;
+      return CER.pageFor(location.pathname, location.search, CER.fixFeatures?.(features) ?? features)?.tag ?? null;
     } catch {
       return null;
     }
@@ -172,7 +174,12 @@
     hash: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
     box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>',
     wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
-    verified: '<path d="M12 2.5 14.4 4.6l3.1-.4.9 3 2.8 1.5-1 3 1 3-2.8 1.5-.9 3-3.1-.4L12 21.5l-2.4-2.1-3.1.4-.9-3-2.8-1.5 1-3-1-3 2.8-1.5.9-3 3.1.4Z" fill="currentColor" stroke="none"/><path d="m8.5 12 2.5 2.5 4.5-5" style="stroke:var(--cer-bg,#111216)"/>',
+    // Roblox's own identity marks (32-grid paths from Roblox's icon font,
+    // scaled to our 24 grid). Colors come from CER tokens, never Roblox blue:
+    // verified plate = accent, check = accent ink; Premium / Plus = currentColor.
+    verified: '<g transform="scale(.75)" stroke="none"><path class="cer-vb-plate" d="M7.71897 4.48022C8.00434 3.41518 9.09906 2.78315 10.1641 3.06852L27.5198 7.71897C28.5848 8.00434 29.2169 9.09906 28.9315 10.1641L24.281 27.5198C23.9957 28.5848 22.9009 29.2169 21.8359 28.9315L4.48022 24.281C3.41518 23.9957 2.78315 22.9009 3.06852 21.8359L7.71897 4.48022Z"/><path class="cer-vb-check" d="M19.9393 11.9393C20.5251 11.3536 21.4746 11.3536 22.0604 11.9393C22.646 12.5251 22.6461 13.4747 22.0604 14.0604L15.0604 21.0604C14.4747 21.6461 13.5251 21.646 12.9393 21.0604L9.93934 18.0604C9.35355 17.4746 9.35355 16.5251 9.93934 15.9393C10.5251 15.3536 11.4746 15.3536 12.0604 15.9393L13.9999 17.8788L19.9393 11.9393Z"/></g>',
+    premium: '<g transform="scale(.75)" stroke="none" fill="currentColor"><path d="M23 4C25.7614 4 28 6.23858 28 9V23C28 25.7614 25.7614 28 23 28H15C14.4477 28 14 27.5523 14 27C14 26.4477 14.4477 26 15 26H23C24.6569 26 26 24.6569 26 23V9C26 7.34315 24.6569 6 23 6H9C7.34315 6 6 7.34315 6 9V27C6 27.5523 5.55228 28 5 28C4.44772 28 4 27.5523 4 27V9C4 6.23858 6.23858 4 9 4H23Z M20 10C21.1046 10 22 10.8954 22 12V20C22 21.1046 21.1046 22 20 22H15C14.4477 22 14 21.5523 14 21C14 20.4477 14.4477 20 15 20H20V12H12V27C12 27.5523 11.5523 28 11 28C10.4477 28 10 27.5523 10 27V12C10 10.8954 10.8954 10 12 10H20Z"/></g>',
+    robloxPlus: '<g transform="scale(.75)" stroke="none" fill="currentColor"><path d="M13.8555 2.5606C15.1824 1.81313 16.8176 1.81313 18.1445 2.5606L26.8555 7.46782C28.1824 8.21534 28.9999 9.59781 29 11.0928V20.9073C29 22.4024 28.1824 23.7847 26.8555 24.5323L18.1445 29.4395L17.8926 29.5704C16.6996 30.143 15.3004 30.143 14.1074 29.5704L13.8555 29.4395L11.0176 27.8409C10.3887 27.4864 10 26.8196 10 26.0977V12.001C10.0002 10.8967 10.8957 10.0012 12 10.001L20 10.0001C21.1044 10 21.9998 10.8957 22 12.0001V19.0001C22 20.1046 21.1046 21.0001 20 21.0001H16C15.4477 21.0001 15 20.5523 15 20.0001C15.0002 19.4479 15.4478 19.0001 16 19.0001H20V12.0001L12 12.001V26.0987L14.8369 27.6973C15.5545 28.1016 16.4455 28.1016 17.1631 27.6973L25.874 22.7891C26.5863 22.3877 27 21.6636 27 20.9073V11.0928C26.9999 10.3366 26.5863 9.61234 25.874 9.21099L17.1631 4.30278C16.4456 3.89864 15.5544 3.89864 14.8369 4.30278L6.12598 9.21099C5.41372 9.61234 5.00013 10.3366 5 11.0928V20.9073C5 21.6636 5.4137 22.3877 6.12598 22.7891L6.49023 22.9942C6.80495 23.1714 7 23.5051 7 23.8663C6.99984 24.6314 6.17549 25.1128 5.50879 24.7374L5.14453 24.5323C3.81763 23.7847 3 22.4024 3 20.9073V11.0928C3.00012 9.69126 3.71827 8.38846 4.90137 7.61528L5.14453 7.46782L13.8555 2.5606Z"/></g>',
   };
   ui.ICONS = I;
   // ui.icon("play", 18) → <svg>. Unknown names render an empty box, never throw.
@@ -747,7 +754,7 @@
 
   // ---------------------------------------------------------------- tiles
   // Game card. game: { placeId, universeId, name, playing, rating, image? }
-  // opts: { rank, size: "md"|"lg"|"icon", sub, showPlay (default true), features }
+  // opts: { rank, size: "md"|"lg"|"icon", sub, creator: { type, id, name, hasVerifiedBadge }, showPlay (default true), features }
   ui.gameCard = function (game, opts = {}) {
     const kind = opts.size === "icon" ? "gameIcon" : "gameThumb";
     const name = CER.cleanTitle(game.name ?? "", opts.features ?? CER._featsCache ?? {});
@@ -767,7 +774,8 @@
       { class: "cer-gc-meta" },
       game.rating != null && h("span", {}, ui.icon("like", 13), h("span", { text: game.rating + "%" })),
       game.playing != null && h("span", {}, ui.icon("users", 13), h("span", { text: fmt.num(game.playing) })),
-      opts.sub && h("span", { class: "cer-gc-sub", text: opts.sub })
+      opts.sub && h("span", { class: "cer-gc-sub", text: opts.sub }),
+      opts.creator?.name && ui.nameTag({ type: opts.creator.type === "Group" || opts.creator.type === "group" ? "group" : "user", id: opts.creator.id, name: opts.creator.name, verified: opts.creator.hasVerifiedBadge ?? opts.creator.verified, size: "sm", cls: "cer-gc-creator" })
     );
     return h(
       "a",
@@ -799,7 +807,8 @@
   };
 
   // Person tile: avatar + display name + one line under it.
-  // user: { id, displayName, name }, opts: { presence, sub, size, href, action: node }
+  // user: { id, displayName, name, hasVerifiedBadge? }, opts: { presence, sub, size, href, action: node }
+  // The name carries its Roblox badges (ui.nameTag).
   ui.userTile = function (user, opts = {}) {
     const p = opts.presence;
     const state = p ? api.presenceState(p) : null;
@@ -808,7 +817,12 @@
       "a",
       { class: "cer-user" + (opts.row ? " is-row" : ""), href: opts.href ?? `https://www.roblox.com/users/${user.id}/profile`, title: user.displayName ?? user.name },
       ui.avatar(user.id, { size: opts.size ?? (opts.row ? 44 : 84), presence: p }),
-      h("span", { class: "cer-user-text" }, h("span", { class: "cer-user-name", text: user.displayName ?? user.name ?? "" }), sub && h("span", { class: "cer-user-sub is-" + (state ?? "none"), text: sub })),
+      h(
+        "span",
+        { class: "cer-user-text" },
+        ui.nameTag({ type: "user", id: user.id, name: user.displayName ?? user.name ?? "", verified: user.hasVerifiedBadge ?? user.verified, plus: user.plus, premium: user.premium, cls: "cer-user-name" }),
+        sub && h("span", { class: "cer-user-sub is-" + (state ?? "none"), text: sub })
+      ),
       opts.action
     );
   };
@@ -852,23 +866,182 @@
   // ---------------------------------------------------------------- identity
   // A user or group name with its Roblox badges (verified, Premium, Plus).
   // USE THIS everywhere a display name, username or group name is shown.
-  //   ui.nameTag({ type: "user"|"group", id, name, sub, verified, size, href, cls })
+  //   ui.nameTag({ type: "user"|"group", id, name, sub, verified, premium, plus, size, href, cls, title })
   //     name: the text to show (display name, or group name)
   //     sub:  optional second text, e.g. "@username" (muted, after the badges)
   //     verified/premium/plus: pass if you already know them; anything not
   //       passed is fetched in batches and the badges appear when known
-  //     size: "sm" | "md" | "lg" (badge size follows the text)
+  //     size: "sm" | "md" | "lg" (badges are sized to the text: 1em of the
+  //       font the name sits in; lg is for page heroes)
   //   ui.nameBadges(o) → just the badge span (same options), for custom layouts
-  // STUB: the identity agent fills in fetching and the real badge icons.
+  //   CER.api.identity.user(id) / .group(id) → Promise<{ verified, sub, exact? }>
+  //     (.many(ids) to preload a list in one call)
+  //
+  // Where the marks come from (checked live 2026-11-03, read-only):
+  //  users  POST apis.roblox.com/user-profile-api/v1/user/profiles/get-profiles
+  //         { userIds (up to 200), fields: ["isVerified", "hasRobloxSubscription"] }
+  //         No CSRF needed. Roblox's own friend tiles show Plus from
+  //         hasRobloxSubscription. One call per 200 names on screen.
+  //  groups GET groups.roblox.com/v2/groups?groupIds= (up to 100) → hasVerifiedBadge
+  //  Plus vs Premium: only profile-platform-api/v1/profiles/get (one user per
+  //         call, UserProfileHeader.isRobloxPlus / isPremium) tells them apart;
+  //         Roblox shows Premium only when there is no Plus. We ask it only for
+  //         "lg" names (page heroes) of subscribers, once visible, one at a time.
+  //         (premiumfeatures v1/users/{id}/validate-membership also works for
+  //         other users, but it is per user and only says true/false.)
+  //  Plus flag: guac-v2/v1/bundles/web-plus-identity-badge →
+  //         { plusIdentityBadgeEnabled }. Off: a subscription shows as Premium.
+  // Results live for the session in sessionStorage ("cer:idmarks", by id).
+  const ID_KEY = "cer:idmarks";
+  const ID_TTL = 30 * 60 * 1000;
+  let idStore = null;
+  const idLoad = () => {
+    if (idStore) return idStore;
+    try {
+      idStore = JSON.parse(sessionStorage.getItem(ID_KEY) || "{}") || {};
+    } catch {
+      idStore = {};
+    }
+    return idStore;
+  };
+  let idSaveT = null;
+  const idSave = () => {
+    if (idSaveT) return;
+    idSaveT = setTimeout(() => {
+      idSaveT = null;
+      const now = Date.now();
+      for (const k in idStore) if (now - idStore[k].t > ID_TTL) delete idStore[k];
+      try {
+        sessionStorage.setItem(ID_KEY, JSON.stringify(idStore));
+      } catch {
+        /* quota: memory copy still works */
+      }
+    }, 500);
+  };
+  const idGet = (k) => {
+    const e = idLoad()[k];
+    return e && Date.now() - e.t < ID_TTL ? e.v : null;
+  };
+  const idPut = (k, v) => {
+    const st = idLoad();
+    st[k] = { t: Date.now(), v: { ...st[k]?.v, ...v } };
+    idSave();
+    return st[k].v;
+  };
+  // an API that fails is left alone for a minute (no retry storm per render)
+  const idDown = { u: 0, g: 0 };
+  const userMarks = batcher(
+    async (ids) => {
+      const out = new Map();
+      if (Date.now() < idDown.u) return out;
+      const j = await api.json("https://apis.roblox.com/user-profile-api/v1/user/profiles/get-profiles", {
+        method: "POST",
+        body: { userIds: ids.map(Number), fields: ["isVerified", "hasRobloxSubscription"] },
+      });
+      if (!Array.isArray(j?.profileDetails)) {
+        idDown.u = Date.now() + 60000;
+        return out;
+      }
+      for (const p of j.profileDetails) out.set(String(p.userId), idPut("u" + p.userId, { verified: !!p.isVerified, sub: !!p.hasRobloxSubscription }));
+      for (const id of ids) if (!out.has(String(id))) out.set(String(id), idPut("u" + id, { verified: false, sub: false })); // deleted / banned
+      return out;
+    },
+    200,
+    30
+  );
+  const groupMarks = batcher(
+    async (ids) => {
+      const out = new Map();
+      if (Date.now() < idDown.g) return out;
+      const j = await api.json("https://groups.roblox.com/v2/groups?groupIds=" + ids.join(","));
+      if (!Array.isArray(j?.data)) {
+        idDown.g = Date.now() + 60000;
+        return out;
+      }
+      for (const g of j.data) out.set(String(g.id), idPut("g" + g.id, { verified: !!g.hasVerifiedBadge }));
+      for (const id of ids) if (!out.has(String(id))) out.set(String(id), idPut("g" + id, { verified: false }));
+      return out;
+    },
+    100,
+    30
+  );
+  api.identity = { user: userMarks, group: groupMarks };
+
+  // Plus flag (one cached GET per session). Until it answers, Plus is assumed on.
+  let plusOn = true;
+  let plusAsk = null;
+  const askPlus = () =>
+    (plusAsk ??= api.json("https://apis.roblox.com/guac-v2/v1/bundles/web-plus-identity-badge", { ttl: ID_TTL }).then((j) => {
+      if (j && j.plusIdentityBadgeEnabled === false) plusOn = false;
+    }));
+
+  // Plus vs Premium for one user (per-user API): queued, one call at a time.
+  const exactAsk = new Map();
+  const exactQ = [];
+  let exactBusy = false;
+  const exactMarks = (id) => {
+    if (!exactAsk.has(id)) exactAsk.set(id, new Promise((resolve) => exactQ.push({ id, resolve })));
+    pumpExact();
+    return exactAsk.get(id);
+  };
+  async function pumpExact() {
+    if (exactBusy) return;
+    exactBusy = true;
+    while (exactQ.length) {
+      const { id, resolve } = exactQ.shift();
+      const j = await api.json("https://apis.roblox.com/profile-platform-api/v1/profiles/get", {
+        method: "POST",
+        body: { profileId: String(id), profileType: "User", components: [{ component: "UserProfileHeader" }], includeComponentOrdering: false },
+      });
+      const hd = j?.components?.UserProfileHeader;
+      resolve(hd ? idPut("u" + id, { verified: !!hd.isVerified, sub: !!(hd.isRobloxPlus || hd.isPremium), exact: { plus: !!hd.isRobloxPlus, premium: !!hd.isPremium } }) : null);
+      await sleep(400);
+    }
+    exactBusy = false;
+  }
+
+  // stored marks + what the caller passed → what to draw
+  function marksOf(v, o) {
+    const verified = o.verified ?? v?.verified ?? false;
+    let plus = o.plus;
+    let premium = o.premium;
+    if (plus == null && premium == null && v) {
+      if (v.exact) ({ plus, premium } = v.exact);
+      else if (v.sub) plusOn ? (plus = true) : (premium = true);
+    }
+    if (plus) premium = false; // Roblox shows one or the other, Plus first
+    return { verified: !!verified, plus: !!plus, premium: !!premium };
+  }
+  const markEl = (icon, label) => h("span", { class: "cer-name-badge is-" + icon, title: label, role: "img", "aria-label": label }, ui.icon(icon, 16));
+
   ui.nameBadges = function (o = {}) {
-    const wrap = h("span", { class: "cer-name-badges" });
-    if (o.verified) wrap.appendChild(h("span", { class: "cer-name-badge is-verified", title: "Verified" }));
+    const wrap = h("span", { class: "cer-name-badges", "data-size": o.size ?? "md" });
+    const group = o.type === "group";
+    const id = o.id != null && /^\d+$/.test(String(o.id)) ? String(o.id) : null;
+    const key = id && (group ? "g" : "u") + id;
+    const draw = (v) => {
+      const m = marksOf(v, o);
+      wrap.replaceChildren(...[m.verified && markEl("verified", "Verified"), m.plus && markEl("robloxPlus", "Plus"), m.premium && markEl("premium", "Premium")].filter(Boolean));
+      wrap.classList.toggle("is-empty", !wrap.firstChild);
+    };
+    const known = key ? idGet(key) : null;
+    draw(known);
+    if (!id) return wrap;
+    if (!group) askPlus().then(() => !plusOn && draw(idGet(key)));
+    const passed = group ? o.verified != null : o.verified != null && (o.plus != null || o.premium != null);
+    const load = known || passed ? null : (group ? groupMarks : userMarks)(id);
+    load?.then((v) => v && draw(v));
+    // page heroes: tell Plus from Premium (per-user API, only once on screen)
+    if (!group && o.size === "lg" && o.plus == null && o.premium == null) {
+      const refine = (v) => v?.sub && !v.exact && ui.whenVisible(wrap, () => exactMarks(id).then((x) => x && draw(x)));
+      known ? refine(known) : load?.then(refine);
+    }
     return wrap;
   };
   ui.nameTag = function (o = {}) {
     return h(
       o.href ? "a" : "span",
-      { class: "cer-name cer-name-" + (o.size ?? "md") + " " + (o.cls ?? ""), href: o.href },
+      { class: "cer-name cer-name-" + (o.size ?? "md") + " " + (o.cls ?? ""), href: o.href, title: o.title ?? o.name ?? null },
       h("span", { class: "cer-name-text", text: o.name ?? "" }),
       ui.nameBadges(o),
       o.sub && h("span", { class: "cer-name-sub", text: o.sub })

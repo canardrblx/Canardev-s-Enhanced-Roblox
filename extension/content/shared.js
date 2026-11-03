@@ -73,7 +73,7 @@ const CER = {
       preferRegion: false, // wired up in the server-tools phase
     },
     theme: {
-      preset: "", // id from CER.THEMES, "" = leave Roblox alone
+      preset: "native-dark", // id from CER.THEMES, "" = leave Roblox alone
       font: "",
     },
     uiState: {
@@ -83,62 +83,69 @@ const CER = {
   },
 };
 
-// Theme presets, Discord-Nitro style.
-// `native` presets just flip Roblox's own light/dark setting.
-// `dark` presets ALSO flip Roblox to native dark first, so Roblox themes its
-// own text/chat/search/footer — then we tint backgrounds and accents on top.
-// `card` must contrast clearly with `bg` (user feedback: cards were invisible).
-// `flat` is the solid fallback for gradient backgrounds — it feeds the design
-// tokens, which can't hold gradients.
+// Theme presets. Three kinds:
+//  - id ""          "Auto": hands off, Roblox's own mode and app theme show
+//                   (incl. Roblox Plus app themes like The Hollow)
+//  - `native`       flips Roblox's own light/dark setting (PATCH themes/User at
+//                   click time, see CER.pickTheme) and theme.js keeps the
+//                   body classes on it; Roblox app themes come off
+//  - CER themes     ride on native dark/light (`dark`), then theme.js tints
+//                   Roblox's tokens and CER's: bg (page, may be a gradient;
+//                   `flat` is its solid twin for tokens), header (nav/bars),
+//                   card (tiles), raise (inputs, hover, second surface),
+//                   accent (buttons; its ink comes from theme.js inkOn()).
+// Every pair was checked: body text 14:1+ on bg, muted text 5:1+ on cards,
+// accent 4.5:1+ (light) / 5.4:1+ (dark) on cards, ink 4.6:1+ on accent.
+// `preview` = the picker's mini page colours where it can't use the tokens.
 CER.THEMES = [
-  { id: "", name: "Default", accent: "#335fff", swatch: "linear-gradient(135deg,#fff 50%,#232527 50%)" },
-  { id: "native-light", name: "Roblox Light", native: "Light", accent: "#335fff", swatch: "#ffffff" },
-  { id: "native-dark", name: "Roblox Dark", native: "Dark", accent: "#335fff", swatch: "#232527" },
-  { id: "blossom", name: "Blossom", bg: "#fff0f4", header: "#ffdbe6", card: "#ffe4ed", accent: "#f5427e", swatch: "#f5427e" },
-  { id: "mint", name: "Mint", bg: "#effbf4", header: "#d5f3e2", card: "#dff7e9", accent: "#00a05f", swatch: "#00a05f" },
-  { id: "sky", name: "Sky", bg: "linear-gradient(180deg, #eaf4ff 0%, #d9e9ff 100%)", flat: "#e4f0ff", header: "#cfe5ff", card: "#dcebff", accent: "#0074ff", swatch: "linear-gradient(135deg,#7db8ff,#0074ff)" },
-  { id: "cotton", name: "Cotton Candy", bg: "linear-gradient(160deg, #fdeffd 0%, #e8f0ff 100%)", flat: "#f5eefd", header: "#f0dcf7", card: "#f7ebfb", accent: "#b96bff", swatch: "linear-gradient(135deg,#ffb3ec,#9db8ff)" },
-  { id: "midnight", name: "Midnight", dark: true, bg: "#16181d", header: "#1f2229", card: "#2c323f", accent: "#5865f2", swatch: "#16181d" },
-  { id: "oled", name: "OLED", dark: true, bg: "#000000", header: "#0b0b0b", card: "#1d1d1d", accent: "#00d9a5", swatch: "#000000" },
-  { id: "sunset", name: "Sunset", dark: true, bg: "linear-gradient(160deg, #1f1135 0%, #452363 55%, #7a3b5e 100%)", flat: "#2b1844", header: "rgba(20, 10, 40, 0.92)", card: "rgba(72, 44, 108, 0.94)", accent: "#ff7e5f", swatch: "linear-gradient(135deg,#452363,#ff7e5f)" },
-  { id: "lava", name: "Lava", dark: true, bg: "linear-gradient(180deg, #1a0d0d 0%, #2d0e0e 100%)", flat: "#210d0d", header: "#240d0d", card: "#4a1a1a", accent: "#ff4433", swatch: "linear-gradient(135deg,#3d1010,#ff4433)" },
-  { id: "grape", name: "Grape", dark: true, bg: "#1a1226", header: "#241934", card: "#352450", accent: "#a05cff", swatch: "linear-gradient(135deg,#241934,#a05cff)" },
-  { id: "forest", name: "Forest", dark: true, bg: "#0f1a12", header: "#16241a", card: "#22392a", accent: "#3ddc84", swatch: "linear-gradient(135deg,#16241a,#3ddc84)" },
-  { id: "ocean", name: "Ocean", dark: true, bg: "#0a1620", header: "#102331", card: "#1a3549", accent: "#00b4ff", swatch: "linear-gradient(135deg,#102331,#00b4ff)" },
-  { id: "coffee", name: "Coffee", dark: true, bg: "#191310", header: "#241c16", card: "#37291e", accent: "#c98a4b", swatch: "linear-gradient(135deg,#241c16,#c98a4b)" },
-  { id: "cyber", name: "Cyber", dark: true, bg: "#0d0d12", header: "#131320", card: "#1e1e33", accent: "#00f0ff", swatch: "linear-gradient(135deg,#131320,#00f0ff)" },
-  // Starfields are TILED (fixed px tile, repeat) so density is identical on
-  // 1080p, 4K, and ultrawide — percentage-positioned stars go sparse on big
-  // screens. Nebulae/base gradients use % and scale cleanly everywhere.
+  { id: "", group: "roblox", name: "Auto", preview: { bg: "linear-gradient(135deg,#f2f4f5 50%,#111216 50%)", side: "transparent", card: "rgba(128,128,128,0.35)", accent: "#8e93a3", dark: true } },
+  { id: "native-light", group: "roblox", name: "Light", native: "Light", preview: { bg: "#f2f4f5", side: "#ffffff", card: "#ffffff", accent: "#202227" } },
+  { id: "native-dark", group: "roblox", name: "Dark", native: "Dark", preview: { bg: "#111216", side: "#191b1f", card: "#232527", accent: "#f7f7f8", dark: true } },
   {
-    id: "nightsky", name: "Night Sky", dark: true, flat: "#05050f",
-    bg: "radial-gradient(1.5px 1.5px at 34px 46px, rgba(255,255,255,0.9), transparent 2.5px) 0 0 / 460px 460px repeat, radial-gradient(1px 1px at 198px 122px, rgba(255,255,255,0.6), transparent 2px) 0 0 / 460px 460px repeat, radial-gradient(1.2px 1.2px at 322px 310px, rgba(255,255,255,0.8), transparent 2.5px) 0 0 / 460px 460px repeat, radial-gradient(1px 1px at 118px 372px, rgba(255,255,255,0.5), transparent 2px) 0 0 / 460px 460px repeat, radial-gradient(1.3px 1.3px at 420px 208px, rgba(255,255,255,0.7), transparent 2.5px) 0 0 / 460px 460px repeat, radial-gradient(1px 1px at 262px 34px, rgba(255,255,255,0.45), transparent 2px) 0 0 / 460px 460px repeat, linear-gradient(180deg, #04040d 0%, #0a0a24 65%, #10102e 100%)",
-    header: "rgba(8, 8, 26, 0.94)", card: "#191936", accent: "#7aa5ff", swatch: "linear-gradient(135deg,#04040d,#7aa5ff)",
+    id: "midnight", name: "Midnight", dark: true, flat: "#0b1020", header: "#0f1529", card: "#1b2442", raise: "#252f50", accent: "#7b93ff",
+    bg: "radial-gradient(ellipse 90% 55% at 70% -10%, rgba(123,147,255,0.16), transparent 70%), #0b1020",
   },
   {
-    id: "galaxy", name: "Galaxy", dark: true, flat: "#0a0518",
-    bg: "radial-gradient(ellipse 60% 40% at 30% 25%, rgba(140,70,220,0.35), transparent), radial-gradient(ellipse 55% 45% at 78% 70%, rgba(40,120,255,0.28), transparent), radial-gradient(ellipse 40% 30% at 60% 40%, rgba(255,80,180,0.15), transparent), linear-gradient(160deg, #070312 0%, #140a2c 55%, #0a0618 100%)",
-    header: "rgba(14, 7, 32, 0.94)", card: "#231343", accent: "#c26bff", swatch: "linear-gradient(135deg,#140a2c,#c26bff)",
+    id: "galaxy", name: "Galaxy", dark: true, flat: "#0c0919", header: "#120e24", card: "#221b3f", raise: "#2d2450", accent: "#c084ff",
+    // stars are a fixed-size tile so density is the same on every screen
+    bg: "radial-gradient(1.4px 1.4px at 40px 60px, rgba(255,255,255,0.75), transparent 2.4px) 0 0 / 420px 420px repeat, radial-gradient(1px 1px at 230px 140px, rgba(255,255,255,0.5), transparent 2px) 0 0 / 420px 420px repeat, radial-gradient(1.2px 1.2px at 330px 330px, rgba(255,255,255,0.65), transparent 2.2px) 0 0 / 420px 420px repeat, radial-gradient(1px 1px at 120px 360px, rgba(255,255,255,0.4), transparent 2px) 0 0 / 420px 420px repeat, radial-gradient(ellipse 60% 45% at 20% 10%, rgba(192,132,255,0.2), transparent 70%), radial-gradient(ellipse 55% 45% at 85% 85%, rgba(80,120,255,0.16), transparent 70%), #0c0919",
   },
   {
-    id: "beach", name: "Beach", flat: "#bfe6f7",
-    bg: "linear-gradient(180deg, #9fd9ff 0%, #c9edff 38%, #5fb9e6 46%, #7fcbea 55%, #ffedc9 63%, #ffe2ad 100%)",
-    header: "#bce4f7", card: "#fff6e6", accent: "#ff8a4d", swatch: "linear-gradient(180deg,#9fd9ff 45%,#ffe2ad 55%)",
+    id: "ocean", name: "Ocean", dark: true, flat: "#06171d", header: "#0a2027", card: "#102f38", raise: "#173e49", accent: "#2dd4bf",
+    bg: "radial-gradient(ellipse 90% 55% at 30% -10%, rgba(45,212,191,0.13), transparent 70%), #06171d",
   },
   {
-    id: "ember", name: "Ember", dark: true, flat: "#140b08",
-    bg: "linear-gradient(180deg, #0f0705 0%, #1c0f09 60%, #2b140a 100%)",
-    header: "#1a0e08", card: "#33200f", accent: "#ff8c3b", swatch: "linear-gradient(135deg,#1c0f09,#ff8c3b)",
-    extra: "@keyframes cer-flicker { 0%, 100% { opacity: 0.5; } 42% { opacity: 0.75; } 68% { opacity: 0.6; } } body::before { content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 45vh; pointer-events: none; z-index: 0; background: radial-gradient(ellipse at 50% 105%, rgba(255, 128, 40, 0.35), transparent 65%); animation: cer-flicker 3.2s ease-in-out infinite; }",
+    id: "forest", name: "Forest", dark: true, flat: "#0b1510", header: "#0f1d16", card: "#172b20", raise: "#20392b", accent: "#4ade80",
+    bg: "radial-gradient(ellipse 90% 55% at 50% -10%, rgba(74,222,128,0.11), transparent 70%), #0b1510",
   },
   {
-    id: "aurora", name: "Aurora", dark: true, flat: "#05100f",
-    bg: "linear-gradient(180deg, #04100f 0%, #061a1c 60%, #0a1122 100%)",
-    header: "rgba(7, 22, 24, 0.94)", card: "#123030", accent: "#4bffd0", swatch: "linear-gradient(135deg,#0a2b2b,#4bffd0)",
-    // slow-shifting green/teal light curtains up top
-    extra: "@keyframes cer-aurora { 0% { transform: translateX(-8%) skewX(-6deg); opacity: 0.45; } 50% { transform: translateX(8%) skewX(6deg); opacity: 0.7; } 100% { transform: translateX(-8%) skewX(-6deg); opacity: 0.45; } } body::before { content: ''; position: fixed; top: -10%; left: -10%; right: -10%; height: 60vh; pointer-events: none; z-index: 0; background: radial-gradient(ellipse 50% 60% at 30% 0%, rgba(75,255,208,0.28), transparent 70%), radial-gradient(ellipse 45% 55% at 70% 10%, rgba(90,140,255,0.22), transparent 70%), radial-gradient(ellipse 40% 50% at 50% 5%, rgba(180,90,255,0.15), transparent 70%); filter: blur(20px); animation: cer-aurora 12s ease-in-out infinite; }",
+    id: "lava", name: "Lava", dark: true, flat: "#160c0a", header: "#1d110e", card: "#311c16", raise: "#3e251d", accent: "#ff6b3d",
+    bg: "radial-gradient(ellipse 90% 50% at 50% 110%, rgba(255,107,61,0.16), transparent 70%), #160c0a",
   },
+  { id: "black", name: "Black", dark: true, bg: "#000000", header: "#000000", card: "#161616", raise: "#202020", accent: "#ffffff" },
+  { id: "cloud", name: "Cloud", bg: "#edf2fa", header: "#ffffff", card: "#ffffff", raise: "#e2e9f5", accent: "#2563eb" },
+  { id: "bubblegum", name: "Bubblegum", bg: "#fcf0f5", header: "#fff8fb", card: "#ffffff", raise: "#f8e0ea", accent: "#db2777" },
+  { id: "mint", name: "Mint", bg: "#eaf6f0", header: "#f6fbf8", card: "#ffffff", raise: "#d8ede2", accent: "#047857" },
+  { id: "sunny", name: "Sunny", bg: "#fbf4e6", header: "#fffbf3", card: "#ffffff", raise: "#f2e5c9", accent: "#c2410c" },
 ];
+// Retired preset ids (round 1 set) -> the closest current one. Read-time only.
+CER.THEME_ALIAS = {
+  blossom: "bubblegum", cotton: "bubblegum", sky: "cloud", beach: "cloud", oled: "black",
+  sunset: "galaxy", grape: "galaxy", nightsky: "galaxy", aurora: "ocean", cyber: "midnight",
+  coffee: "lava", ember: "lava",
+};
+CER.themeById = (id) => CER.THEMES.find((t) => t.id === (CER.THEME_ALIAS[id] ?? id)) ?? null;
+
+// Features with no switch any more are FIXED at their default (the owner's
+// setup). Only these stay the player's choice. Stored values for the others
+// are ignored, and healed once in storage so scripts that read storage
+// directly agree (no write when they already match).
+CER.USER_FEATURES = ["hideChat"];
+CER.fixFeatures = function (stored = {}) {
+  const f = { ...CER.DEFAULTS.features, ...stored };
+  for (const k in CER.DEFAULTS.features) if (!CER.USER_FEATURES.includes(k)) f[k] = CER.DEFAULTS.features[k];
+  return f;
+};
 
 // True while our extension context is still valid. After a reload/update the
 // old content scripts stay live in open tabs; the instant they touch a chrome.*
@@ -221,20 +228,20 @@ CER._readSettings = async function () {
   const merged = {
     ...structuredClone(CER.DEFAULTS),
     ...stored,
-    features: { ...CER.DEFAULTS.features, ...(stored.features ?? {}) },
+    features: CER.fixFeatures(stored.features ?? {}),
     joinPrefs: { ...CER.DEFAULTS.joinPrefs, ...(stored.joinPrefs ?? {}) },
     sidebarPrefs: { ...(stored.sidebarPrefs ?? {}) },
     sectionPrefs: { ...(stored.sectionPrefs ?? {}) },
     theme: { ...CER.DEFAULTS.theme, ...(stored.theme ?? {}) },
     uiState: { ...CER.DEFAULTS.uiState, ...(stored.uiState ?? {}) },
   };
-  // One-time heal: an early version had a "Profile header" toggle that was later
-  // removed from the UI. Accounts that had turned it off got stuck with the home
-  // profile card permanently hidden and no way to re-enable it. Restore it once
-  // (guarded by cerHealV1 so a deliberate future toggle still sticks).
-  if (!stored.cerHealV1 && stored.features && stored.features.profileHeader === false) {
-    merged.features.profileHeader = true;
-    CER.set({ features: { ...merged.features, profileHeader: true }, cerHealV1: true });
+  // retired theme ids map to their closest current one; unknown ids get the default
+  const preset = merged.theme.preset ?? "";
+  merged.theme.preset = CER.themeById(preset)?.id ?? CER.DEFAULTS.theme.preset;
+  // fixed features: heal storage once if a stored value disagrees
+  const sf = stored.features;
+  if (sf && Object.keys(CER.DEFAULTS.features).some((k) => !CER.USER_FEATURES.includes(k) && k in sf && sf[k] !== CER.DEFAULTS.features[k])) {
+    CER.set({ features: merged.features });
   }
   return merged;
 };
@@ -496,6 +503,104 @@ CER.setNativeTheme = async function (type) {
     ["color-mode-light", type === "Light"],
   ])
     document.body?.classList.toggle(cls, on);
+};
+
+// Apply a theme preset (the one place that does it: CER panel, CER account
+// page, Roblox's own Browser preferences page). Roblox Light/Dark flip
+// Roblox's own setting and reload so it sticks; CER themes ride on native
+// dark/light; Auto just hands the page back to Roblox's own theme.
+CER.pickTheme = async function (id) {
+  const t = CER.themeById(id);
+  if (!t) return;
+  const cur = await CER.get();
+  if (cur.theme.preset === t.id) return;
+  await CER.set({ theme: { ...cur.theme, preset: t.id } });
+  if (t.native) {
+    await CER.setNativeTheme(t.native);
+    location.reload();
+  } else if (t.id !== "") {
+    await CER.setNativeTheme(t.dark ? "Dark" : "Light");
+  }
+};
+
+// Theme picker: every preset as a tiny page (sidebar, hero, game tiles) in
+// its own colours. Same component everywhere themes are picked.
+//   CER.themePicker({ groups: ["roblox", "cer"], titles: true })
+//   CER.themePicker({ groups: ["cer"], prepend: [""], names: { "": "Off" } })
+// Tiles stay in sync with the saved theme (one shared settings listener).
+CER._pickers = new Set();
+CER.themePicker = function (opts = {}) {
+  const { h } = CER.ui;
+  const groups = opts.groups ?? ["roblox", "cer"];
+  const TITLES = { roblox: "Roblox", cer: "CER" };
+  const tiles = [];
+  const tile = (t) => {
+    const p = t.preview ?? { bg: t.bg, side: t.header, card: t.card, accent: t.accent, dark: t.dark };
+    const name = opts.names?.[t.id] ?? t.name;
+    const el = h(
+      "button",
+      {
+        type: "button",
+        class: "cer-tp-tile" + (p.dark ? " is-dark" : ""),
+        "aria-pressed": "false",
+        "aria-label": name + " theme",
+        dataset: { theme: t.id },
+        style: { "--p-bg": p.bg, "--p-side": p.side, "--p-card": p.card, "--p-acc": p.accent },
+        onClick: () => {
+          set(t.id); // instant feedback, the save follows
+          CER.pickTheme(t.id);
+        },
+      },
+      h(
+        "span",
+        { class: "cer-tp-page", "aria-hidden": "true" },
+        h("span", { class: "cer-tp-side" }, h("i"), h("i"), h("i"), h("i")),
+        h(
+          "span",
+          { class: "cer-tp-main" },
+          h("span", { class: "cer-tp-hero" }, h("i", { class: "cer-tp-line" }), h("i", { class: "cer-tp-line is-short" }), h("b", { class: "cer-tp-play" })),
+          h("span", { class: "cer-tp-row" }, h("i"), h("i"), h("i"))
+        ),
+        h("span", { class: "cer-tp-check" }, CER.ui.icon("check", 14))
+      ),
+      h("span", { class: "cer-tp-name", text: name })
+    );
+    tiles.push(el);
+    return el;
+  };
+  const root = h(
+    "div",
+    { class: "cer-tp" },
+    groups.map((g) => {
+      const list = CER.THEMES.filter((t) => (t.group ?? "cer") === g);
+      const extra = g === groups[0] ? (opts.prepend ?? []).map((id) => CER.themeById(id)).filter(Boolean) : [];
+      return h(
+        "div",
+        { class: "cer-tp-group" },
+        opts.titles !== false && h("h3", { class: "cer-tp-title", text: TITLES[g] }),
+        h("div", { class: "cer-tp-grid", role: "group", "aria-label": TITLES[g] + " themes" }, [...extra, ...list].map(tile))
+      );
+    })
+  );
+  function set(id) {
+    for (const el of tiles) {
+      const on = el.dataset.theme === id;
+      el.classList.toggle("is-active", on);
+      el.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+  root.set = set;
+  CER.get().then((s) => set(s.theme.preset));
+  CER._pickers.add(root);
+  if (!CER._pickersWired) {
+    CER._pickersWired = true;
+    CER.onSettingsChanged(async (ch) => {
+      if (!ch.theme) return;
+      const s = await CER.get();
+      for (const el of CER._pickers) el.isConnected ? el.set(s.theme.preset) : CER._pickers.delete(el);
+    });
+  }
+  return root;
 };
 
 // Game icons from Roblox's thumbnail API. Returns { [universeId]: imageUrl }.

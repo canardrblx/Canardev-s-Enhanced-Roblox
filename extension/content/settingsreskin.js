@@ -12,6 +12,9 @@
   // /my/account is CER's own page now (pages/settings.js); this reskin stays
   // for ?cer=native, /my/settings and community configure pages
   if ((await CER.takeover) === "settings") return;
+  // configure pages are CER's own group manager now (pages/groupconfig.js);
+  // this reskin stays only for ?cer=native and /my/settings
+  if ((await CER.takeover) === "groupconfig") return;
 
   // the group/community "Configure" page has a different shell (big title,
   // author line, funds, side menu). Treat it specially so it ends up looking

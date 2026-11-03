@@ -79,28 +79,9 @@
   transform: translateY(-3px);
 }
 [data-page="search"] .sr-person-name {
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  gap: 5px;
-  max-width: 100%;
-  min-width: 0;
-}
-[data-page="search"] .sr-person-display {
   font-size: 15px;
   font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-[data-page="search"] .sr-verified {
-  flex: none;
-  display: inline-flex;
-  color: var(--cer-text-2);
-}
-/* the check mark takes the page color, so it reads on light and dark */
-[data-page="search"] .sr-verified path + path {
-  stroke: var(--cer-bg);
 }
 [data-page="search"] .sr-person-user,
 [data-page="search"] .sr-person-status,
@@ -177,17 +158,9 @@
   padding-top: 2px;
 }
 [data-page="search"] .sr-group-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-[data-page="search"] .sr-group-title {
+  align-self: flex-start;
   font-size: 16px;
   font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 [data-page="search"] .sr-group-members {
   font-size: 13px;

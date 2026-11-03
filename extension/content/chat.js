@@ -197,7 +197,7 @@
         "button",
         { type: "button", class: "cer-chat-row" + (unread ? " is-unread" : "") },
         pic,
-        h("span", { class: "cer-chat-row-name", text: name }),
+        CER.ui.nameTag({ type: "user", id: isGroup ? null : partnerId, name, verified: ud?.has_verified_badge ?? ud?.hasVerifiedBadge, size: "sm", cls: "cer-chat-row-name" }),
         unread && h("span", { class: "cer-chat-unread", title: "New messages" })
       );
       row.addEventListener("click", () => showThread(body, convo, name, isGroup ? null : partnerId));
@@ -226,7 +226,9 @@
     const current = () => token === threadToken && log.isConnected;
     const titleKids = [
       partnerId ? CER.ui.avatar(partnerId, { size: 30 }) : h("span", { class: "cer-chat-groupic is-sm" }, icon("users", 16)),
-      partnerId ? h("a", { class: "cer-chat-title-link", href: `https://www.roblox.com/users/${partnerId}/profile`, text: name, title: "Open profile" }) : h("span", { text: name }),
+      partnerId
+        ? CER.ui.nameTag({ type: "user", id: partnerId, name, verified: convo.user_data?.[partnerId]?.has_verified_badge, href: `https://www.roblox.com/users/${partnerId}/profile`, title: "Open profile", cls: "cer-chat-title-link" })
+        : h("span", { text: name }),
     ];
     setHead({ title: titleKids, onBack: () => showConversations(body) });
 

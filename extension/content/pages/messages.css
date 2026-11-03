@@ -76,19 +76,108 @@
   display: inline-flex;
 }
 
-/* rows: face, name, date, subject */
-[data-page="messages"] .ms-row {
-  position: relative;
+/* list head: select-all + count on the left, Mark all read or the bulk bar */
+[data-page="messages"] .ms-list-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 10px 12px 10px 20px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-height: 44px;
+  padding: 0 4px 6px 20px;
+}
+[data-page="messages"] .ms-list-head[hidden] {
+  display: none;
+}
+[data-page="messages"] .ms-sel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+[data-page="messages"] .ms-list-head .ms-check {
+  width: 40px;
+  height: 32px;
+}
+[data-page="messages"] .ms-sel-text {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--cer-text-3);
+  white-space: nowrap;
+}
+[data-page="messages"] .ms-sel:has([aria-checked="true"], [aria-checked="mixed"]) .ms-sel-text {
+  color: var(--cer-text);
+}
+[data-page="messages"] .ms-head-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+[data-page="messages"] .ms-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: ms-bar-in 0.16s var(--cer-ease);
+}
+[data-page="messages"] .ms-bar:empty {
+  display: none;
+}
+[data-page="messages"] .ms-bar .cer-btn {
+  height: 32px;
+  padding: 0 12px;
+}
+[data-page="messages"] .ms-bar .ms-bar-x {
+  width: 32px;
+  padding: 0;
+}
+@keyframes ms-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+/* checkbox (row + select all) */
+[data-page="messages"] .ms-check {
+  display: grid;
+  place-items: center;
+  padding: 0;
   border: 0;
-  border-radius: var(--cer-r-m);
-  background: transparent;
-  text-align: left;
+  background: none;
   cursor: pointer;
+}
+[data-page="messages"] .ms-check-box {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 2px solid var(--cer-text-3);
+  color: var(--cer-acc-ink);
+  transition: background 0.12s, border-color 0.12s;
+}
+[data-page="messages"] .ms-check:hover .ms-check-box {
+  border-color: var(--cer-text);
+}
+[data-page="messages"] .ms-check .cer-icon {
+  display: none;
+  stroke-width: 3;
+}
+[data-page="messages"] .ms-check[aria-checked="true"] .ms-check-box,
+[data-page="messages"] .ms-check[aria-checked="mixed"] .ms-check-box {
+  background: var(--cer-acc);
+  border-color: var(--cer-acc);
+}
+[data-page="messages"] .ms-check[aria-checked="true"] .ms-check-on,
+[data-page="messages"] .ms-check[aria-checked="mixed"] .ms-check-mixed {
+  display: block;
+}
+
+/* rows: face, name, date, subject. The checkbox sits on the face: it shows
+   on hover, and on every row while something is selected. */
+[data-page="messages"] .ms-row {
+  position: relative;
+  border-radius: var(--cer-r-m);
   transition: background 0.15s;
 }
 [data-page="messages"] .ms-row:hover {
@@ -96,6 +185,41 @@
 }
 [data-page="messages"] .ms-row.is-active {
   background: var(--cer-hover);
+}
+[data-page="messages"] .ms-row.is-selected {
+  background: var(--cer-acc-soft);
+}
+[data-page="messages"] .ms-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px 10px 20px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+[data-page="messages"] .ms-row > .ms-check {
+  position: absolute;
+  z-index: 1;
+  left: 20px;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  margin-top: -20px;
+  border-radius: 50%;
+  background: var(--cer-surface-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+[data-page="messages"] .ms-row:hover > .ms-check,
+[data-page="messages"] .ms-row > .ms-check:focus-visible,
+[data-page="messages"] .is-selecting .ms-row > .ms-check {
+  opacity: 1;
+  pointer-events: auto;
 }
 [data-page="messages"] .ms-dot {
   position: absolute;
@@ -124,12 +248,38 @@
 [data-page="messages"] .ms-from {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
   font-size: 13px;
   font-weight: 600;
   color: var(--cer-text-3);
+  white-space: nowrap;
+}
+[data-page="messages"] .ms-to {
+  flex: none;
+  white-space: pre;
+}
+/* names are ui.nameTag: text ellipsizes, badges never shrink */
+[data-page="messages"] .cer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  min-width: 0;
+  max-width: 100%;
+}
+[data-page="messages"] .cer-name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+[data-page="messages"] .cer-name-badges {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+[data-page="messages"] .cer-name-badges:empty {
+  display: none;
 }
 [data-page="messages"] .ms-date {
   flex: none;
@@ -213,14 +363,17 @@
   min-width: 0;
 }
 [data-page="messages"] .ms-read-name {
+  display: flex;
+  align-items: center;
   min-width: 0;
   font-size: 15px;
   font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
-[data-page="messages"] .ms-name-link:hover {
+[data-page="messages"] .ms-read-name > .ms-muted {
+  white-space: pre;
+}
+[data-page="messages"] .ms-name-link:hover .cer-name-text {
   text-decoration: underline;
   text-underline-offset: 3px;
 }

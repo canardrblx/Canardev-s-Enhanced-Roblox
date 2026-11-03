@@ -229,7 +229,7 @@
       "a",
       { class: "sr-person", href, title: u.displayName ?? u.name },
       av,
-      h("span", { class: "sr-person-name" }, h("span", { class: "sr-person-display", text: u.displayName || u.name }), u.hasVerifiedBadge && h("span", { class: "sr-verified", title: "Verified" }, ui.icon("verified", 15))),
+      ui.nameTag({ type: "user", id: u.id, name: u.displayName || u.name, verified: u.hasVerifiedBadge, cls: "sr-person-name" }),
       h("span", { class: "sr-person-user", text: "@" + u.name }),
       was ? h("span", { class: "sr-person-was", text: "Was @" + was }) : status
     );
@@ -282,7 +282,7 @@
       h(
         "span",
         { class: "sr-group-main" },
-        h("span", { class: "sr-group-name" }, h("span", { class: "sr-group-title", text: g.name }), g.hasVerifiedBadge && h("span", { class: "sr-verified", title: "Verified" }, ui.icon("verified", 15))),
+        ui.nameTag({ type: "group", id: g.id, name: g.name, verified: g.hasVerifiedBadge, cls: "sr-group-name" }),
         h("span", { class: "sr-group-members", text: fmt.num(g.memberCount) + (g.memberCount === 1 ? " member" : " members") })
       )
     );

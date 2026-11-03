@@ -3,6 +3,11 @@
 // (#!/friends, #!/friend-requests, #!/followers, #!/following).
 // Game-platform look: avatars first, a name, and a status only when it
 // matters (Playing / Online / In Studio). No counts, no helper lines.
+// Requests: sort (Newest / Most mutual / Most followers) and filters (Mutual
+// friends, Verified, Over X followers). Mutual friends come with the request
+// list; follower counts are fetched lazily (visible tiles first, all of them
+// only while a followers sort/filter is on), queued with 429 backoff and
+// cached 12 h in localStorage.
 // Writes (accept, decline, unfriend) go through one `write()` that honours
 // the dev dry-run switch: sessionStorage["cer-dry-writes"] = "1" logs instead
 // of sending.
@@ -79,10 +84,130 @@
     const names = await api.users(missing);
     for (const u of list) {
       const n = names.get(String(u.id));
-      if (n) Object.assign(u, { name: n.name, displayName: n.displayName });
+      if (n) Object.assign(u, { name: n.name, displayName: n.displayName, hasVerifiedBadge: n.hasVerifiedBadge });
     }
     return list;
   }
+
+  // ------------------------------------------------------------ follower counts
+  // Source: the profile header API Roblox's own profile uses (one POST read
+  // per user, verified live: 10 in parallel all 200). friends v1
+  // users/{id}/followers/count is the fallback: it 429s after ONE call per
+  // IP for a while (verified live), so it is only asked when the first fails.
+  // One queue, 3 at a time (1 after a 429), a shared pause, a 12 h cache.
+  const PP = "https://apis.roblox.com/profile-platform-api/v1/profiles/get";
+  async function fetchFollowers(id) {
+    try {
+      const r = await CER.robloxWrite(PP, "POST", { profileType: "User", profileId: String(id), components: [{ component: "UserProfileHeader" }], includeComponentOrdering: false });
+      if (r?.status === 429) return 429;
+      if (r?.ok) {
+        const c = (await r.json().catch(() => null))?.components?.UserProfileHeader?.counts;
+        if (typeof c?.followersCount === "number") return { n: c.followersCount };
+      }
+    } catch {
+      /* CORS / network: try the old count */
+    }
+    try {
+      const r = await fetch(`${FR}/users/${id}/followers/count`, { credentials: "include" });
+      if (r.status === 429) return 429;
+      if (r.ok) {
+        const n = (await r.json().catch(() => null))?.count;
+        if (typeof n === "number") return { n };
+      }
+    } catch {
+      /* give up on this one */
+    }
+    return null;
+  }
+  const FC_KEY = "cer-fr-followers";
+  const FC_TTL = 12 * 3600 * 1000;
+  let fcCache = {};
+  try {
+    fcCache = JSON.parse(localStorage.getItem(FC_KEY) ?? "{}") || {};
+  } catch {
+    /* storage off: memory only */
+  }
+  let fcSaveT = null;
+  const fcSave = () => {
+    clearTimeout(fcSaveT);
+    fcSaveT = setTimeout(() => {
+      try {
+        const keep = Object.entries(fcCache)
+          .filter(([, v]) => Date.now() - v[1] < FC_TTL)
+          .sort((a, b) => b[1][1] - a[1][1])
+          .slice(0, 3000);
+        fcCache = Object.fromEntries(keep);
+        localStorage.setItem(FC_KEY, JSON.stringify(fcCache));
+      } catch {
+        /* quota: memory cache still works */
+      }
+    }, 800);
+  };
+  const fcQueue = [];
+  const fcWait = new Map(); // id -> { promise, job }
+  let fcActive = 0;
+  let fcPauseUntil = 0;
+  const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  // known count or undefined (no request)
+  const followersKnown = (id) => {
+    const c = fcCache[String(id)];
+    return c && Date.now() - c[1] < FC_TTL ? c[0] : undefined;
+  };
+  // Promise<number|null>. urgent: jump the queue (tiles on screen)
+  function followersCount(id, urgent) {
+    id = String(id);
+    const known = followersKnown(id);
+    if (known !== undefined) return Promise.resolve(known);
+    const w = fcWait.get(id);
+    if (w) {
+      if (urgent && fcQueue.includes(w.job)) fcQueue.splice(fcQueue.indexOf(w.job), 1), fcQueue.unshift(w.job);
+      return w.promise;
+    }
+    let job;
+    const promise = new Promise((res) => (job = { id, res }));
+    urgent ? fcQueue.unshift(job) : fcQueue.push(job);
+    fcWait.set(id, { promise, job });
+    fcPump();
+    return promise;
+  }
+  function fcPump() {
+    // 2 at a time, 1 while Roblox is saying "too many requests"
+    while (fcActive < (Date.now() < fcPauseUntil + 5000 ? 1 : 3) && fcQueue.length) {
+      const job = fcQueue.shift();
+      fcActive++;
+      (async () => {
+        let n = null;
+        for (let a = 0; a < 7; a++) {
+          const wait = fcPauseUntil - Date.now();
+          if (wait > 0) await sleep(wait);
+          const r = await fetchFollowers(job.id);
+          if (r === 429) {
+            fcPauseUntil = Math.max(fcPauseUntil, Date.now() + Math.min(2000 * (a + 1), 10000));
+            continue;
+          }
+          n = r?.n ?? null;
+          break;
+        }
+        if (typeof n === "number") {
+          fcCache[job.id] = [n, Date.now()];
+          fcSave();
+        }
+        fcWait.delete(job.id);
+        job.res(n);
+        await sleep(80);
+        fcActive--;
+        fcPump();
+      })();
+    }
+  }
+  // drop queued (not started) lookups when the page goes away
+  function fcDrop() {
+    for (const job of fcQueue.splice(0)) {
+      fcWait.delete(job.id);
+      job.res(null);
+    }
+  }
+  const fcPending = () => fcQueue.length + fcActive;
 
   // One gate for every write. Returns { ok, status }.
   async function write(url, body = {}) {
@@ -117,7 +242,7 @@
     const tile = h(
       "div",
       { class: "fr-tile", dataset: { id: u.id } },
-      h("a", { class: "fr-link", href, title: u.name ? "@" + u.name : name }, face, h("span", { class: "fr-name", text: name })),
+      h("a", { class: "fr-link", href, title: u.name ? "@" + u.name : name }, face, ui.nameTag({ type: "user", id: u.id, name, verified: u.hasVerifiedBadge, size: "sm", cls: "fr-name" })),
       status,
       actions
     );
@@ -216,6 +341,7 @@
       stop() {
         this.alive = false;
         this.timers.forEach(clearInterval);
+        fcDrop();
         document.removeEventListener("visibilitychange", this.onVis);
         window.removeEventListener("hashchange", this.onHash);
       },
@@ -239,13 +365,13 @@
     // ---- header: just the title (someone else's: their face + name, links back)
     if (own) headSlot.replaceWith(ui.header({ title: "Friends" }));
     else {
-      const who = h("span", { class: "fr-who-name", text: "Friends" });
-      headSlot.replaceWith(
-        h("header", { class: "cer-view-head" }, h("a", { class: "fr-who", href: `https://www.roblox.com/users/${userId}/profile`, title: "Back to profile" }, ui.avatar(userId, { size: 56 }), h("h1", { class: "cer-view-title" }, who)))
-      );
+      // their face + name (with badges) is the title; the tabs say the rest
+      const who = h("h1", { class: "cer-view-title fr-who-name" }, h("span", { class: "cer-sk fr-sk-name" }));
+      headSlot.replaceWith(h("header", { class: "cer-view-head" }, h("a", { class: "fr-who", href: `https://www.roblox.com/users/${userId}/profile`, title: "Back to profile" }, ui.avatar(userId, { size: 56 }), who)));
       api.user(userId).then((u) => {
-        if (!u || !session.alive) return;
-        who.textContent = (u.displayName || u.name) + "'s friends";
+        if (!session.alive) return;
+        if (!u) return who.replaceChildren("Friends");
+        who.replaceChildren(ui.nameTag({ type: "user", id: u.id, name: u.displayName || u.name, verified: !!u.hasVerifiedBadge, size: "lg" }));
         document.title = (u.displayName || u.name) + "'s friends - Roblox";
       });
     }
@@ -264,6 +390,77 @@
       },
     });
     tabSlot.replaceChildren(tabs, search);
+
+    // ---- requests: sort + filters (one quiet row, Requests tab only).
+    // Saved per browser, so the same picks come back next time.
+    const REQ_KEY = "cer-fr-reqview";
+    const rv = { sort: "new", mutual: false, verified: false, followers: false, min: 100 };
+    try {
+      Object.assign(rv, JSON.parse(localStorage.getItem(REQ_KEY) ?? "{}"));
+    } catch {
+      /* storage off */
+    }
+    const saveRv = () => {
+      try {
+        localStorage.setItem(REQ_KEY, JSON.stringify(rv));
+      } catch {
+        /* storage off */
+      }
+    };
+    const needFollowers = () => rv.sort === "followers" || rv.followers;
+    const reqBar = h("div", { class: "fr-reqbar", hidden: true });
+    if (own) {
+      const toggle = (label, key) => {
+        const c = ui.chip(label, { active: rv[key] });
+        c.addEventListener("click", () => {
+          rv[key] = !rv[key];
+          c.classList.toggle("is-active", rv[key]);
+          c.setAttribute("aria-pressed", rv[key] ? "true" : "false");
+          saveRv();
+          reqChanged();
+        });
+        return c;
+      };
+      // "Over [100] followers": the chip toggles, the number edits X
+      const minIn = h("input", { class: "fr-min", type: "number", min: "0", step: "1", value: String(rv.min), "aria-label": "Followers", inputmode: "numeric" });
+      const fChip = h("div", { class: "cer-chip fr-fchip" + (rv.followers ? " is-active" : ""), role: "button", tabindex: "0", "aria-pressed": rv.followers ? "true" : "false" }, h("span", { text: "Over" }), minIn, h("span", { text: "followers" }));
+      const setF = (on) => {
+        rv.followers = on;
+        fChip.classList.toggle("is-active", on);
+        fChip.setAttribute("aria-pressed", on ? "true" : "false");
+        saveRv();
+        reqChanged();
+      };
+      fChip.addEventListener("click", (e) => e.target !== minIn && setF(!rv.followers));
+      fChip.addEventListener("keydown", (e) => e.target !== minIn && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setF(!rv.followers)));
+      let minT = null;
+      minIn.addEventListener("input", () => {
+        clearTimeout(minT);
+        minT = setTimeout(() => {
+          const v = Math.max(0, Math.floor(Number(minIn.value) || 0));
+          rv.min = v;
+          if (!rv.followers) return setF(true);
+          saveRv();
+          reqChanged();
+        }, 350);
+      });
+      const sortSel = ui.select(
+        [
+          { id: "new", label: "Newest" },
+          { id: "mutual", label: "Most mutual" },
+          { id: "followers", label: "Most followers" },
+        ],
+        rv.sort,
+        (v) => {
+          rv.sort = v;
+          saveRv();
+          reqChanged();
+        }
+      );
+      sortSel.classList.add("fr-sort");
+      reqBar.append(h("div", { class: "cer-chips is-wrap fr-filters" }, toggle("Mutual friends", "mutual"), toggle("Verified", "verified"), fChip), sortSel);
+    }
+    tabSlot.after(reqBar);
 
     // the only number on the page: pending requests, when there are any
     let reqCount = null;
@@ -452,7 +649,17 @@
           }
           return isPrivate(r.status) && kind !== "requests" ? "private" : "error";
         }
-        const fresh = (j.data ?? []).map((d) => ({ id: d.id, name: d.name, displayName: d.displayName })).filter((u) => !l.tiles.has(String(u.id)));
+        const fresh = (j.data ?? [])
+          .map((d) => ({
+            id: d.id,
+            name: d.name,
+            displayName: d.displayName,
+            hasVerifiedBadge: d.hasVerifiedBadge,
+            // requests only: who you both know, and when it was sent
+            mutual: Array.isArray(d.mutualFriendsList) ? d.mutualFriendsList : null,
+            sentAt: d.friendRequest?.sentAt ?? null,
+          }))
+          .filter((u) => !l.tiles.has(String(u.id)));
         await fillNames(fresh);
         const p = kind === "requests" ? new Map() : await presenceOf(fresh.map((u) => u.id));
         const g = await gameNames(p);
@@ -482,8 +689,18 @@
       if (state === "private") return body.replaceChildren(ui.empty("This list is private.", { icon: "lock" })), false;
       if (state === "error") return body.replaceChildren(ui.empty("Could not load. Try again.", { icon: "users", action: retry(() => render()) })), false;
       const l = lists[kind];
-      const items = l.items.filter(matches);
-      if (!items.length && (l.done || !query)) {
+      let items = l.items.filter(matches);
+      const picky = kind === "requests" && (rv.mutual || rv.verified || rv.followers);
+      if (kind === "requests") items = requestView(items, l);
+      if (!items.length && (l.done || !query || picky)) {
+        if (picky && l.items.length) {
+          // filters hid everyone: say so, offer to clear, keep Load more
+          const clear = ui.button("Show all", { variant: "soft", size: "sm", onClick: clearReqFilters });
+          const waiting = rv.followers && fcPending();
+          body.replaceChildren(ui.empty(waiting ? "Checking followers..." : "No one matches.", { icon: waiting ? "clock" : "filter", action: waiting ? null : clear }));
+          if (!l.done) body.append(h("div", { class: "fr-foot" }, loadMoreBtn(kind)));
+          return true;
+        }
         const msg = query ? "No one found." : kind === "requests" ? "No friend requests." : kind === "followers" ? "No followers yet." : "Not following anyone.";
         body.replaceChildren(ui.empty(msg, { icon: query ? "search" : kind === "requests" ? "userPlus" : "users" }));
         return false;
@@ -492,17 +709,56 @@
       const foot = h("div", { class: "fr-foot" });
       body.replaceChildren(grid, foot);
       fill(grid, items.map((u) => l.tiles.get(String(u.id))), all);
-      if (!l.done) {
-        const btn = ui.button("Load more", { variant: "soft" });
-        btn.addEventListener("click", async () => {
-          btn.busy(true);
-          const t = renderTok;
-          await loadPage(kind);
-          if (t === renderTok && tab === kind) render(true);
-        });
-        foot.append(btn);
-      }
+      if (kind === "requests" && needFollowers() && fcPending()) foot.append(h("span", { class: "fr-note", text: "Checking followers..." }));
+      if (!l.done) foot.append(loadMoreBtn(kind));
       return true;
+    }
+
+    function loadMoreBtn(kind) {
+      const btn = ui.button("Load more", { variant: "soft" });
+      btn.addEventListener("click", async () => {
+        btn.busy(true);
+        const t = renderTok;
+        await loadPage(kind);
+        if (t === renderTok && tab === kind) render(true);
+      });
+      return btn;
+    }
+
+    // ---- requests: filter + sort, follower counts on demand
+    function requestView(items, l) {
+      if (needFollowers()) for (const u of l.items) wantFollowers(u);
+      const count = (u) => (typeof u.followers === "number" ? u.followers : -1);
+      let out = items.filter((u) => (!rv.mutual || u.mutual?.length) && (!rv.verified || u.hasVerifiedBadge) && (!rv.followers || count(u) > rv.min));
+      const order = new Map(l.items.map((u, i) => [u, i]));
+      if (rv.sort === "mutual") out = [...out].sort((a, b) => (b.mutual?.length ?? 0) - (a.mutual?.length ?? 0) || order.get(a) - order.get(b));
+      if (rv.sort === "followers") out = [...out].sort((a, b) => count(b) - count(a) || order.get(a) - order.get(b));
+      return out;
+    }
+    // a count arrived: update its tile, and redraw (batched) when the
+    // order or the filter depends on counts
+    let redrawT = null;
+    function wantFollowers(u, urgent) {
+      if (u.followers !== undefined || u.fcAsked) return;
+      u.fcAsked = true;
+      followersCount(u.id, urgent).then((n) => {
+        u.followers = n;
+        u.fcAsked = n == null ? false : true; // a failed one may be asked again later
+        if (!session.alive) return;
+        lists.requests?.tiles.get(String(u.id))?.setSignals?.();
+        if (tab !== "requests" || !needFollowers()) return;
+        clearTimeout(redrawT);
+        redrawT = setTimeout(() => session.alive && tab === "requests" && render(true), fcPending() ? 700 : 60);
+      });
+    }
+    function reqChanged() {
+      if (tab === "requests") render(true);
+    }
+    function clearReqFilters() {
+      rv.mutual = rv.verified = rv.followers = false;
+      saveRv();
+      reqBar.querySelectorAll(".cer-chip").forEach((c) => (c.classList.remove("is-active"), c.setAttribute("aria-pressed", "false")));
+      reqChanged();
     }
 
     // A just-accepted friend shows up on the Friends tab right away.
@@ -522,6 +778,21 @@
     // A friend request: Accept (primary) and a quiet Decline.
     function requestTile(u) {
       const t = personTile(u, { noStatus: true });
+      t.classList.add("is-request");
+      // why you might know them: mutual friends, then how many follow them
+      const sig = h("span", { class: "fr-sig" });
+      t.setSignals = () => {
+        const m = u.mutual?.length ?? 0;
+        const f = typeof u.followers === "number" ? u.followers : u.followers === undefined ? followersKnown(u.id) : undefined;
+        if (f !== undefined && u.followers === undefined) u.followers = f;
+        sig.replaceChildren(
+          m ? h("span", { class: "fr-sig-mutual", title: u.mutual.slice(0, 12).join(", "), text: m + (m === 1 ? " mutual friend" : " mutual friends") }) : "",
+          typeof f === "number" ? h("span", { class: "fr-sig-followers", title: CER.fmt.full(f), text: CER.fmt.num(f) + (f === 1 ? " follower" : " followers") }) : ""
+        );
+      };
+      t.setSignals();
+      t.querySelector(".fr-link").after(sig);
+      ui.whenVisible(t, () => wantFollowers(u, true));
       const accept = ui.button("Accept", { variant: "primary", size: "sm" });
       const decline = ui.button("", { icon: "x", variant: "soft", size: "sm", title: "Decline" });
       const settle = (text, accepted) => {
@@ -550,6 +821,7 @@
       if (!tabItems.some((t) => t.id === id)) id = "friends";
       tab = id;
       tabs.set(id);
+      reqBar.hidden = id !== "requests";
       const want = "#!/" + TAB_HASH[id];
       if (push && location.hash !== want) history.pushState(history.state, "", location.pathname + location.search + want);
       render();
@@ -560,6 +832,7 @@
     };
     window.addEventListener("hashchange", session.onHash);
 
+    reqBar.hidden = tab !== "requests";
     render();
   });
 

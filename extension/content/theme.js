@@ -5,8 +5,8 @@
 //     sidebar selected pill, event buttons etc. all follow automatically.
 //  2. LEGACY CLASSES — the older bootstrap-era parts of the site
 //     (.rbx-header, .btn-primary-md, game cards, server rows) get direct rules.
-// Native presets are handled at click time (settings.js flips Roblox's own
-// light/dark setting); dark tints also ride on native dark.
+// Native presets are handled at click time (CER.pickTheme in shared.js flips
+// Roblox's own light/dark setting); CER themes ride on native dark/light.
 
 (async function () {
   if (typeof CER === "undefined") return;
@@ -29,7 +29,8 @@
   // native parts we replace are hidden BEFORE the first paint (no JS race).
   try {
     const sQuick = await CER.ext.storage.local.get("features");
-    const feats = sQuick.features ?? {};
+    // switches that no longer exist are fixed at their default (shared.js)
+    const feats = CER.fixFeatures ? CER.fixFeatures(sQuick.features ?? {}) : sQuick.features ?? {};
     const root = document.documentElement;
     if (feats.customSidebar !== false) {
       root.classList.add("cer-cnav");
@@ -151,7 +152,7 @@
   --color-surface-0: ${flat} !important;
   --color-surface-100: ${t.header} !important;
   --color-surface-200: ${t.card} !important;
-  --color-surface-300: ${t.card} !important;
+  --color-surface-300: ${t.raise ?? t.card} !important;
   --color-content-emphasis: ${content.emphasis} !important;
   --color-content-default: ${content.def} !important;
   --color-content-muted: ${content.muted} !important;
@@ -209,7 +210,7 @@
     }
 
     const rules = [];
-    const preset = CER.THEMES.find((t) => t.id === settings.theme.preset);
+    const preset = CER.themeById(settings.theme.preset);
     const tint = preset && !preset.native && preset.id !== "" ? preset : null;
 
     // ONE accent for everything (pills, badges, buttons, ratio bar).
@@ -358,7 +359,7 @@
 
       // our own components always follow the tokens
       rules.push(
-        `.cer-section, .cer-profile, .cer-recs-notice, .cer-panel, .cer-avatar-panel, .cer-avatar-inline { color: var(--color-content-emphasis) !important; }`
+        `.cer-section, .cer-profile, .cer-recs-notice, .cer-panel, .cer-avatar-panel { color: var(--color-content-emphasis) !important; }`
       );
       // tile names need side padding now that tiles have a card background
       rules.push(`.game-card-name, .wide-game-tile .info-container { padding-left: 8px; padding-right: 8px; }`);

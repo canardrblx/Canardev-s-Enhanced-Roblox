@@ -108,15 +108,47 @@
   font-weight: 800;
   letter-spacing: -0.03em;
 }
-[data-page="profile"] .pf-name > span {
+/* names are ui.nameTag: the text ellipsizes, the badges never shrink */
+[data-page="profile"] .cer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  min-width: 0;
+  max-width: 100%;
+}
+[data-page="profile"] .cer-name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+[data-page="profile"] .cer-name-badges {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+}
+[data-page="profile"] .cer-name-badges:empty {
+  display: none;
+}
+[data-page="profile"] .pf-name .cer-name {
+  font-size: inherit;
+  font-weight: inherit;
+  gap: 0.22em;
+}
+[data-page="profile"] .pf-name .cer-name-text {
   padding-bottom: 0.08em;
 }
-[data-page="profile"] .pf-verified {
-  flex: none;
-  color: currentColor;
+[data-page="profile"] .pf-person .cer-user-text {
+  align-items: center;
+  width: 100%;
+}
+[data-page="profile"] .pf-person .cer-user-text > * {
+  max-width: 100%;
+}
+[data-page="profile"] .pf-person-name {
+  font-size: 14px;
+  font-weight: 700;
 }
 [data-page="profile"] .pf-handle {
   margin-top: -8px;
@@ -294,9 +326,42 @@
   flex-direction: column;
   gap: 8px;
 }
-[data-page="profile"] .pf-about .cer-clamp {
+[data-page="profile"] .pf-bio-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+/* .cer-ui p.pf-bio beats Roblox's own p color rules */
+.cer-ui[data-page="profile"] p.pf-bio {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
   font-size: 15.5px;
   color: var(--cer-text-2);
+}
+.cer-ui[data-page="profile"] p.pf-bio:not(.is-open) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--lines, 4);
+  overflow: hidden;
+}
+[data-page="profile"] .pf-bio-more {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--cer-acc) !important;
+  cursor: pointer;
+}
+[data-page="profile"] .pf-bio-more[hidden] {
+  display: none;
+}
+[data-page="profile"] .pf-bio-more:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 [data-page="profile"] .pf-meta {
   display: flex;
@@ -338,17 +403,8 @@
   box-shadow: var(--cer-shadow);
 }
 [data-page="profile"] .pf-group-name {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
   font-size: 13.5px;
   font-weight: 700;
-}
-[data-page="profile"] .pf-group-name > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* wearing: item art on a soft tile */

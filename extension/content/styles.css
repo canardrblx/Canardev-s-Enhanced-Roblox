@@ -1980,396 +1980,6 @@ body.cer-group-cfg .cer-set-card {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
-/* ===================== Avatar editor ===================== */
-/* Two columns: sticky preview + wearing strip on the left, tabs + items on the
-   right. Stacks into one column on narrow windows. */
-
-.cer-avatar-inline {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 100%;
-  max-width: 1400px;
-  padding: 8px 0 48px;
-  box-sizing: border-box;
-  color: var(--color-content-emphasis, inherit);
-}
-.cer-avatar-inline * {
-  box-sizing: border-box;
-}
-
-.cer-avatar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.cer-avatar-title {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 800;
-}
-
-.cer-avatar-body {
-  display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .cer-avatar-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.cer-avatar-side {
-  position: sticky;
-  top: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-}
-@media (max-width: 900px) {
-  .cer-avatar-side {
-    position: static;
-  }
-}
-
-.cer-avatar-preview {
-  position: relative;
-  aspect-ratio: 1 / 1;
-  width: 100%;
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.1));
-}
-.cer-avatar-preview-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-.cer-avatar-preview-ready .cer-avatar-preview-img {
-  opacity: 1;
-}
-.cer-avatar-preview-busy .cer-avatar-preview-img {
-  opacity: 0.55;
-}
-.cer-avatar-spinner {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 34px;
-  height: 34px;
-  margin: -17px 0 0 -17px;
-  border-radius: 50%;
-  border: 3px solid rgba(128, 128, 128, 0.25);
-  border-top-color: var(--cer-accent, #335fff);
-  animation: cer-spin 0.8s linear infinite;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s;
-}
-.cer-avatar-preview-busy .cer-avatar-spinner,
-.cer-avatar-preview:not(.cer-avatar-preview-ready) .cer-avatar-spinner {
-  opacity: 1;
-}
-@keyframes cer-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.cer-avatar-refresh {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.2));
-  color: var(--color-content-emphasis, inherit);
-  cursor: pointer;
-  transition: background 0.15s, transform 0.15s;
-}
-.cer-avatar-refresh:hover {
-  background: var(--color-surface-300, rgba(128, 128, 128, 0.3));
-  transform: rotate(-30deg);
-}
-
-.cer-avatar-wearing .cer-h3 {
-  margin: 0 0 8px;
-}
-.cer-avatar-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-.cer-avatar-wornchip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 3px 10px 3px 3px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.14));
-  color: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.cer-avatar-wornchip span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cer-avatar-wornchip img {
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
-  border-radius: 50%;
-  background: rgba(128, 128, 128, 0.15);
-}
-.cer-avatar-wornchip:hover {
-  background: rgba(220, 60, 60, 0.3);
-}
-
-.cer-avatar-main {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-.cer-avatar-tabs {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: none;
-}
-.cer-avatar-tabs .cer-tab {
-  flex: 0 0 auto;
-  padding: 8px 14px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.12));
-  color: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.cer-avatar-tabs .cer-tab:hover {
-  background: var(--color-surface-300, rgba(128, 128, 128, 0.2));
-}
-.cer-avatar-tabs .cer-tab-active,
-.cer-avatar-tabs .cer-tab-active:hover {
-  background: var(--cer-accent, #335fff);
-  color: var(--cer-accent-ink, #fff);
-}
-.cer-avatar-subrow {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.cer-avatar-subrow:empty {
-  display: none;
-}
-
-.cer-avatar-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: 10px;
-  align-content: start;
-}
-.cer-avatar-grid > .cer-skel-row,
-.cer-avatar-grid > .cer-hint,
-.cer-avatar-grid > .cer-scale-panel,
-.cer-avatar-more,
-.cer-avatar-create {
-  grid-column: 1 / -1;
-}
-.cer-avatar-grid > .cer-skel-row {
-  margin: 0;
-}
-.cer-avatar-more,
-.cer-avatar-create {
-  justify-self: start;
-}
-.cer-avatar-more {
-  justify-self: center;
-}
-.cer-avatar-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 8px 6px 10px;
-  border: 2px solid transparent;
-  border-radius: 12px;
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.08));
-  color: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-  transition: border-color 0.12s, background 0.12s, transform 0.12s;
-}
-.cer-avatar-item:hover {
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.16));
-  transform: translateY(-2px);
-}
-.cer-avatar-item:focus-visible {
-  outline: 2px solid var(--cer-accent, #335fff);
-  outline-offset: 2px;
-}
-.cer-avatar-item img {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: contain;
-  border-radius: 8px;
-}
-.cer-avatar-item span {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-}
-.cer-avatar-item-worn {
-  border-color: var(--cer-accent, #335fff);
-}
-.cer-avatar-item-worn::after {
-  content: "";
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--cer-accent, #335fff) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z'/%3E%3C/svg%3E") center / 13px no-repeat;
-}
-
-.cer-outfit-controls {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.cer-avatar-item:hover .cer-outfit-controls,
-.cer-avatar-item:focus-within .cer-outfit-controls {
-  opacity: 1;
-}
-.cer-outfit-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: var(--color-surface-300, rgba(40, 40, 40, 0.85));
-  color: var(--color-content-emphasis, #fff);
-  cursor: pointer;
-}
-.cer-outfit-btn:hover {
-  background: var(--cer-accent, #335fff);
-  color: var(--cer-accent-ink, #fff);
-}
-.cer-outfit-del:hover {
-  background: #d93a3a;
-}
-
-.cer-confirm-pop {
-  position: fixed;
-  z-index: 2000001;
-  width: 240px;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--color-surface-100, #fff);
-  color: var(--color-content-emphasis, #202227);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-}
-.cer-confirm-msg {
-  font-size: 13.5px;
-  line-height: 1.35;
-  margin-bottom: 10px;
-}
-.cer-confirm-row {
-  display: flex;
-  gap: 8px;
-}
-.cer-confirm-row button {
-  flex: 1;
-}
-
-.cer-scale-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-width: 560px;
-  padding: 16px;
-  border-radius: 14px;
-  background: var(--color-surface-100, rgba(128, 128, 128, 0.08));
-}
-.cer-scale-sliders {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  transition: opacity 0.2s;
-}
-.cer-scale-off {
-  opacity: 0.4;
-  pointer-events: none;
-}
-.cer-scale-row {
-  display: grid;
-  grid-template-columns: 110px minmax(0, 1fr) 52px;
-  align-items: center;
-  gap: 12px;
-}
-.cer-scale-label {
-  font-weight: 700;
-}
-.cer-scale-slider {
-  width: 100%;
-  accent-color: var(--cer-accent, #335fff);
-}
-.cer-scale-val {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-content-muted, inherit);
-}
-.cer-avatar-typeswitch {
-  display: flex;
-  gap: 6px;
-  grid-column: 2 / 4;
-}
-.cer-avatar-typebtn {
-  padding: 6px 18px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-surface-200, rgba(128, 128, 128, 0.14));
-  color: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-.cer-avatar-typebtn-on {
-  background: var(--cer-accent, #335fff);
-  color: var(--cer-accent-ink, #fff);
-}
-
 /* profile About cells pulse while loading (beats .cer-profile-infocell's bg) */
 .cer-profile-infocell.cer-skel-tile {
   background: rgba(128, 128, 128, 0.2);
@@ -2819,43 +2429,186 @@ label.cer-sp-row:hover {
   padding-top: 6px;
 }
 
-/* themes: just the swatches */
-.cer-sp-themes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  gap: 14px 8px;
-}
-.cer-ui .cer-sp-theme {
+/* theme picker (CER.themePicker in shared.js): each preset is a tiny page
+   in its own colours. Used in this panel, on CER's account page and inside
+   Roblox's Browser preferences page. */
+.cer-tp {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  gap: 22px;
+}
+.cer-tp-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cer-tp-title {
+  font-size: 16px;
+  font-weight: 800;
+}
+.cer-tp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  gap: 18px 14px;
+}
+.cer-ui .cer-tp-tile {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  padding: 4px 0;
+  min-width: 0;
+  padding: 0;
   border: 0;
   background: none;
+  text-align: left;
   cursor: pointer;
+  --p-line: rgba(0, 0, 0, 0.22);
+  --p-line-2: rgba(0, 0, 0, 0.12);
 }
-.cer-sp-swatch {
-  width: 52px;
-  height: 52px;
+.cer-ui .cer-tp-tile.is-dark {
+  --p-line: rgba(255, 255, 255, 0.42);
+  --p-line-2: rgba(255, 255, 255, 0.16);
+}
+.cer-tp-page {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  aspect-ratio: 16 / 10;
+  padding: 7px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--p-bg);
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.3);
+  transition: transform 0.16s var(--cer-ease), outline-color 0.16s;
+  outline: 2.5px solid transparent;
+  outline-offset: 3px;
+}
+.cer-ui .cer-tp-tile:hover .cer-tp-page {
+  transform: translateY(-2px);
+}
+.cer-ui .cer-tp-tile:active .cer-tp-page {
+  transform: scale(0.98);
+}
+.cer-ui .cer-tp-tile.is-active .cer-tp-page {
+  outline-color: var(--cer-text);
+}
+.cer-ui .cer-tp-tile:focus-visible {
+  outline: none;
+}
+.cer-ui .cer-tp-tile:focus-visible .cer-tp-page {
+  outline-color: var(--cer-text-3);
+}
+.cer-tp-side {
+  flex: 0 0 22%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 5px;
+  border-radius: 7px;
+  background: var(--p-side);
+}
+.cer-tp-side i,
+.cer-tp-line {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--p-line-2);
+}
+.cer-tp-side i:first-child {
+  width: 75%;
+  background: var(--p-acc);
+}
+.cer-tp-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cer-tp-hero {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 7px;
+  border-radius: 7px;
+  background: var(--p-card);
+}
+.cer-tp-hero .cer-tp-line {
+  width: 55%;
+  background: var(--p-line);
+}
+.cer-tp-hero .cer-tp-line.is-short {
+  width: 32%;
+  background: var(--p-line-2);
+}
+.cer-tp-play {
+  position: absolute;
+  left: 7px;
+  bottom: 7px;
+  width: 34%;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--p-acc);
+}
+.cer-tp-row {
+  flex: 0 0 30%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+.cer-tp-row i {
+  border-radius: 5px;
+  background: var(--p-card);
+}
+.cer-tp-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.35);
-  transition: transform 0.15s var(--cer-ease), box-shadow 0.15s;
+  background: #fff;
+  color: #111216;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.16s, transform 0.16s var(--cer-ease);
 }
-.cer-ui .cer-sp-theme:hover .cer-sp-swatch {
-  transform: scale(1.06);
+.cer-tp-check .cer-icon {
+  stroke-width: 3;
 }
-.cer-ui .cer-sp-theme.is-active .cer-sp-swatch {
-  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.35), 0 0 0 3px var(--cer-surface), 0 0 0 5px var(--cer-text);
+.cer-ui .cer-tp-tile.is-active .cer-tp-check {
+  opacity: 1;
+  transform: none;
 }
-.cer-sp-theme-name {
-  font-size: 12.5px;
+.cer-tp-name {
+  padding: 0 2px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--cer-text-3);
-  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.cer-ui .cer-sp-theme.is-active .cer-sp-theme-name {
+.cer-ui .cer-tp-tile.is-active .cer-tp-name,
+.cer-ui .cer-tp-tile:hover .cer-tp-name {
   color: var(--cer-text);
+}
+
+/* CER themes inside Roblox's own Browser preferences page */
+.cer-native-themes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+.cer-native-themes-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
 }
 
 /* playtime */
@@ -2974,6 +2727,28 @@ label.cer-sp-row:hover {
   font-size: 14px;
   color: var(--cer-text-3);
 }
+.cer-sp-maker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  align-self: flex-start;
+  padding: 6px 14px 6px 6px;
+  margin: -6px 0 0 -6px;
+  border-radius: 999px;
+  color: var(--cer-text) !important;
+  transition: background 0.15s;
+}
+.cer-sp-maker .cer-name-text {
+  font-weight: 800;
+}
+.cer-sp-maker:hover {
+  background: var(--cer-raise);
+}
+.cer-sp-games {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 14px;
+}
 .cer-sp-link {
   display: flex;
   align-items: center;
@@ -3045,6 +2820,9 @@ label.cer-sp-row:hover {
   }
   .cer-sp-body {
     padding: 4px 18px 18px;
+  }
+  .cer-sp-games {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -3442,4 +3220,51 @@ html.cer-cnav #cer-skeleton {
   background: linear-gradient(90deg, rgba(128, 128, 128, 0.1) 0%, rgba(128, 128, 128, 0.2) 50%, rgba(128, 128, 128, 0.1) 100%);
   background-size: 200% 100%;
   animation: cer-shimmer 1.3s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------- nav width
+   CER reserves its own sidebar space at every width. Roblox only gives
+   #container-main its 288px margin on wide windows, so below that the page
+   slid under the fixed sidebar. Narrow windows get an icon-only rail. */
+html.cer-cnav {
+  --cer-nav-w: 288px;
+}
+@media (max-width: 1180px) {
+  html.cer-cnav {
+    --cer-nav-w: 76px;
+  }
+  html.cer-cnav .cer-custom-nav {
+    width: var(--cer-nav-w);
+  }
+  html.cer-cnav .cer-cnav-inner {
+    padding: 14px 10px;
+    align-items: center;
+  }
+  html.cer-cnav .cer-cnav-label,
+  html.cer-cnav .cer-cnav-me-name,
+  html.cer-cnav .cer-cnav-robux,
+  html.cer-cnav .cer-cnav-search,
+  html.cer-cnav .cer-cnav-badge {
+    display: none !important;
+  }
+  html.cer-cnav .cer-cnav-me {
+    flex: none;
+    padding: 0;
+    justify-content: center;
+  }
+  html.cer-cnav .cer-ui .cer-cnav-item {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+html.cer-cnav #wrap.left-nav-new-width #container-main {
+  margin-left: var(--cer-nav-w) !important;
+}
+html.cer-cnav #cer-skeleton {
+  left: var(--cer-nav-w);
+}
+html.cer-cnav .cer-version-tag {
+  padding-left: var(--cer-nav-w);
 }

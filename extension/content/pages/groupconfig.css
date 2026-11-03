@@ -1,1 +1,824 @@
-/* CER groupconfig page */
+/* CER group manager (pages/groupconfig.js). Everything scoped to the page. */
+
+[data-page="groupconfig"] .cer-gm {
+  gap: 22px;
+}
+
+/* ------------------------------------------------------------ header */
+[data-page="groupconfig"] .cer-gm-top {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  min-height: 188px;
+  padding: 28px 32px;
+  border-radius: var(--cer-r-xl);
+  color: #fff;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cer-acc) 45%, #0b0c12), #0b0c12);
+  box-shadow: var(--cer-shadow-lg);
+}
+[data-page="groupconfig"] .cer-gm-top-bg {
+  position: absolute;
+  inset: -60px;
+  z-index: -2;
+  /* a glow out of the icon side: group icons are often a figure on a
+     clear background, so a full cover blur becomes a stripe */
+  background-size: 62% auto;
+  background-repeat: no-repeat;
+  background-position: 4% 50%;
+  filter: blur(56px) saturate(1.7);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+[data-page="groupconfig"] .cer-gm-top.has-image .cer-gm-top-bg {
+  opacity: 0.9;
+}
+[data-page="groupconfig"] .cer-gm-top-shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(6, 7, 12, 0.72), rgba(6, 7, 12, 0.35) 70%, rgba(6, 7, 12, 0.2));
+}
+[data-page="groupconfig"] .cer-gm-top-icon {
+  flex: none;
+  width: 132px;
+  height: 132px;
+  border-radius: 26px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s var(--cer-ease);
+}
+[data-page="groupconfig"] a.cer-gm-top-icon:hover {
+  transform: scale(1.03);
+}
+[data-page="groupconfig"] .cer-gm-top-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+[data-page="groupconfig"] .cer-gm-top.is-loading .cer-gm-top-text .cer-sk {
+  max-width: 360px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.12);
+  animation: none;
+}
+[data-page="groupconfig"] .cer-gm-top.is-loading .cer-gm-top-text .cer-sk + .cer-sk {
+  max-width: 200px;
+  height: 14px;
+}
+[data-page="groupconfig"] .cer-gm-top-name {
+  font-size: clamp(26px, 2.6vw, 36px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: #fff !important;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
+  max-width: 100%;
+}
+[data-page="groupconfig"] .cer-gm-top-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
+}
+[data-page="groupconfig"] .cer-gm-top-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+[data-page="groupconfig"] .cer-gm-top-meta .cer-icon {
+  opacity: 0.8;
+}
+[data-page="groupconfig"] .cer-gm-top-actions {
+  flex: none;
+  align-self: flex-end;
+}
+
+/* ------------------------------------------------------------ tab bar */
+[data-page="groupconfig"] .cer-gm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+}
+[data-page="groupconfig"] .cer-gm-bar-sk {
+  width: 420px;
+  max-width: 100%;
+}
+[data-page="groupconfig"] .cer-gm-bar-sk .cer-sk {
+  height: 44px;
+  border-radius: 999px;
+}
+[data-page="groupconfig"] .cer-gm-more {
+  position: relative;
+  flex: none;
+}
+[data-page="groupconfig"] .cer-gm-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 40;
+  min-width: 230px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  background: var(--cer-surface-2);
+  border: 1px solid var(--cer-line-2);
+  border-radius: var(--cer-r-m);
+  box-shadow: var(--cer-shadow-lg);
+}
+[data-page="groupconfig"] .cer-gm-menu[hidden] {
+  display: none;
+}
+[data-page="groupconfig"] .cer-gm-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: var(--cer-r-s);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--cer-text-2) !important;
+  transition: background 0.12s, color 0.12s;
+}
+[data-page="groupconfig"] .cer-gm-menu-item:hover {
+  background: var(--cer-hover);
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-menu-item > span {
+  flex: 1;
+}
+[data-page="groupconfig"] .cer-gm-menu-go {
+  color: var(--cer-text-3);
+}
+
+/* ------------------------------------------------------------ shared */
+[data-page="groupconfig"] .cer-gm-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+[data-page="groupconfig"] .cer-gm-pane[hidden] {
+  display: none;
+}
+[data-page="groupconfig"] .cer-gm-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+[data-page="groupconfig"] .cer-gm-search {
+  flex: 1 1 240px;
+  max-width: 420px;
+}
+[data-page="groupconfig"] .cer-gm-tools .cer-chips {
+  flex: none;
+}
+[data-page="groupconfig"] .cer-gm-tools-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+[data-page="groupconfig"] .cer-gm-none {
+  grid-column: 1 / -1;
+}
+[data-page="groupconfig"] .cer-gm-foot:empty {
+  display: none;
+}
+[data-page="groupconfig"] .cer-gm-morebar {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+[data-page="groupconfig"] .cer-gm-sub {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--cer-text);
+}
+[data-page="groupconfig"] .cer-gm-muted {
+  color: var(--cer-text-3);
+}
+[data-page="groupconfig"] .cer-gm-quiet {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--cer-text-3) !important;
+  transition: color 0.15s;
+}
+[data-page="groupconfig"] .cer-gm-quiet:hover {
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-row-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+[data-page="groupconfig"] .cer-gm-left {
+  margin-right: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+}
+[data-page="groupconfig"] .is-gone {
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 0.2s, transform 0.2s var(--cer-ease);
+}
+[data-page="groupconfig"] .cer-gm-field {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: var(--cer-r-m);
+  border: 1px solid var(--cer-line);
+  background: var(--cer-raise);
+  color: var(--cer-text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+  box-shadow: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+[data-page="groupconfig"] .cer-gm-field:focus,
+[data-page="groupconfig"] .cer-gm-area:focus {
+  border-color: var(--cer-acc);
+  background: var(--cer-surface);
+}
+[data-page="groupconfig"] .cer-gm-field:disabled,
+[data-page="groupconfig"] .cer-gm-area:disabled {
+  opacity: 0.55;
+}
+[data-page="groupconfig"] .cer-gm-field.is-rank {
+  width: 100px;
+}
+[data-page="groupconfig"] .cer-gm-area {
+  min-height: 0;
+  line-height: 1.5;
+}
+[data-page="groupconfig"] .cer-gm-lab {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+[data-page="groupconfig"] .cer-gm-lab > span {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cer-text-3);
+}
+[data-page="groupconfig"] .cer-gm-lab.is-grow {
+  flex: 1;
+}
+
+/* names: one line, ellipsis; @handle under the name in lists */
+[data-page="groupconfig"] .cer-name {
+  min-width: 0;
+  max-width: 100%;
+}
+[data-page="groupconfig"] .cer-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-page="groupconfig"] .cer-gm-mem-text .cer-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 5px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-mem-text .cer-name-text {
+  max-width: calc(100% - 24px);
+}
+[data-page="groupconfig"] .cer-gm-mem-text .cer-name-sub {
+  flex-basis: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ members */
+[data-page="groupconfig"] .cer-gm-members {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(410px, 100%), 1fr));
+  gap: 8px;
+}
+[data-page="groupconfig"] .cer-gm-members > .cer-sk-row {
+  height: 72px;
+}
+[data-page="groupconfig"] .cer-gm-mem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 10px 12px 10px 10px;
+  border-radius: var(--cer-r-m);
+  background: var(--cer-raise);
+  transition: background 0.15s, opacity 0.2s, transform 0.2s var(--cer-ease);
+}
+[data-page="groupconfig"] .cer-gm-mem:hover {
+  background: var(--cer-hover);
+}
+[data-page="groupconfig"] .cer-gm-mem-art {
+  flex: none;
+  display: flex;
+}
+[data-page="groupconfig"] .cer-gm-mem-text {
+  flex: 1;
+  min-width: 0;
+}
+[data-page="groupconfig"] .cer-gm-mem-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 55%;
+}
+[data-page="groupconfig"] .cer-gm-rolepick {
+  min-width: 0;
+}
+[data-page="groupconfig"] .cer-gm-rolepick .cer-dropdown {
+  height: 34px;
+  max-width: 170px;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+}
+[data-page="groupconfig"] .cer-gm-rolepick .cer-dropdown:disabled {
+  opacity: 0.55;
+}
+[data-page="groupconfig"] .cer-gm-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 170px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--cer-hover);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cer-text-2);
+  white-space: nowrap;
+}
+[data-page="groupconfig"] .cer-gm-role > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-page="groupconfig"] .cer-gm-role.is-owner {
+  color: var(--cer-warn);
+}
+[data-page="groupconfig"] .cer-gm-mem-tools .cer-btn-ghost:hover {
+  color: var(--cer-bad) !important;
+}
+
+/* ------------------------------------------------------------ requests */
+[data-page="groupconfig"] .cer-gm-reqs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 14px;
+}
+[data-page="groupconfig"] .cer-gm-reqs > .cer-sk-tile {
+  aspect-ratio: 3 / 4;
+  border-radius: var(--cer-r-l);
+}
+[data-page="groupconfig"] .cer-gm-req {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 20px 12px 14px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-raise);
+  text-align: center;
+  transition: background 0.15s, opacity 0.2s, transform 0.2s var(--cer-ease);
+}
+[data-page="groupconfig"] .cer-gm-req:hover {
+  background: var(--cer-hover);
+}
+[data-page="groupconfig"] .cer-gm-req-art {
+  display: flex;
+  margin-bottom: 8px;
+  transition: transform 0.2s var(--cer-ease);
+}
+[data-page="groupconfig"] .cer-gm-req:hover .cer-gm-req-art {
+  transform: translateY(-2px);
+}
+[data-page="groupconfig"] .cer-gm-req-name {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  font-size: 15px;
+  font-weight: 700;
+}
+[data-page="groupconfig"] .cer-gm-req-name .cer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-req-when {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+}
+[data-page="groupconfig"] .cer-gm-req-act {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+[data-page="groupconfig"] .cer-gm-req-act .cer-btn-icon.cer-btn-sm {
+  width: 44px;
+  height: 36px;
+}
+
+/* ------------------------------------------------------------ roles */
+[data-page="groupconfig"] .cer-gm-roles {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+[data-page="groupconfig"] .cer-gm-rolelist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 20px;
+}
+[data-page="groupconfig"] .cer-gm-rolelist > .cer-sk-row {
+  height: 44px;
+  margin-bottom: 4px;
+}
+[data-page="groupconfig"] .cer-gm-rolebtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--cer-r-m);
+  background: none;
+  color: var(--cer-text-2) !important;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+[data-page="groupconfig"] .cer-gm-rolebtn:hover {
+  background: var(--cer-raise);
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-rolebtn.is-active {
+  background: var(--cer-hover);
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-rank {
+  flex: none;
+  min-width: 40px;
+  height: 26px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--cer-hover);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--cer-text-3);
+  font-variant-numeric: tabular-nums;
+}
+[data-page="groupconfig"] .cer-gm-rolebtn.is-active .cer-gm-rank {
+  background: var(--cer-text);
+  color: var(--cer-bg);
+}
+[data-page="groupconfig"] .cer-gm-rolebtn-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-page="groupconfig"] .cer-gm-rolebtn-n {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--cer-text-3);
+}
+[data-page="groupconfig"] .cer-gm-newrole {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+[data-page="groupconfig"] .cer-gm-roleedit {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 22px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-raise);
+}
+[data-page="groupconfig"] .cer-gm-roleedit .cer-gm-field,
+[data-page="groupconfig"] .cer-gm-roleedit .cer-gm-area,
+[data-page="groupconfig"] .cer-gm-card .cer-gm-area {
+  background: var(--cer-raise);
+}
+[data-page="groupconfig"] .cer-gm-rolehead {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+}
+[data-page="groupconfig"] .cer-gm-perms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 22px 28px;
+  padding-top: 6px;
+}
+[data-page="groupconfig"] .cer-gm-permgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+[data-page="groupconfig"] .cer-gm-permrows {
+  display: flex;
+  flex-direction: column;
+}
+[data-page="groupconfig"] .cer-gm-perm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--cer-line);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--cer-text-2);
+  cursor: pointer;
+}
+[data-page="groupconfig"] .cer-gm-perm:last-child {
+  border-bottom: 0;
+}
+[data-page="groupconfig"] .cer-gm-perm.is-locked {
+  cursor: default;
+  opacity: 0.55;
+}
+[data-page="groupconfig"] .cer-gm-perm .cer-switch:disabled {
+  cursor: default;
+}
+
+/* ------------------------------------------------------------ info */
+[data-page="groupconfig"] .cer-gm-info {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+[data-page="groupconfig"] .cer-gm-info-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+[data-page="groupconfig"] .cer-gm-info-icon {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--cer-r-xl);
+  overflow: hidden;
+  background: var(--cer-surface-2);
+  box-shadow: var(--cer-shadow);
+}
+[data-page="groupconfig"] .cer-gm-info-col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  max-width: 820px;
+}
+[data-page="groupconfig"] .cer-gm-info-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+[data-page="groupconfig"] .cer-gm-info-name > .cer-name {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-info-name .cer-gm-quiet {
+  align-self: center;
+}
+[data-page="groupconfig"] .cer-gm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-raise);
+}
+[data-page="groupconfig"] .cer-gm-shout:empty {
+  display: none;
+}
+[data-page="groupconfig"] .cer-gm-shout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--cer-r-m);
+  background: var(--cer-raise);
+}
+[data-page="groupconfig"] .cer-gm-shout-body {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--cer-text) !important;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+[data-page="groupconfig"] .cer-gm-shout-by {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cer-text-2);
+}
+
+/* ------------------------------------------------------------ links */
+[data-page="groupconfig"] .cer-gm-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 900px;
+}
+[data-page="groupconfig"] .cer-gm-links > .cer-sk-row {
+  height: 66px;
+}
+[data-page="groupconfig"] .cer-gm-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--cer-r-m);
+  background: var(--cer-raise);
+}
+[data-page="groupconfig"] .cer-gm-link-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cer-hover);
+  color: var(--cer-text);
+}
+[data-page="groupconfig"] .cer-gm-link-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-link-title {
+  font-size: 15px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-page="groupconfig"] .cer-gm-link-url {
+  font-size: 13px;
+  color: var(--cer-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-page="groupconfig"] a.cer-gm-link-text:hover .cer-gm-link-title {
+  text-decoration: underline;
+}
+[data-page="groupconfig"] .cer-gm-linkform {
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+[data-page="groupconfig"] .cer-gm-addslot > .cer-gm-linkform {
+  max-width: 900px;
+  padding: 12px;
+  border-radius: var(--cer-r-m);
+  background: var(--cer-raise);
+}
+[data-page="groupconfig"] .cer-gm-linkform .cer-gm-field {
+  height: 38px;
+}
+
+/* ------------------------------------------------------------ settings */
+[data-page="groupconfig"] .cer-gm-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 760px;
+}
+[data-page="groupconfig"] .cer-gm-settings > .cer-sk-row {
+  height: 62px;
+}
+[data-page="groupconfig"] .cer-gm-setting {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px 14px 14px;
+  border-radius: var(--cer-r-m);
+  background: var(--cer-raise);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+[data-page="groupconfig"] .cer-gm-setting:hover {
+  background: var(--cer-hover);
+}
+[data-page="groupconfig"] .cer-gm-setting-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cer-hover);
+  color: var(--cer-text);
+}
+[data-page="groupconfig"] .cer-gm-setting-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 15.5px;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------ narrow */
+@media (max-width: 1180px) {
+  [data-page="groupconfig"] .cer-gm-roles {
+    grid-template-columns: 230px minmax(0, 1fr);
+    gap: 18px;
+  }
+  [data-page="groupconfig"] .cer-gm-info {
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+@media (max-width: 900px) {
+  [data-page="groupconfig"] .cer-gm-top {
+    padding: 22px;
+    gap: 18px;
+  }
+  [data-page="groupconfig"] .cer-gm-top-icon {
+    width: 96px;
+    height: 96px;
+    border-radius: 20px;
+  }
+  [data-page="groupconfig"] .cer-gm-roles,
+  [data-page="groupconfig"] .cer-gm-info {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-page="groupconfig"] .cer-gm-rolelist {
+    position: static;
+  }
+  [data-page="groupconfig"] .cer-gm-info-art {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+  [data-page="groupconfig"] .cer-gm-info-icon {
+    width: 140px;
+  }
+  [data-page="groupconfig"] .cer-gm-linkform {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* ask modal: plain question text */
+.cer-gm-ask .cer-modal-body p {
+  margin: 0;
+  color: var(--cer-text-2);
+}

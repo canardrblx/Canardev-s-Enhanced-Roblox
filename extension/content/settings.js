@@ -1,29 +1,35 @@
 // CER's own settings panel, plus its entry points:
-//   1. "Settings" in Roblox's left nav (only when CER's sidebar is off; CER's
-//      sidebar has its own Settings item)
-//   2. an item inside Roblox's header gear dropdown (only while that header
-//      can show)
-//   3. a tab on Roblox's own account page (only when that page isn't ours)
-// The panel itself is built from CER.ui pieces (tokens, toggles, cards), so it
-// looks like the rest of CER and never depends on Roblox's markup.
-// Other scripts open it via CER.openSettings(tabName).
+//   - CER's sidebar Settings menu and the account page call CER.openSettings(tab)
+//   - a tab on Roblox's own account page (only when that page isn't ours)
+//   - CER themes inside Roblox's own Browser preferences (App theme) page
+// The panel is built from CER.ui pieces (tokens, toggles, cards), so it looks
+// like the rest of CER and never depends on Roblox's markup.
+// Switches that only brought back Roblox's old UI are gone: those features are
+// fixed at the owner's setup (CER.fixFeatures in shared.js).
 
 (async function () {
   if (typeof CER === "undefined" || !CER.ui) return;
   const { h, icon } = CER.ui;
 
-  const BAC = { name: "Build a Country", placeId: "82958998841721", universeId: "10200442730" };
-  // id = the name callers pass to CER.openSettings(tab)
+  // The maker's games (source: canardev-site src/config.js), newest big ones first.
+  const GAMES = [
+    { name: "Build a Country", placeId: "82958998841721", universeId: "10200442730" },
+    { name: "Nations at War", placeId: "82862505117921", universeId: "10772391286" },
+    { name: "Catch and Pass!", placeId: "74379310940012", universeId: "10769981111" },
+    { name: "Lucky Blocks for Brainrots", placeId: "81091632887057", universeId: "9860836539" },
+    { name: "Dumpling Defense", placeId: "103709105146684", universeId: "10624853849" },
+    { name: "The Battle Noobs", placeId: "92697892386129", universeId: "6656660860" },
+  ];
+  const MAKER_ID = 2614193870;
   // id = what callers pass to CER.openSettings(tab). Old tab names still work.
   const TABS = [
-    { id: "Features", label: "Features" },
     { id: "Themes", label: "Themes" },
+    { id: "General", label: "General" },
     { id: "Playtime", label: "Playtime" },
-    { id: "Join", label: "Join" },
     { id: "About", label: "About" },
   ];
-  const ALIAS = { Home: "Features", "Roblox UI": "Features" };
-  const tabFor = (id) => TABS.find((t) => t.id === (ALIAS[id] ?? id))?.id ?? "Features";
+  const ALIAS = { Home: "General", "Roblox UI": "General", Features: "General", Join: "General" };
+  const tabFor = (id) => TABS.find((t) => t.id === (ALIAS[id] ?? id))?.id ?? "Themes";
 
   CER.openSettings = openPanel;
 
@@ -37,136 +43,6 @@
       return t;
     };
     CER.toast.cerShell = true;
-  }
-
-  // ---- entry point 1: bottom of Roblox's left sidebar ----
-
-  function findSidebarList() {
-    for (const ul of document.querySelectorAll("ul")) {
-      const links = [...ul.querySelectorAll(":scope > li a")];
-      if (links.some((a) => a.textContent.trim().toLowerCase() === "home") && links.some((a) => a.textContent.trim().toLowerCase() === "profile")) {
-        return ul;
-      }
-    }
-    return null;
-  }
-
-  const bootSettings = await CER.get();
-  const customSidebar = !!bootSettings.features?.customSidebar;
-  const sidebarList = customSidebar ? null : await CER.waitFor(findSidebarList, 12000).catch(() => null);
-
-  // "Settings" item in Roblox's nav: a small menu with CER Settings, Roblox
-  // Settings, Quick Sign In, Log Out.
-  function openSettingsMenu(anchor) {
-    document.querySelector(".cer-ctx")?.remove();
-    const menu = h("div", { class: "cer-ui cer-ctx", role: "menu" });
-    const add = (label, name, opts = {}) => {
-      const el = h(opts.href ? "a" : "button", { class: "cer-ctx-item" + (opts.danger ? " is-danger" : ""), href: opts.href, type: opts.href ? null : "button", role: "menuitem" }, icon(name, 17), h("span", { text: label }));
-      if (opts.onClick) el.addEventListener("click", () => opts.onClick(el));
-      menu.appendChild(el);
-    };
-    add("CER settings", "sliders", { onClick: () => (menu.remove(), openPanel()) });
-    add("Roblox settings", "user", { href: "https://www.roblox.com/my/account" });
-    add("Quick sign in", "zap", { href: "https://www.roblox.com/crossdevicelogin/ConfirmCode" });
-    add("Log out", "arrowRight", {
-      danger: true,
-      onClick: async (el) => {
-        if (!el.dataset.arm) {
-          el.dataset.arm = "1";
-          el.lastChild.textContent = "Tap again to log out";
-          return;
-        }
-        await CER.robloxWrite("https://auth.roblox.com/v2/logout", "POST", {}).catch(() => {});
-        location.href = "https://www.roblox.com/";
-      },
-    });
-    document.body.appendChild(menu);
-    const r = anchor.getBoundingClientRect();
-    menu.style.left = r.left + "px";
-    menu.style.top = r.top - menu.offsetHeight - 6 + "px"; // open upward, above the item
-    setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
-  }
-
-  function stripActiveState(li) {
-    for (const el of [li, ...li.querySelectorAll("*")]) {
-      el.removeAttribute("aria-current");
-      for (const cls of [...el.classList]) {
-        if (/^bg-|active|selected|current/i.test(cls)) el.classList.remove(cls);
-      }
-    }
-  }
-
-  if (sidebarList) {
-    // Deep-clone a real item (Profile) so it sits in Roblox's own nav
-    // naturally (this path only runs when CER's sidebar is off).
-    const template = [...sidebarList.querySelectorAll(":scope > li")].find((li) => li.querySelector("a")?.textContent.trim().toLowerCase() === "profile");
-    let li;
-    if (template) {
-      li = template.cloneNode(true);
-      stripActiveState(li);
-      li.classList.add("cer-nav-li");
-      const a = li.querySelector("a");
-      a.removeAttribute("href");
-      const ic = li.querySelector('[class*="icon-"], .cer-side-glyph');
-      if (ic) {
-        ic.className = "cer-side-glyph";
-        ic.textContent = "";
-        ic.appendChild(CER.gearIcon());
-      }
-      const textSpan = [...li.querySelectorAll("span")].find((s) => s.children.length === 0 && s.textContent.trim().toLowerCase() === "profile");
-      if (textSpan) textSpan.textContent = "Settings";
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openSettingsMenu(li);
-      });
-    } else {
-      li = h("li", { class: "cer-nav-li" });
-      const link = h("a", { href: "#" }, h("span", { class: "cer-side-glyph" }, CER.gearIcon()), h("span", { text: "Settings" }));
-      link.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openSettingsMenu(li);
-      });
-      li.appendChild(link);
-    }
-    const upsellLi = [...sidebarList.children].find((l) => /less robux|subscribe/i.test(l.textContent));
-    sidebarList.insertBefore(li, upsellLi ?? null);
-
-    // Roblox's React re-renders can wipe foreign nodes: put ours back.
-    const keep = setInterval(() => {
-      if (!CER.alive?.()) return clearInterval(keep);
-      if (!document.contains(li)) {
-        const list = findSidebarList();
-        if (list) {
-          const upsell = [...list.children].find((l) => /less robux|subscribe/i.test(l.textContent));
-          list.insertBefore(li, upsell ?? null);
-        }
-      }
-    }, 3000);
-  }
-
-  // ---- entry point 2: Roblox's header gear dropdown ----
-  // Only while that header can show (CER's sidebar hides it otherwise), so
-  // most pages never pay for this observer.
-  if (!customSidebar || bootSettings.features?.showTopBar) {
-    const dropdownObserver = new MutationObserver(() => {
-      const accountLink = document.querySelector('ul.dropdown-menu a[href*="/my/account"], .popover a[href*="/my/account"]');
-      if (!accountLink || !accountLink.offsetParent) return;
-      const listItem = accountLink.closest("li");
-      if (!listItem || listItem.parentElement.querySelector(".cer-dropdown-item")) return;
-      const ours = listItem.cloneNode(true);
-      ours.classList.add("cer-dropdown-item");
-      const ourLink = ours.querySelector("a");
-      ourLink.removeAttribute("href");
-      ourLink.textContent = "CER Settings";
-      ourLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        openPanel();
-      });
-      listItem.parentElement.insertBefore(ours, listItem.nextSibling);
-    });
-    dropdownObserver.observe(document.body, { childList: true, subtree: true });
   }
 
   // ---- entry point 3: Roblox's account settings page (/my/account) ----
@@ -194,6 +70,44 @@
         accountInfoLi.parentElement.appendChild(ours);
       })
       .catch(() => {});
+  }
+
+  // ---- Roblox's own Browser preferences page: CER themes next to Roblox's ----
+  // Roblox's page has Mode (light/dark/system) and App theme cards. Our block
+  // goes at the end of that section (Roblox's React leaves foreign nodes be;
+  // re-placed if a re-render drops it). Picking Roblox's own mode or app
+  // theme there switches CER to Auto, so the choice actually shows.
+  if (location.pathname.startsWith("/my/account") && !document.documentElement.classList.contains("cer-takeover")) {
+    let block = null;
+    const onPrefs = () => /^#!\/browser-preferences/.test(location.hash);
+    const sync = () => {
+      if (!CER.alive?.()) return clearInterval(timer);
+      const card = onPrefs() ? document.querySelector('[data-testid="app-theme-card"]') : null;
+      const host = card?.closest("section.settings-container-v2") ?? card?.closest("section");
+      if (!host) {
+        block?.remove();
+        return;
+      }
+      if (block?.isConnected && block.parentElement === host) return;
+      block ??= h(
+        "section",
+        { class: "cer-ui cer-native-themes" },
+        h("h3", { class: "cer-native-themes-title", text: "CER themes" }),
+        CER.themePicker({ groups: ["cer"], titles: false, prepend: [""], names: { "": "Off" } })
+      );
+      host.appendChild(block);
+    };
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (!onPrefs() || !e.isTrusted) return;
+        if (e.target.closest?.('[data-testid="app-theme-card"], [role="option"]')) CER.pickTheme("");
+      },
+      true
+    );
+    window.addEventListener("hashchange", sync);
+    const timer = setInterval(sync, 1500);
+    sync();
   }
 
   // ---- building blocks ----
@@ -227,13 +141,6 @@
     });
     return b;
   }
-  const featureToggle = (settings, key, after) =>
-    CER.ui.toggle(!!settings.features[key], async (on) => {
-      const cur = await CER.get();
-      await CER.set({ features: { ...cur.features, [key]: on } });
-      after?.(on);
-    });
-
   // ---- the panel ----
 
   async function openPanel(startTab) {
@@ -243,8 +150,9 @@
       return;
     }
 
-    // Most features set up the page once on load, so a change only shows
+    // Sidebar switches set up the page once on load, so a change only shows
     // after a reload: a Reload button appears, and closing asks once.
+    // Themes, font and join options apply live.
     let dirty = false;
     let closeArmed = false;
     const markDirty = () => {
@@ -317,20 +225,14 @@
     );
     const overlay = h("div", { id: "cer-panel-overlay", class: "cer-ui cer-sp-overlay", onClick: (e) => e.target === overlay && attemptClose() }, panel);
 
-    // Feature switches set up the page once on load, so only those need a
-    // reload. Themes, font, join options and the feedback box apply live.
-    body.addEventListener("change", (e) => {
-      if (current === "Features" && e.target.matches?.('input[type="checkbox"]')) markDirty();
-    });
-
     let seq = 0;
     async function show(id) {
       current = tabFor(id);
       tabs.set(current);
       const my = ++seq;
       const view = h("div", { class: "cer-sp-view" });
-      const render = { Features: renderFeatures, Themes: renderThemes, Playtime: renderPlaytime, Join: renderJoin, About: renderAbout }[current];
-      await render(view, () => show(current));
+      const render = { Themes: renderThemes, General: renderGeneral, Playtime: renderPlaytime, About: renderAbout }[current];
+      await render(view, markDirty);
       if (my !== seq) return; // a newer tab click won
       const keep = body.dataset.tab === current ? body.scrollTop : 0;
       body.replaceChildren(view);
@@ -346,140 +248,10 @@
     await show(current);
   }
 
-  // ---- tab: Features ----
-
-  // [label, key, hint?]
-  const PAGES = [
-    ["Home redesign", "homeRedesign"],
-    ["Discover page", "gamesRedesign"],
-    ["Search page", "searchPage"],
-    ["Game page", "gamePageRedesign"],
-    ["Profile page", "profileRedesign"],
-    ["Friends page", "friendsPage"],
-    ["Groups pages", "groupsPage"],
-    ["Catalog page", "catalogClean"],
-    ["Messages page", "messagesPage"],
-    ["Account settings page", "settingsPage"],
-    ["Transactions page", "transactionsPage"],
-    ["Avatar editor", "avatarEditor"],
-  ];
-  const LOOK = [
-    ["Custom theme", "theme"],
-    ["Presence rings", "presenceRings", "Colored rings around friends who are online."],
-    ["Clean game titles", "cleanTitles", "Removes [TAGS] from game names."],
-    ["Hide emojis in titles", "stripEmojis"],
-    ["Say Groups, not Communities", "renameGroups"],
-    ["Loading screen", "loadingSkeleton", "A blank page while CER pages load."],
-    ["Show Roblox top bar", "showTopBar"],
-  ];
-  const CLEAN = [
-    ["Hide Roblox Plus ads", "hidePlusUpsell"],
-    ["Hide footer", "hideFooter"],
-    ["Protect my groups", "protectGroups", "Hides the leave group buttons."],
-  ];
-  const CHAT = [
-    ["CER chat", "customChat"],
-    ["Hide chat", "hideChat", "No chat at all."],
-  ];
-  const OLD_HOME = [
-    ["Profile card", "profileHeader"],
-    ["Expand button", "profileExpandBtn", "Under the profile card."],
-    ["Big game pictures", "wideTiles", "In the Continue row."],
-    ["Hide Add Friends", "hideAddFriends"],
-  ];
-
-  async function renderFeatures(body, rerender) {
-    const settings = await CER.get();
-    const rows = (list) => list.map(([label, key, hint]) => row(label, hint, featureToggle(settings, key, key === "homeRedesign" || key === "customSidebar" ? rerender : null)));
-    body.append(group("CER pages", rows(PAGES)), group("Look", rows(LOOK)));
-
-    // CER's sidebar: two optional items
-    if (settings.features.customSidebar) {
-      const opt = ["Inventory", "Trade"].map((label) =>
-        row(
-          "Show " + label,
-          null,
-          CER.ui.toggle(settings.sidebarPrefs[label] === "show", async (on) => {
-            const cur = await CER.get();
-            await CER.set({ sidebarPrefs: { ...cur.sidebarPrefs, [label]: on ? "show" : "hide" } });
-          })
-        )
-      );
-      body.append(group("Sidebar", opt));
-    } else if (settings.knownSidebarItems.length) {
-      // Roblox's own nav (only while CER's sidebar is off): on = hidden
-      const hide = settings.knownSidebarItems.map((label) =>
-        row(
-          "Hide " + label,
-          null,
-          CER.ui.toggle(settings.sidebarPrefs[label] === "hide", async (on) => {
-            const cur = await CER.get();
-            await CER.set({ sidebarPrefs: { ...cur.sidebarPrefs, [label]: on ? "hide" : "show" } });
-          })
-        )
-      );
-      body.append(group("Sidebar", hide));
-    }
-
-    body.append(group("Chat", rows(CHAT)), group("Clean up", rows(CLEAN)));
-
-    // Roblox's own home page: only matters while the CER home is off
-    if (!settings.features.homeRedesign) {
-      const LEGACY = /^(pinned games|best friends)$/i; // rows from retired features
-      if (settings.knownSections.some((t) => LEGACY.test(t))) {
-        const knownSections = settings.knownSections.filter((t) => !LEGACY.test(t));
-        const sectionPrefs = { ...settings.sectionPrefs };
-        for (const t of Object.keys(sectionPrefs)) if (LEGACY.test(t)) delete sectionPrefs[t];
-        await CER.set({ knownSections, sectionPrefs });
-        settings.knownSections = knownSections;
-      }
-      const sectionRows = settings.knownSections.map((title) =>
-        row(
-          "Hide " + title,
-          null,
-          CER.ui.toggle(settings.sectionPrefs[title] === "hide", async (on) => {
-            const cur = await CER.get();
-            await CER.set({ sectionPrefs: { ...cur.sectionPrefs, [title]: on ? "hide" : "show" } });
-          })
-        )
-      );
-      body.append(group("Roblox home page", [...rows(OLD_HOME), ...sectionRows]));
-    }
-  }
-
   // ---- tab: Themes ----
 
   async function renderThemes(body) {
     const settings = await CER.get();
-    const grid = h("div", { class: "cer-sp-themes" });
-    for (const theme of CER.THEMES) {
-      const on = settings.theme.preset === theme.id;
-      const chip = h(
-        "button",
-        { type: "button", class: "cer-sp-theme" + (on ? " is-active" : ""), "aria-pressed": on ? "true" : "false", title: theme.name },
-        h("span", { class: "cer-sp-swatch", style: { background: theme.swatch } }),
-        h("span", { class: "cer-sp-theme-name", text: theme.name })
-      );
-      chip.addEventListener("click", async () => {
-        const cur = await CER.get();
-        await CER.set({ theme: { ...cur.theme, preset: theme.id } });
-        if (theme.native) {
-          // pure native switch: reload so Roblox re-serves with the new theme
-          // and the account setting actually sticks
-          await CER.setNativeTheme(theme.native);
-          location.reload();
-          return;
-        } else if (theme.id !== "") {
-          // dark tints ride on native dark, light tints on native light
-          await CER.setNativeTheme(theme.dark ? "Dark" : "Light");
-        }
-        for (const c of grid.children) {
-          c.classList.toggle("is-active", c === chip);
-          c.setAttribute("aria-pressed", c === chip ? "true" : "false");
-        }
-      });
-      grid.appendChild(chip);
-    }
     const fonts = ["", "Arial", "Verdana", "Tahoma", "Trebuchet MS", "Georgia", "Times New Roman", "Courier New", "Comic Sans MS"];
     const sel = CER.ui.select(
       fonts.map((f) => ({ id: f, label: f === "" ? "Roblox font" : f })),
@@ -489,7 +261,7 @@
         await CER.set({ theme: { ...cur.theme, font: v } });
       }
     );
-    body.append(grid, group(null, row("Font", null, sel, "div")));
+    body.append(CER.themePicker(), group(null, row("Font", null, sel, "div")));
   }
 
   // ---- tab: Playtime ----
@@ -499,7 +271,12 @@
     try {
       CER.ext.runtime.sendMessage({ cer: "playtime-tick" }, () => void CER.ext.runtime.lastError);
     } catch {}
-    const { playtime = {} } = await CER.ext.storage.local.get("playtime");
+    let playtime = {};
+    try {
+      ({ playtime = {} } = await CER.ext.storage.local.get("playtime"));
+    } catch {
+      /* extension reloading: show the empty state */
+    }
     const games = Object.entries(playtime).map(([uni, e]) => ({ uni, ...e }));
     if (!games.length) {
       body.appendChild(CER.ui.empty("Play a game and your time shows up here.", { icon: "clock" }));
@@ -576,9 +353,9 @@
     );
   }
 
-  // ---- tab: Join ----
+  // ---- tab: General ----
 
-  async function renderJoin(body) {
+  async function renderGeneral(body, markDirty) {
     const settings = await CER.get();
 
     const regionSel = CER.ui.select(
@@ -593,7 +370,7 @@
       const cur = await CER.get();
       await CER.set({ joinPrefs: { ...cur.joinPrefs, avoidFriends: on } });
     });
-    body.appendChild(group(null, [row("Server region", null, regionSel, "div"), row("Skip servers with my friends", null, avoid)]));
+    const servers = [row("Server region", null, regionSel, "div"), row("Skip servers with my friends", null, avoid)];
 
     // on a game page, a random-server button
     const placeId = location.pathname.match(/\/games\/(\d+)/)?.[1];
@@ -639,8 +416,25 @@
           }, 2500);
         }
       });
-      body.appendChild(group("This game", row("Random server", null, btn, "div")));
+      servers.push(row("Random server", null, btn, "div"));
     }
+
+    // what CER's sidebar shows. The sidebar builds once per page: reload.
+    const side = (label, on, save) =>
+      row(
+        label,
+        null,
+        CER.ui.toggle(on, async (v) => {
+          await save(v, await CER.get());
+          markDirty();
+        })
+      );
+    const sidebar = [
+      ...["Inventory", "Trade"].map((label) => side(label, settings.sidebarPrefs[label] === "show", (on, cur) => CER.set({ sidebarPrefs: { ...cur.sidebarPrefs, [label]: on ? "show" : "hide" } }))),
+      side("Chat", !settings.features.hideChat, (on, cur) => CER.set({ features: { ...cur.features, hideChat: !on } })),
+    ];
+
+    body.append(group("Servers", servers), group("Sidebar", sidebar));
   }
 
   // ---- rival extension detection ----
@@ -695,12 +489,25 @@
       )
     );
 
-    const link = (href, art, title, sub, opts = {}) =>
-      h("a", { class: "cer-sp-link", href, target: opts.blank ? "_blank" : null }, h("span", { class: "cer-sp-link-art" }, art), h("span", { class: "cer-sp-link-text" }, h("b", { text: title }), sub && h("span", { text: sub })), icon("right", 18));
+    // the maker, then his games: art first, Play right on the card
+    const makerTag = (u) => CER.ui.nameTag({ type: "user", id: MAKER_ID, name: u.displayName, sub: "@" + u.name, verified: u.hasVerifiedBadge, size: "md" });
+    const maker = h("a", { class: "cer-sp-maker", href: `https://www.roblox.com/users/${MAKER_ID}/profile` }, CER.ui.avatar(MAKER_ID, { size: 44 }), makerTag({ displayName: "canard", name: "canardev" }));
+    CER.api.user(MAKER_ID).then((u) => u && maker.lastChild.replaceWith(makerTag(u)));
+    body.appendChild(maker);
+    const games = GAMES.map((g) => ({ ...g }));
+    const grid = h("div", { class: "cer-sp-games" }, games.map((g) => CER.ui.gameCard(g)));
+    body.appendChild(group("Games", grid));
+    CER.ui.hydrateGames(games).then(() => grid.replaceChildren(...games.map((g) => CER.ui.gameCard(g))));
+
     body.appendChild(
       group(null, [
-        link("https://www.roblox.com/games/" + BAC.placeId, CER.ui.thumb("gameIcon", BAC.universeId, { alt: "" }), BAC.name, "A game by the maker of CER"),
-        link("https://www.roblox.com/games/127603609999069/", icon("heart", 22), "Donate on Roblox", "Totally optional. Thank you!", { blank: true }),
+        h(
+          "a",
+          { class: "cer-sp-link", href: "https://www.roblox.com/games/127603609999069/", target: "_blank" },
+          h("span", { class: "cer-sp-link-art" }, icon("heart", 22)),
+          h("span", { class: "cer-sp-link-text" }, h("b", { text: "Donate on Roblox" }), h("span", { text: "Totally optional. Thank you!" })),
+          icon("right", 18)
+        ),
       ])
     );
 
