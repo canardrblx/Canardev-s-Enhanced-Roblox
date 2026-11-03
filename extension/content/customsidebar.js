@@ -202,7 +202,7 @@
       { id: "avatar", label: "Avatar", icon: "shirt", href: "https://www.roblox.com/my/avatar", match: (p) => /^\/my\/avatar/i.test(p) },
       { id: "catalog", label: "Catalog", icon: "bag", href: "https://www.roblox.com/catalog", match: (p) => /^\/(catalog|bundles)(\/|$)/i.test(p) },
       { id: "friends", label: "Friends", icon: "users", href: "https://www.roblox.com/users/friends", match: (p) => /^\/users\/(\d+\/)?friends/i.test(p) },
-      { id: "groups", label: prefs.groupsLabel, icon: "shield", href: "https://www.roblox.com/communities", match: (p) => /^\/(communities|groups)(\/|$)/i.test(p) },
+      { id: "groups", label: prefs.groupsLabel, icon: "shield", href: "https://www.roblox.com/communities#mine", match: (p) => /^\/(communities|groups)(\/|$)/i.test(p) },
       { id: "messages", label: "Messages", icon: "mail", href: "https://www.roblox.com/my/messages", match: (p) => /^\/my\/messages/i.test(p) },
       // optional ones: hidden unless turned on (sidebarPrefs[label] === "show")
       { id: "inventory", label: "Inventory", icon: "box", href: "https://www.roblox.com/users/inventory", opt: true, match: (p) => /^\/users\/(\d+\/)?inventory/i.test(p) },
