@@ -199,8 +199,7 @@
 
     if (!convo.id) {
       log.appendChild(CER.ui.empty("You can't chat here.", { icon: "lock" }));
-      input.disabled = true;
-      send.disabled = true;
+      composer.remove(); // nothing to type into here
       return;
     }
     log.appendChild(h("div", { class: "cer-chat-loading" }, CER.ui.skeleton("line", 4)));

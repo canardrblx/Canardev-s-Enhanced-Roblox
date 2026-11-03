@@ -80,7 +80,7 @@
     const out = new Map();
     const chunks = [];
     for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
-    const res = await Promise.all(chunks.map((c) => api.json("https://presence.roblox.com/v1/presence/users", { method: "POST", body: { userIds: c.map(Number) }, bg: true })));
+    const res = await Promise.all(chunks.map((c) => api.json("https://presence.roblox.com/v1/presence/users", { method: "POST", body: { userIds: c.map(Number) } })));
     let any = false;
     for (const j of res) {
       if (!j) continue;

@@ -437,9 +437,12 @@
   api.users = (ids) => api.user.many(ids);
 
   // Presence: { userPresenceType: 0 offline | 1 online | 2 in game | 3 studio, placeId, rootPlaceId, universeId, lastLocation }
-  // Background fetch: presence rejects the page's CORS preflight on writes.
+  // From the PAGE: the background worker's request comes back all offline
+  // (verified live: 0 of 73 vs 9 online). Background only if the page fails.
   api.presenceOne = batcher(async (ids) => {
-    const j = await api.json("https://presence.roblox.com/v1/presence/users", { method: "POST", body: { userIds: ids.map(Number) }, bg: true });
+    const url = "https://presence.roblox.com/v1/presence/users";
+    const body = { userIds: ids.map(Number) };
+    const j = (await api.json(url, { method: "POST", body })) ?? (await api.json(url, { method: "POST", body, bg: true }));
     return new Map((j?.userPresences ?? []).map((p) => [String(p.userId), p]));
   }, 100, 12, false);
   api.presence = (ids) => api.presenceOne.many(ids);

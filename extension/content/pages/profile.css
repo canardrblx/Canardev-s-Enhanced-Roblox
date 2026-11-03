@@ -156,6 +156,7 @@
   background: color-mix(in srgb, var(--cer-bg) 45%, transparent);
   backdrop-filter: blur(14px);
 }
+[data-page="profile"] .pf-counts[hidden],
 [data-page="profile"] .pf-playing[hidden] {
   display: none;
 }

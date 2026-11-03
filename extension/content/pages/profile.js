@@ -233,7 +233,15 @@
       return { all, failed: own == null && !grp.length };
     });
 
-    heroEl.replaceWith(buildHero({ id, user, me, isSelf, presenceP, countsP }));
+    // count API is often rate limited: fall back to the loaded list (exact under 250)
+    const heroCountsP = countsP.then(async ([fr, fo]) => {
+      if (fr == null) {
+        const l = await friendsP;
+        if (l && l.length < 250) fr = l.length;
+      }
+      return [fr, fo];
+    });
+    heroEl.replaceWith(buildHero({ id, user, me, isSelf, presenceP, countsP: heroCountsP }));
 
     // ---- tabs
     const TABS = [
@@ -477,6 +485,7 @@
     countsP.then(([fr, fo]) => {
       const one = (n, label, hash) => n != null && h("a", { class: "pf-count", href: friendsUrl(hash), title: fmt.full(n) }, h("b", { text: fmt.num(n) }), " " + label);
       counts.append(one(fr, fr === 1 ? "friend" : "friends", "friends") || "", one(fo, fo === 1 ? "follower" : "followers", "followers") || "");
+      if (!counts.childElementCount) counts.hidden = true;
     });
 
     const actions = h("div", { class: "pf-actions" });
