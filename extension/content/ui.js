@@ -27,11 +27,17 @@
     { tag: "game", feat: "gamePageRedesign", test: (p) => /^\/games\/\d+/i.test(p) },
     { tag: "profile", feat: "profileRedesign", test: (p) => /^\/users\/\d+\/profile/i.test(p) },
     { tag: "friends", feat: "friendsPage", test: (p) => /^\/users\/(\d+\/)?friends/i.test(p) },
-    { tag: "groups", feat: "groupsPage", test: (p) => /^\/(communities|groups)(\/\d+(\/[^/]*)?\/?|\/?)$/i.test(p) && !/^\/(communities|groups)\/configure/i.test(p) },
+    { tag: "groups", feat: "groupsPage", test: (p) => /^\/(communities|groups)(\/\d+(\/[^/]*)?\/?|\/?)$/i.test(p) && !/^\/(communities|groups)\/(\d+\/)?configure\/?$|^\/(communities|groups)\/configure/i.test(p) },
     { tag: "catalog", feat: "catalogClean", test: (p) => /^\/(catalog|bundles)(\/|$)/i.test(p) },
     { tag: "messages", feat: "messagesPage", test: (p) => /^\/my\/messages/i.test(p) },
     { tag: "settings", feat: "settingsPage", test: (p) => /^\/my\/account/i.test(p) && !/^#!\/(?!info\b)\w/.test(location.hash) },
     { tag: "transactions", feat: "transactionsPage", test: (p) => /^\/transactions/i.test(p) },
+    { tag: "groupconfig", feat: "groupConfigPage", test: (p) => /^\/(communities|groups)\/(\d+\/)?configure/i.test(p) },
+    { tag: "badge", feat: "badgePage", test: (p) => /^\/badges\/\d+/i.test(p) },
+    { tag: "pass", feat: "passPage", test: (p) => /^\/game-pass\/\d+/i.test(p) },
+    { tag: "inventory", feat: "inventoryPage", test: (p) => /^\/users\/\d+\/inventory/i.test(p) },
+    { tag: "favorites", feat: "favoritesPage", test: (p) => /^\/users\/\d+\/favorites/i.test(p) },
+    { tag: "trades", feat: "tradesPage", test: (p) => /^\/trades?(\/|$)/i.test(p) },
   ];
   // Loaded with ?cer=native: Roblox's page for this whole visit, even after
   // Roblox rewrites the URL without the query (game pages, /charts do).
@@ -841,6 +847,32 @@
     document.addEventListener("keydown", onKey);
     requestAnimationFrame(() => overlay.classList.add("is-in"));
     return { el: box, close };
+  };
+
+  // ---------------------------------------------------------------- identity
+  // A user or group name with its Roblox badges (verified, Premium, Plus).
+  // USE THIS everywhere a display name, username or group name is shown.
+  //   ui.nameTag({ type: "user"|"group", id, name, sub, verified, size, href, cls })
+  //     name: the text to show (display name, or group name)
+  //     sub:  optional second text, e.g. "@username" (muted, after the badges)
+  //     verified/premium/plus: pass if you already know them; anything not
+  //       passed is fetched in batches and the badges appear when known
+  //     size: "sm" | "md" | "lg" (badge size follows the text)
+  //   ui.nameBadges(o) → just the badge span (same options), for custom layouts
+  // STUB: the identity agent fills in fetching and the real badge icons.
+  ui.nameBadges = function (o = {}) {
+    const wrap = h("span", { class: "cer-name-badges" });
+    if (o.verified) wrap.appendChild(h("span", { class: "cer-name-badge is-verified", title: "Verified" }));
+    return wrap;
+  };
+  ui.nameTag = function (o = {}) {
+    return h(
+      o.href ? "a" : "span",
+      { class: "cer-name cer-name-" + (o.size ?? "md") + " " + (o.cls ?? ""), href: o.href },
+      h("span", { class: "cer-name-text", text: o.name ?? "" }),
+      ui.nameBadges(o),
+      o.sub && h("span", { class: "cer-name-sub", text: o.sub })
+    );
   };
 
   // Copy text, with a toast.

@@ -1253,3 +1253,15 @@ body.color-mode-light .cer-gc-media::after {
 .cer-hero-eyebrow .cer-icon {
   display: none;
 }
+
+/* Sideways rows never scroll up/down. A hovered card lifts a few px, which
+   made the row vertically scrollable for a moment and stole the page scroll
+   (wheel/trackpad latched onto the row). */
+.cer-ui .cer-rail-track,
+.cer-ui .cer-chips,
+.cer-ui .cer-seg,
+[data-page] .gx-strip,
+[data-page] .gx-tabbar .cer-seg {
+  overflow-y: hidden;
+  overscroll-behavior-y: auto;
+}

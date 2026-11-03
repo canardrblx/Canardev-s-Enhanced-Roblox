@@ -39,6 +39,12 @@
         "content/pages/messages.css",
         "content/pages/settings.css",
         "content/pages/transactions.css",
+        "content/pages/groupconfig.css",
+        "content/pages/badge.css",
+        "content/pages/pass.css",
+        "content/pages/inventory.css",
+        "content/pages/favorites.css",
+        "content/pages/trades.css",
         "content/pages/avatar.css"
       ],
       "run_at": "document_start"
@@ -81,7 +87,13 @@
         "content/pages/catalog.js",
         "content/pages/messages.js",
         "content/pages/settings.js",
-        "content/pages/transactions.js"
+        "content/pages/transactions.js",
+        "content/pages/groupconfig.js",
+        "content/pages/badge.js",
+        "content/pages/pass.js",
+        "content/pages/inventory.js",
+        "content/pages/favorites.js",
+        "content/pages/trades.js"
       ],
       "run_at": "document_end"
     },
