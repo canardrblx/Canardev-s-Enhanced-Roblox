@@ -35,8 +35,27 @@
     // Old version: full-screen, waited for the sidebar + a 300 ms settle, and
     // only gave up after 16 s, which is why pages felt so slow.
     const p = location.pathname;
+    // ---- full takeover pages (ui.js route table) ----
+    // Roblox's #content is hidden by CSS from the first paint; the page script
+    // mounts our own UI in its place. No veil needed. Failsafe: if the page
+    // never mounts (script error), give Roblox's page back.
+    const owned = CER.pageFor?.(p, location.search, feats);
+    if (owned) {
+      root.classList.add("cer-takeover");
+      root.dataset.cerPage = owned.tag;
+      const giveBack = () => {
+        if (!document.getElementById("cer-app")) {
+          root.classList.remove("cer-takeover");
+          delete root.dataset.cerPage;
+        }
+      };
+      const arm = () => setTimeout(giveBack, 6000);
+      document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", arm, { once: true }) : arm();
+    }
     // the redesign reports CER.skelDone(tag) once its UI is usable
-    const pageTag = /\/users\/\d+\/profile/.test(p) && feats.profileRedesign !== false
+    const pageTag = owned
+      ? null
+      : /\/users\/\d+\/profile/.test(p) && feats.profileRedesign !== false
       ? "profile"
       : p.startsWith("/users/friends") && feats.friendsPage !== false
       ? "friends"

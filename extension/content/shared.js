@@ -56,6 +56,11 @@ const CER = {
       gamesRedesign: true, // redesigned /charts page
       loadingSkeleton: true, // hide the stock UI behind a skeleton until CER mounts
       catalogClean: true, // declutter the catalog (rename, hide cart/robux, theme)
+      homeRedesign: true, // CER home page (own UI, Roblox data only)
+      groupsPage: true, // CER groups pages
+      searchPage: true, // CER search results
+      settingsPage: true, // CER account settings page
+      transactionsPage: true, // CER transactions page
     },
     knownSidebarItems: [], // sidebar labels we've seen (for the settings list)
     sidebarPrefs: {}, // { [label]: "show" | "hide" }

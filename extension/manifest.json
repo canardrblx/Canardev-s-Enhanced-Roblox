@@ -22,10 +22,23 @@
       ],
       "js": [
         "content/shared.js",
+        "content/ui.js",
         "content/theme.js"
       ],
       "css": [
-        "content/styles.css"
+        "content/styles.css",
+        "content/ui.css",
+        "content/pages/home.css",
+        "content/pages/discover.css",
+        "content/pages/search.css",
+        "content/pages/game.css",
+        "content/pages/profile.css",
+        "content/pages/friends.css",
+        "content/pages/groups.css",
+        "content/pages/catalog.css",
+        "content/pages/messages.css",
+        "content/pages/settings.css",
+        "content/pages/transactions.css"
       ],
       "run_at": "document_start"
     },
@@ -49,6 +62,25 @@
         "content/hscroll.js",
         "content/updatecheck.js",
         "content/searchpage.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "https://www.roblox.com/*"
+      ],
+      "js": [
+        "content/pages/home.js",
+        "content/pages/discover.js",
+        "content/pages/search.js",
+        "content/pages/game.js",
+        "content/pages/profile.js",
+        "content/pages/friends.js",
+        "content/pages/groups.js",
+        "content/pages/catalog.js",
+        "content/pages/messages.js",
+        "content/pages/settings.js",
+        "content/pages/transactions.js"
       ],
       "run_at": "document_end"
     },

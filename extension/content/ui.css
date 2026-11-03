@@ -1,0 +1,1226 @@
+/* CER design system. Pairs with ui.js. Every CER page uses these classes;
+   pages add only small page-specific rules in their own CSS file.
+   Colors come from CER tokens (--cer-*), which read Roblox's color tokens as
+   INPUT only (so CER themes and the user's light/dark choice flow through),
+   with fallbacks so nothing breaks if Roblox renames them. */
+
+/* ------------------------------------------------------------ takeover */
+/* Roblox's page column is hidden from the first paint on pages we own. */
+html.cer-takeover #container-main > #content,
+html.cer-takeover #footer-container,
+html.cer-takeover .container-footer {
+  display: none !important;
+}
+html.cer-takeover #container-main {
+  padding: 0 !important;
+  max-width: none !important;
+  min-height: 100vh;
+}
+
+/* ------------------------------------------------------------ tokens */
+.cer-ui {
+  --cer-bg: var(--color-surface-0, #101116);
+  --cer-surface: var(--color-surface-200, #1b1d24);
+  --cer-surface-2: var(--color-surface-300, #242731);
+  --cer-raise: var(--color-shift-100, rgba(255, 255, 255, 0.05));
+  --cer-hover: var(--color-shift-200, rgba(255, 255, 255, 0.09));
+  --cer-press: var(--color-shift-300, rgba(255, 255, 255, 0.13));
+  --cer-line: var(--color-stroke-muted, rgba(255, 255, 255, 0.08));
+  --cer-line-2: var(--color-stroke-default, rgba(255, 255, 255, 0.14));
+  --cer-text: var(--color-content-emphasis, #f6f7f9);
+  --cer-text-2: var(--color-content-default, #cfd2da);
+  --cer-text-3: var(--color-content-muted, #8e93a3);
+  --cer-acc: var(--cer-accent, var(--color-action-emphasis-background, #4c6bff));
+  --cer-acc-ink: #fff;
+  --cer-acc-soft: color-mix(in srgb, var(--cer-acc) 16%, transparent);
+  --cer-good: #2fd27a;
+  --cer-warn: #ffb020;
+  --cer-bad: #ff4d5e;
+  --cer-online: #2f9bff;
+  --cer-ingame: #2fd27a;
+  --cer-studio: #ff9a2f;
+  --cer-r-xs: 6px;
+  --cer-r-s: 10px;
+  --cer-r-m: 14px;
+  --cer-r-l: 20px;
+  --cer-r-xl: 28px;
+  --cer-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.18);
+  --cer-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.2), 0 24px 60px rgba(0, 0, 0, 0.35);
+  --cer-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --cer-font: "Builder Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--cer-text);
+  font-family: var(--cer-font);
+  -webkit-font-smoothing: antialiased;
+}
+.cer-ui *,
+.cer-ui *::before,
+.cer-ui *::after {
+  box-sizing: border-box;
+}
+.cer-ui a {
+  color: inherit;
+  text-decoration: none;
+}
+.cer-ui button {
+  font: inherit;
+  color: inherit;
+}
+.cer-ui h1,
+.cer-ui h2,
+.cer-ui h3,
+.cer-ui h4,
+.cer-ui p {
+  margin: 0;
+  font-family: inherit;
+}
+.cer-ui :focus-visible {
+  outline: 2px solid var(--cer-acc);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ app + page */
+.cer-app {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  background: transparent;
+}
+.cer-app-floating {
+  margin-left: 0;
+}
+html.cer-cnav .cer-app-floating {
+  margin-left: 288px;
+}
+.cer-view {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 28px clamp(16px, 3vw, 44px) 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  animation: cer-view-in 0.28s var(--cer-ease) both;
+}
+@keyframes cer-view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.cer-view-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.cer-view-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.cer-view-title .cer-icon {
+  color: var(--cer-acc);
+}
+.cer-view-sub {
+  margin-top: 6px !important;
+  color: var(--cer-text-3);
+  font-size: 15px;
+}
+.cer-view-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------ sections */
+.cer-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.cer-block-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cer-block-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.cer-block-title .cer-icon {
+  color: var(--cer-acc);
+  align-self: center;
+}
+.cer-block-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cer-text-3);
+  background: var(--cer-raise);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.cer-block-sub {
+  color: var(--cer-text-3);
+  font-size: 14px;
+}
+.cer-block-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cer-block-body {
+  min-width: 0;
+}
+.cer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cer-text-3) !important;
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.cer-link:hover {
+  color: var(--cer-text) !important;
+}
+
+/* ------------------------------------------------------------ layout */
+.cer-autogrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--min, 200px), 1fr));
+  gap: var(--gap, 16px);
+}
+.cer-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--side, 340px);
+  gap: 32px;
+  align-items: start;
+}
+.cer-cols.side-left {
+  grid-template-columns: var(--side, 340px) minmax(0, 1fr);
+}
+.cer-cols.side-left .cer-col-side {
+  order: -1;
+}
+.cer-col-main,
+.cer-col-side {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  min-width: 0;
+}
+.cer-col-side {
+  position: sticky;
+  top: 20px;
+}
+@media (max-width: 1100px) {
+  .cer-cols,
+  .cer-cols.side-left {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cer-col-side {
+    position: static;
+  }
+}
+.cer-card-box {
+  display: block;
+  background: var(--cer-surface);
+  border: 1px solid var(--cer-line);
+  border-radius: var(--cer-r-l);
+  padding: 20px;
+}
+.cer-card-box.no-pad {
+  padding: 0;
+  overflow: hidden;
+}
+a.cer-card-box {
+  transition: border-color 0.15s, transform 0.2s var(--cer-ease);
+}
+a.cer-card-box:hover {
+  border-color: var(--cer-line-2);
+  transform: translateY(-2px);
+}
+
+/* rail */
+.cer-rail {
+  position: relative;
+}
+.cer-rail-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--item, 260px);
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  padding: 4px 2px 8px;
+  margin: -4px -2px -8px;
+}
+.cer-rail-track::-webkit-scrollbar {
+  display: none;
+}
+.cer-rail-track > * {
+  scroll-snap-align: start;
+}
+.cer-rail .cer-rail-prev,
+.cer-rail .cer-rail-next {
+  position: absolute;
+  top: calc(var(--rail-arrow-top, 38%));
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--cer-surface-2);
+  box-shadow: var(--cer-shadow);
+  border: 1px solid var(--cer-line-2);
+  opacity: 0;
+  transition: opacity 0.18s;
+  z-index: 2;
+}
+.cer-rail .cer-rail-prev {
+  left: -14px;
+}
+.cer-rail .cer-rail-next {
+  right: -14px;
+}
+.cer-rail:hover .cer-rail-prev,
+.cer-rail:hover .cer-rail-next {
+  opacity: 1;
+}
+.cer-rail.at-start .cer-rail-prev,
+.cer-rail.at-end .cer-rail-next {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------ buttons */
+.cer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s var(--cer-ease), opacity 0.15s, box-shadow 0.15s;
+  text-decoration: none !important;
+}
+.cer-btn:active {
+  transform: scale(0.97);
+}
+.cer-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+.cer-btn-sm {
+  height: 32px;
+  padding: 0 13px;
+  font-size: 13px;
+  gap: 6px;
+}
+.cer-btn-lg {
+  height: 52px;
+  padding: 0 28px;
+  font-size: 16.5px;
+  gap: 10px;
+}
+.cer-btn-icon {
+  padding: 0;
+  width: 40px;
+}
+.cer-btn-icon.cer-btn-sm {
+  width: 32px;
+}
+.cer-btn-icon.cer-btn-lg {
+  width: 52px;
+}
+.cer-btn-primary {
+  background: var(--cer-acc);
+  color: var(--cer-acc-ink) !important;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--cer-acc) 35%, transparent);
+}
+.cer-btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--cer-acc) 88%, #fff);
+}
+.cer-btn-light {
+  background: #fff;
+  color: #0b0c10 !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.cer-btn-light:hover:not(:disabled) {
+  background: #eef0f4;
+}
+.cer-btn-soft {
+  background: var(--cer-hover);
+  color: var(--cer-text) !important;
+}
+.cer-btn-soft:hover:not(:disabled) {
+  background: var(--cer-press);
+}
+.cer-btn-ghost {
+  background: transparent;
+  color: var(--cer-text-2) !important;
+}
+.cer-btn-ghost:hover:not(:disabled) {
+  background: var(--cer-hover);
+  color: var(--cer-text) !important;
+}
+.cer-btn-outline {
+  background: transparent;
+  border-color: var(--cer-line-2);
+  color: var(--cer-text) !important;
+}
+.cer-btn-outline:hover:not(:disabled) {
+  background: var(--cer-raise);
+}
+.cer-btn-glass {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff !important;
+  backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.cer-btn-glass:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+.cer-btn-danger {
+  background: color-mix(in srgb, var(--cer-bad) 16%, transparent);
+  color: var(--cer-bad) !important;
+}
+.cer-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--cer-bad) 26%, transparent);
+}
+.cer-btn-good {
+  background: var(--cer-good);
+  color: #062b16 !important;
+}
+.cer-btn.is-busy {
+  position: relative;
+  color: transparent !important;
+}
+.cer-btn.is-busy::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-color: var(--cer-text) transparent var(--cer-text) transparent;
+  animation: cer-spin 0.7s linear infinite;
+}
+.cer-btn-primary.is-busy::after,
+.cer-btn-light.is-busy::after {
+  border-color: #fff transparent #fff transparent;
+}
+.cer-btn-light.is-busy::after {
+  border-color: #111 transparent #111 transparent;
+}
+@keyframes cer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------------ chips + tabs */
+.cer-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px;
+  margin: -2px;
+}
+.cer-chips.is-wrap {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.cer-chips::-webkit-scrollbar {
+  display: none;
+}
+.cer-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--cer-line);
+  background: var(--cer-raise);
+  color: var(--cer-text-2) !important;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.cer-chip:hover {
+  background: var(--cer-hover);
+  color: var(--cer-text) !important;
+}
+.cer-chip.is-active {
+  background: var(--cer-text);
+  color: var(--cer-bg) !important;
+  border-color: transparent;
+}
+.cer-chip-count {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.cer-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--cer-raise);
+  border: 1px solid var(--cer-line);
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+.cer-seg .cer-chip {
+  border: 0;
+  background: transparent;
+  height: 34px;
+}
+.cer-seg .cer-chip.is-active {
+  background: var(--cer-surface-2);
+  color: var(--cer-text) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ------------------------------------------------------------ inputs */
+.cer-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--cer-raise);
+  border: 1px solid var(--cer-line);
+  color: var(--cer-text-3);
+  transition: border-color 0.15s, background 0.15s;
+  min-width: 0;
+}
+.cer-input:focus-within {
+  border-color: var(--cer-acc);
+  background: var(--cer-surface);
+}
+.cer-input-el {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  color: var(--cer-text) !important;
+  font: inherit;
+  font-size: 15px;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.cer-input-el::placeholder {
+  color: var(--cer-text-3);
+}
+.cer-input-el::-webkit-search-cancel-button {
+  filter: grayscale(1);
+}
+.cer-textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  padding: 12px 14px;
+  border-radius: var(--cer-r-m);
+  background: var(--cer-raise);
+  border: 1px solid var(--cer-line);
+  color: var(--cer-text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.cer-textarea:focus {
+  border-color: var(--cer-acc);
+}
+.cer-dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.cer-dropdown {
+  appearance: none;
+  height: 38px;
+  padding: 0 36px 0 14px;
+  border-radius: 999px;
+  background: var(--cer-raise);
+  border: 1px solid var(--cer-line);
+  color: var(--cer-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+}
+.cer-dropdown option {
+  background: var(--cer-surface-2);
+  color: var(--cer-text);
+}
+.cer-dropdown-wrap .cer-icon {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+  color: var(--cer-text-3);
+}
+.cer-switch {
+  appearance: none;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--cer-press);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin: 0;
+}
+.cer-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s var(--cer-ease);
+}
+.cer-switch:checked {
+  background: var(--cer-acc);
+}
+.cer-switch:checked::after {
+  transform: translateX(18px);
+}
+
+/* ------------------------------------------------------------ hero */
+.cer-hero {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 32px;
+  min-height: 340px;
+  padding: 40px;
+  border-radius: var(--cer-r-xl);
+  overflow: hidden;
+  isolation: isolate;
+  color: #fff;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cer-acc) 55%, #0b0c12), #0b0c12);
+  box-shadow: var(--cer-shadow-lg);
+}
+.cer-hero-bg {
+  position: absolute;
+  inset: -60px;
+  z-index: -2;
+  background-size: cover;
+  background-position: center;
+  filter: blur(42px) saturate(1.5);
+  transform: scale(1.1);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+.cer-hero.has-image .cer-hero-bg {
+  opacity: 0.95;
+}
+.cer-hero-shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(6, 7, 12, 0.82) 0%, rgba(6, 7, 12, 0.55) 45%, rgba(6, 7, 12, 0.15) 100%), linear-gradient(0deg, rgba(6, 7, 12, 0.5), transparent 50%);
+}
+.cer-hero-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.cer-hero-eyebrow {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cer-hero-title {
+  font-size: clamp(30px, 3.6vw, 52px);
+  line-height: 1.04;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cer-hero-sub {
+  font-size: 16px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 640px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cer-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+.cer-hero-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.cer-hero-stat .cer-icon {
+  opacity: 0.8;
+}
+.cer-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+.cer-hero-art {
+  flex: none;
+  width: min(46%, 560px);
+  align-self: center;
+  border-radius: var(--cer-r-l);
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  aspect-ratio: 16 / 9;
+  background: rgba(255, 255, 255, 0.06);
+}
+.cer-hero-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+@media (max-width: 900px) {
+  .cer-hero {
+    flex-direction: column-reverse;
+    padding: 24px;
+  }
+  .cer-hero-art {
+    width: 100%;
+  }
+}
+
+/* ------------------------------------------------------------ media */
+.cer-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.cer-img.cer-img-in {
+  opacity: 1;
+}
+.cer-img.cer-img-none {
+  opacity: 0;
+}
+.cer-avatar {
+  --sz: 48px;
+  --ring: transparent;
+  position: relative;
+  flex: none;
+  display: inline-block;
+  width: var(--sz);
+  height: var(--sz);
+  border-radius: 50%;
+  background: var(--cer-surface-2);
+  box-shadow: 0 0 0 2px var(--cer-bg-ring, transparent), 0 0 0 calc(2px + max(2px, var(--sz) * 0.04)) var(--ring);
+}
+.cer-avatar .cer-img {
+  border-radius: 50%;
+}
+.cer-avatar.is-online {
+  --ring: var(--cer-online);
+}
+.cer-avatar.is-ingame {
+  --ring: var(--cer-ingame);
+}
+.cer-avatar.is-studio {
+  --ring: var(--cer-studio);
+}
+.cer-avatar.is-online,
+.cer-avatar.is-ingame,
+.cer-avatar.is-studio {
+  --cer-bg-ring: var(--cer-bg);
+}
+
+/* ------------------------------------------------------------ game card */
+.cer-gc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  color: var(--cer-text) !important;
+}
+.cer-gc-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--cer-r-m);
+  overflow: hidden;
+  background: var(--cer-surface-2);
+  transition: transform 0.22s var(--cer-ease), box-shadow 0.22s;
+}
+.cer-gc-icon .cer-gc-media {
+  aspect-ratio: 1;
+}
+.cer-gc-lg .cer-gc-media {
+  border-radius: var(--cer-r-l);
+}
+.cer-gc:hover .cer-gc-media {
+  transform: translateY(-3px);
+  box-shadow: var(--cer-shadow);
+}
+.cer-gc-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+.cer-gc-rank {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(8, 9, 14, 0.72);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+.cer-gc-play {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #0b0c10 !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(6px) scale(0.9);
+  transition: opacity 0.18s, transform 0.18s var(--cer-ease);
+}
+.cer-gc-play .cer-icon {
+  margin-left: 2px;
+}
+.cer-gc:hover .cer-gc-play,
+.cer-gc-play:focus-visible {
+  opacity: 1;
+  transform: none;
+}
+.cer-gc-play:hover {
+  transform: scale(1.08) !important;
+}
+.cer-gc-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.cer-gc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: -2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+}
+.cer-gc-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ------------------------------------------------------------ user tile */
+.cer-user {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-align: center;
+  color: var(--cer-text) !important;
+  padding: 6px 4px;
+  border-radius: var(--cer-r-m);
+  transition: background 0.15s;
+}
+.cer-user:hover {
+  background: var(--cer-raise);
+}
+.cer-user-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  max-width: 100%;
+}
+.cer-user-name {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cer-user-sub {
+  font-size: 12.5px;
+  color: var(--cer-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cer-user-sub.is-ingame {
+  color: var(--cer-ingame);
+}
+.cer-user-sub.is-online {
+  color: var(--cer-online);
+}
+.cer-user-sub.is-studio {
+  color: var(--cer-studio);
+}
+.cer-user.is-row {
+  flex-direction: row;
+  text-align: left;
+  gap: 12px;
+  padding: 8px 10px;
+}
+.cer-user.is-row .cer-user-text {
+  flex: 1;
+}
+
+/* ------------------------------------------------------------ bits */
+.cer-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cer-stat > .cer-icon {
+  color: var(--cer-text-3);
+  margin-bottom: 4px;
+}
+.cer-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.cer-stat-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+}
+.cer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  background: var(--cer-hover);
+  color: var(--cer-text-2);
+}
+.cer-badge.is-accent {
+  background: var(--cer-acc-soft);
+  color: var(--cer-acc);
+}
+.cer-badge.is-good {
+  background: color-mix(in srgb, var(--cer-good) 16%, transparent);
+  color: var(--cer-good);
+}
+.cer-badge.is-warn {
+  background: color-mix(in srgb, var(--cer-warn) 16%, transparent);
+  color: var(--cer-warn);
+}
+.cer-badge.is-bad {
+  background: color-mix(in srgb, var(--cer-bad) 16%, transparent);
+  color: var(--cer-bad);
+}
+.cer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--cer-text-3);
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: var(--cer-r-l);
+  border: 1px dashed var(--cer-line-2);
+}
+.cer-empty-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cer-raise);
+  color: var(--cer-text-2);
+}
+.cer-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: var(--lines, 4);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  color: var(--cer-text-2);
+  font-size: 15px;
+}
+.cer-clamp.is-open {
+  -webkit-line-clamp: unset;
+  display: block;
+}
+.cer-clamp-more {
+  margin-top: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--cer-acc) !important;
+  cursor: pointer;
+}
+.cer-clamp-more.is-hidden {
+  display: none;
+}
+.cer-divider {
+  height: 1px;
+  background: var(--cer-line);
+  border: 0;
+  margin: 0;
+}
+
+/* ------------------------------------------------------------ list rows */
+.cer-list {
+  display: flex;
+  flex-direction: column;
+}
+.cer-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--cer-r-m);
+  color: var(--cer-text) !important;
+  transition: background 0.15s;
+  min-width: 0;
+}
+.cer-row:hover {
+  background: var(--cer-raise);
+}
+.cer-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cer-row-title {
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cer-row-sub {
+  font-size: 13px;
+  color: var(--cer-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------ skeleton */
+.cer-sk,
+.cer-sk-media,
+.cer-sk-line {
+  background: linear-gradient(90deg, var(--cer-raise) 0%, var(--cer-hover) 50%, var(--cer-raise) 100%);
+  background-size: 200% 100%;
+  animation: cer-shimmer 1.3s ease-in-out infinite;
+  border-radius: var(--cer-r-m);
+}
+.cer-sk-card {
+  background: none;
+  animation: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cer-sk-media {
+  aspect-ratio: 16 / 9;
+}
+.cer-sk-line {
+  height: 14px;
+  border-radius: 6px;
+  width: 80%;
+}
+.cer-sk-line.short {
+  width: 45%;
+}
+.cer-sk-tile {
+  aspect-ratio: 1;
+}
+.cer-sk-row {
+  height: 64px;
+}
+.cer-sk-line:only-child,
+.cer-sk.cer-sk-line {
+  width: 100%;
+}
+.cer-sk-hero {
+  height: 340px;
+  border-radius: var(--cer-r-xl);
+}
+@keyframes cer-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* ------------------------------------------------------------ modal */
+.cer-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(4, 5, 9, 0.6);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 0.16s;
+}
+.cer-modal-overlay.is-in {
+  opacity: 1;
+}
+.cer-modal {
+  width: min(480px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  background: var(--cer-surface);
+  border: 1px solid var(--cer-line-2);
+  border-radius: var(--cer-r-l);
+  box-shadow: var(--cer-shadow-lg);
+  transform: translateY(8px) scale(0.98);
+  transition: transform 0.2s var(--cer-ease);
+}
+.cer-modal-overlay.is-in .cer-modal {
+  transform: none;
+}
+.cer-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 0 22px;
+}
+.cer-modal-head h3 {
+  font-size: 19px;
+  font-weight: 800;
+}
+.cer-modal-body {
+  padding: 14px 22px 22px;
+  color: var(--cer-text-2);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.cer-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 22px 20px;
+}
+
+/* ------------------------------------------------------------ light mode */
+/* light-ish themes: soften shadows, keep hero text white over its art */
+body.light-theme .cer-ui,
+body.color-mode-light .cer-ui {
+  --cer-shadow: 0 1px 2px rgba(20, 22, 30, 0.06), 0 6px 18px rgba(20, 22, 30, 0.08);
+  --cer-shadow-lg: 0 2px 6px rgba(20, 22, 30, 0.08), 0 18px 44px rgba(20, 22, 30, 0.16);
+}
+body.light-theme .cer-gc-media::after,
+body.color-mode-light .cer-gc-media::after {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cer-ui *,
+  .cer-ui *::before,
+  .cer-ui *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
