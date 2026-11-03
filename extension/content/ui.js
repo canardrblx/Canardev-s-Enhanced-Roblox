@@ -34,6 +34,7 @@
     { tag: "transactions", feat: "transactionsPage", test: (p) => /^\/transactions/i.test(p) },
   ];
   CER.pageFor = function (path = location.pathname, query = location.search, feats = {}) {
+    if (/[?&]cer=native\b/.test(query)) return null; // escape hatch: Roblox's own page
     for (const pg of CER.PAGES) if (pg.test(path, query) && feats[pg.feat] !== false) return pg;
     return null;
   };
@@ -50,6 +51,13 @@
   })();
 
   const ui = (CER.ui = {});
+  // Same URL but showing Roblox's own page (for flows only Roblox should run:
+  // purchases, security settings, captcha joins). ui.nativeUrl("/catalog/123")
+  ui.nativeUrl = function (url = location.href) {
+    const u = new URL(url, location.origin);
+    u.searchParams.set("cer", "native");
+    return u.toString();
+  };
   const api = (CER.api = {});
   const fmt = (CER.fmt = {});
 
@@ -247,7 +255,7 @@
     let lastKey = null;
     const run = async () => {
       const feats = (await CER.get()).features;
-      const match = pg.test(location.pathname, location.search) && feats[pg.feat] !== false;
+      const match = CER.pageFor(location.pathname, location.search, feats)?.tag === tag;
       if (!match) {
         if (document.getElementById("cer-app")?.dataset.page === tag) ui.release();
         lastKey = null;

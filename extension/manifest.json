@@ -38,7 +38,8 @@
         "content/pages/catalog.css",
         "content/pages/messages.css",
         "content/pages/settings.css",
-        "content/pages/transactions.css"
+        "content/pages/transactions.css",
+        "content/pages/avatar.css"
       ],
       "run_at": "document_start"
     },
