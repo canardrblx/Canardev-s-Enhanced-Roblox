@@ -78,12 +78,18 @@
 
     const me = await meP;
     if (!alive()) return;
-    if (!me) return ui.release();
+    // only a real 401/403 means signed out; anything else is a hiccup
+    if (!me) return CER.loggedOut ? ui.release() : body.replaceChildren(retryEmpty("Could not load. Try again.", start));
 
     const panels = {};
     const show = (tab) => {
       if (!TABS.some((t) => t.id === tab)) tab = "Inbound";
       tabs.set(tab);
+      // a tab whose first load failed builds again when picked again
+      if (panels[tab]?.dataset.failed) {
+        panels[tab].remove();
+        delete panels[tab];
+      }
       for (const k in panels) panels[k].hidden = k !== tab;
       if (!panels[tab]) {
         panels[tab] = h("div", { class: "tr-panel" });
@@ -105,10 +111,15 @@
     if (!alive()) return;
     if (!firstPage.data) {
       if (firstPage.status === 401) return ui.release();
+      // 403: Roblox says this account cannot trade (its reason shows); a
+      // retry will not change that. Anything else may pass on a second try.
+      const blocked = firstPage.status === 403;
       body.replaceChildren(
         ui.empty(firstPage.message || "Trades did not load. Try again soon.", {
-          icon: firstPage.status === 403 ? "lock" : "info",
-          action: ui.button("Open Roblox page", { variant: "soft", icon: "external", href: ui.nativeUrl(RB + "/trades") }),
+          icon: blocked ? "lock" : "info",
+          action: blocked
+            ? ui.button("Open Roblox page", { variant: "soft", icon: "external", href: ui.nativeUrl(RB + "/trades") })
+            : ui.button("Try again", { variant: "soft", icon: "refresh", onClick: () => start() }),
         })
       );
       return;
@@ -124,7 +135,17 @@
       panel.append(list, foot);
       let cursor = "";
       let count = 0;
+      let loading = false; // a double click must not add the same page twice
       const load = async () => {
+        if (loading) return;
+        loading = true;
+        try {
+          await loadOnce();
+        } finally {
+          loading = false;
+        }
+      };
+      const loadOnce = async () => {
         const sk = ui.skeleton("row", count ? 1 : 3);
         [sk].flat().forEach((s) => (s.classList.add("tr-sk-card"), list.append(s)));
         let res = prefetched[type];
@@ -133,8 +154,22 @@
         [sk].flat().forEach((s) => s.remove());
         if (!alive()) return;
         if (!res.data) {
-          if (!count) return panel.replaceChildren(ui.empty(res.message || "Could not load trades.", { icon: "info" }));
-          return foot.replaceChildren(ui.button("Load more", { variant: "soft", onClick: load }));
+          if (!count) {
+            panel.dataset.failed = "1";
+            return panel.replaceChildren(
+              retryEmpty(res.message || "Could not load trades.", () => {
+                delete panel.dataset.failed;
+                panel.replaceChildren(list, foot);
+                load();
+              })
+            );
+          }
+          const more = ui.button("Load more", { variant: "soft", icon: "refresh" });
+          more.addEventListener("click", () => {
+            more.busy(true);
+            load();
+          });
+          return foot.replaceChildren(more);
         }
         list.append(...res.data.map((t) => tradeCard(t, type)));
         count += res.data.length;
@@ -180,12 +215,12 @@
         ),
         h("div", { class: "tr-sides" }, give.el, h("div", { class: "tr-swap" }, ui.icon("arrowRight", 20)), get.el)
       );
-      ui.whenVisible(card, async () => {
+      const fillCard = async () => {
         const d = await detail(t.id, active ? 30000 : 600000);
         if (!card.isConnected) return;
         if (!d) {
           give.fail();
-          get.fail();
+          get.fail(() => (give.wait(), get.wait(), fillCard()));
           return;
         }
         const offers = [d.participantAOffer, d.participantBOffer].filter(Boolean);
@@ -193,9 +228,15 @@
         const theirs = offers.find((o) => o !== mine);
         give.fill(mine);
         get.fill(theirs);
-      });
+      };
+      ui.whenVisible(card, fillCard);
       return card;
     }
+  }
+
+  // Failed load: say so, with a Try again button.
+  function retryEmpty(text, again) {
+    return ui.empty(text, { icon: "refresh", action: ui.button("Try again", { variant: "soft", icon: "refresh", onClick: () => again() }) });
   }
 
   // One side of a trade: label, item art grid, total value.
@@ -205,7 +246,9 @@
     const el = h("div", { class: "tr-side" }, h("div", { class: "tr-side-head" }, h("span", { class: "tr-side-label", text: label }), total), items);
     return {
       el,
-      fail: () => items.replaceChildren(h("span", { class: "tr-side-none", text: "Could not load." })),
+      wait: () => items.replaceChildren(ui.skeleton("tile", 2)),
+      fail: (again) =>
+        ui.clear(items, h("span", { class: "tr-side-none", text: "Could not load." }), again && ui.button("Try again", { variant: "ghost", size: "sm", icon: "refresh", onClick: again })),
       fill: (offer) => {
         const list = offer?.items ?? [];
         const robux = offer?.robux ?? 0;

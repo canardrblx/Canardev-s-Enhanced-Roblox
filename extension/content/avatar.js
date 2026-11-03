@@ -37,9 +37,7 @@
   // category icons (24 grid, stroke, currentColor), drawn for this page
   const ICONS = {
     outfits: '<path d="M10 5.5a2 2 0 1 1 2.9 1.8c-.55.27-.9.78-.9 1.38V9.5"/><path d="M12 9.5 2.9 15.7a1.2 1.2 0 0 0 .68 2.2h16.84a1.2 1.2 0 0 0 .68-2.2Z"/>',
-    hair: '<path d="M4.5 20v-7.5a7.5 7.5 0 0 1 15 0V20"/><path d="M4.5 12.5c3.2 0 6.3-1.9 7.5-5 1.2 3.1 4.3 5 7.5 5"/><path d="M8.5 20v-4M15.5 20v-4"/>',
-    hats: '<path d="M2.5 18h19"/><path d="M6.5 18V8.5A2.5 2.5 0 0 1 9 6h6a2.5 2.5 0 0 1 2.5 2.5V18"/><path d="M6.5 14h11"/>',
-    extras: '<circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 13.5c1.3-.9 2.7-.9 4 0M3 14l1.6-6.5M21 14l-1.6-6.5"/>',
+    accessories: '<path d="M2.5 18h19"/><path d="M6.5 18V8.5A2.5 2.5 0 0 1 9 6h6a2.5 2.5 0 0 1 2.5 2.5V18"/><path d="M6.5 14h11"/>',
     shirts: ui.ICONS.shirt,
     pants: '<path d="M6 3h12l1.5 18h-5L12 10l-2.5 11h-5Z"/><path d="M6.2 6.5h11.6"/>',
     shoes: '<path d="M3 9.5V16a2 2 0 0 0 2 2h14.5a1.5 1.5 0 0 0 1.5-1.5c0-1.7-1.3-3-3-3.3l-5-1L10 9l-3 2-4-1.5Z"/><path d="M3 15h18"/>',
@@ -52,15 +50,16 @@
     return s;
   };
 
-  // [label, assetType or [types]] per sub chip
+  // [label, assetType or [types]] per sub chip. Hair, hats and the small
+  // extras are all accessories to Roblox, so they share one category.
   const CATEGORIES = [
     { id: "outfits", label: "Outfits", outfits: true },
-    { id: "hair", label: "Hair", type: 41 },
-    { id: "hats", label: "Hats", type: 8 },
     {
-      id: "extras",
-      label: "Extras",
+      id: "accessories",
+      label: "Accessories",
       sub: [
+        ["Hair", 41],
+        ["Hats", 8],
         ["Face", 42],
         ["Neck", 43],
         ["Shoulder", 44],
@@ -119,6 +118,15 @@
     bodyBtn
   );
   const strip = h("div", { class: "cer-av-worn" });
+  // edge fades on the wearing row while more tiles sit past that edge
+  const syncStrip = () => {
+    const max = strip.scrollWidth - strip.clientWidth;
+    strip.classList.toggle("is-more-start", max > 2 && strip.scrollLeft > 2);
+    strip.classList.toggle("is-more-end", max > 2 && strip.scrollLeft < max - 2);
+  };
+  strip.addEventListener("scroll", syncStrip, { passive: true });
+  new ResizeObserver(syncStrip).observe(strip);
+  new MutationObserver(() => requestAnimationFrame(syncStrip)).observe(strip, { childList: true });
   const classic = h("a", { class: "cer-av-classic", href: ui.nativeUrl() }, "Classic editor");
   const stage = h(
     "aside",
@@ -837,7 +845,8 @@
           const r = await CER.robloxWrite(API + "/v2/outfits/create", "POST", outfitPayload(name.slice(0, 25), await snapshotLook()));
           if (r?.ok) {
             CER.toast("Saved " + name, "success");
-            loadOutfits();
+            // only while this outfits grid is still the one shown
+            if (!stale(seq)) loadOutfits();
           } else CER.toast("Couldn't save. Try again.", "error");
         } catch {
           CER.toast("Couldn't save. Try again.", "error");

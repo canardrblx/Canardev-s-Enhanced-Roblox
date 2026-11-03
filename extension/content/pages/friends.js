@@ -2,10 +2,12 @@
 // Routes: /users/friends and /users/{id}/friends, with Roblox's hash tabs
 // (#!/friends, #!/friend-requests, #!/followers, #!/following).
 // Game-platform look: avatars first, a name, and a status only when it
-// matters (Playing / Online / In Studio). No counts, no helper lines.
+// adds something (the game, or In Studio; the ring and the Online heading
+// say the rest). No counts, no helper lines. Join is a small round button
+// on the avatar.
 // Requests: sort (Newest / Most mutual / Most followers) and filters (Mutual
-// friends, Verified, Over X followers). Mutual friends come with the request
-// list; follower counts are fetched lazily (visible tiles first, all of them
+// friends, Verified, Over X followers). With any of them on, every request
+// page is loaded first. Mutual friends come with the request list; follower counts are fetched lazily (visible tiles first, all of them
 // only while a followers sort/filter is on), queued with 429 backoff and
 // cached 12 h in localStorage.
 // Writes (accept, decline, unfriend) go through one `write()` that honours
@@ -25,29 +27,18 @@
   let S = null; // the live page session (replaced on every start)
 
   // ------------------------------------------------------------ data helpers
-  const chunk = (arr, n) => {
-    const out = [];
-    for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-    return out;
-  };
-
-  // Fresh presence (api.presence caches forever; we refresh every 60 s).
-  // Sent from the page, not the background worker: the worker's request
-  // carries no Roblox session, so every friend came back "offline".
-  // A chunk that fails keeps its ids' previous presence (`prev`), so a
-  // hiccup never flips friends to offline or hides their Join button.
+  // Presence through the shared api.presence (short cache, one request for
+  // everyone asking, no 429 storm). Ids whose lookup failed are absent from
+  // its Map: they keep their previous presence (`prev`), so a hiccup never
+  // flips friends to offline or hides their Join button.
   async function presenceOf(ids, prev) {
+    const got = await api.presence(ids.map(String)).catch(() => new Map());
     const out = new Map();
-    await Promise.all(
-      chunk(ids.map(Number), 50).map(async (c) => {
-        const j = await api.json("https://presence.roblox.com/v1/presence/users", { method: "POST", body: { userIds: c } });
-        if (!j?.userPresences) {
-          for (const id of c) if (prev?.has(String(id))) out.set(String(id), prev.get(String(id)));
-          return;
-        }
-        for (const p of j.userPresences) out.set(String(p.userId), p);
-      })
-    );
+    for (const id of ids) {
+      const k = String(id);
+      if (got.has(k)) out.set(k, got.get(k));
+      else if (prev?.has(k)) out.set(k, prev.get(k));
+    }
     return out;
   }
 
@@ -251,7 +242,8 @@
     tile.actions = actions;
 
     let gameIcon = null;
-    const join = ui.button("Join", { variant: "primary", size: "sm", class: "fr-join" });
+    // Join: a small round button on the avatar (shows on hover), not a big one per row
+    const join = ui.button("", { icon: "play", variant: "primary", size: "sm", class: "fr-join", title: "Join" });
     join.addEventListener("click", () => {
       const p = tile.presence;
       if (p) ui.play(p.placeId ?? p.rootPlaceId, p.gameId);
@@ -272,12 +264,16 @@
         gameIcon = h("span", { class: "fr-game", dataset: { uni } }, ui.thumb("gameIcon", uni));
         face.append(gameIcon);
       }
+      // only what the heading and the ring do not already say: the game, or Studio
       if (state === "ingame") {
-        const game = (uni && games?.get(String(uni))) || p.lastLocation;
-        status.textContent = game ? "Playing " + game : "Playing";
-        status.title = status.textContent;
-        if (p.gameId && (p.placeId || p.rootPlaceId)) actions.prepend(join);
-      } else status.textContent = state === "online" ? "Online" : state === "studio" ? "In Studio" : "";
+        const game = (uni && games?.get(String(uni))) || p.lastLocation || "";
+        status.textContent = game;
+        status.title = game;
+        if (p.gameId && (p.placeId || p.rootPlaceId)) tile.append(join);
+      } else {
+        status.textContent = state === "studio" ? "In Studio" : "";
+        status.title = "";
+      }
     };
     tile.setPresence(null);
     if (opts.menu) tile.append(moreMenu(tile, opts.menu));
@@ -333,7 +329,8 @@
   const newGrid = () => h("div", { class: "fr-grid" });
 
   // ------------------------------------------------------------ page
-  ui.route("friends", async () => {
+  ui.route("friends", start);
+  async function start() {
     S?.stop();
     const session = (S = {
       alive: true,
@@ -358,7 +355,15 @@
 
     const me = await api.me();
     if (!session.alive) return;
-    if (!me) return ui.release(); // every friends list API needs a login
+    if (!me) {
+      // every friends list API needs a login, but only a real 401/403 means
+      // signed out; a busy or failed check gets Try again, not Roblox's page
+      if (CER.loggedOut) return ui.release();
+      headSlot.replaceWith(ui.header({ title: "Friends" }));
+      tabSlot.remove();
+      body.replaceChildren(ui.empty("Could not load. Try again.", { icon: "users", action: ui.button("Try again", { variant: "soft", onClick: () => start() }) }));
+      return;
+    }
     const userId = pathId ?? String(me.id);
     const own = String(me.id) === String(userId);
 
@@ -408,6 +413,8 @@
       }
     };
     const needFollowers = () => rv.sort === "followers" || rv.followers;
+    // a sort or filter has to see every request, not only the loaded pages
+    const reqPicky = () => rv.sort !== "new" || rv.mutual || rv.verified || rv.followers;
     const reqBar = h("div", { class: "fr-reqbar", hidden: true });
     if (own) {
       const toggle = (label, key) => {
@@ -462,13 +469,17 @@
     }
     tabSlot.after(reqBar);
 
-    // the only number on the page: pending requests, when there are any
+    // pending requests: a small dot on the tab (no number pill). The chips
+    // re-render on every set(), so the dot is put back each time.
     let reqCount = null;
+    const markReq = () => {
+      const chip = tabs.children[tabItems.findIndex((t) => t.id === "requests")];
+      if (chip && reqCount) chip.append(h("span", { class: "fr-req-dot", title: CER.fmt.full(reqCount) + " requests" }));
+    };
+    const tabsSet = tabs.set;
+    tabs.set = (id) => (tabsSet(id), markReq());
     const setReqCount = (n) => {
       reqCount = n == null ? null : Math.max(0, n);
-      const it = tabItems.find((t) => t.id === "requests");
-      if (!it) return;
-      it.count = reqCount || null;
       tabs.set(tab);
     };
     if (own) api.json(`${FR}/user/friend-requests/count`).then((j) => session.alive && setReqCount(j?.count));
@@ -482,7 +493,7 @@
     const gridStops = []; // disposers for progressive grids on screen
     const menu = own
       ? [
-          { label: "Chat", onClick: () => (CER.toggleChat ? CER.toggleChat() : (location.href = "https://www.roblox.com/my/messages")) },
+          { label: "Chat", onClick: (t) => (CER.openChat ? CER.openChat(t.user.id) : CER.toggleChat ? CER.toggleChat() : (location.href = "https://www.roblox.com/my/messages")) },
           { label: "Unfriend", tone: "bad", onClick: (t) => confirmUnfriend(t) },
         ]
       : null;
@@ -661,6 +672,9 @@
           }))
           .filter((u) => !l.tiles.has(String(u.id)));
         await fillNames(fresh);
+        // the Verified filter: hasVerifiedBadge in these lists is often stale,
+        // so ask the same marks the name badges use (one batched, cached call)
+        if (kind === "requests") wantVerified(fresh);
         const p = kind === "requests" ? new Map() : await presenceOf(fresh.map((u) => u.id));
         const g = await gameNames(p);
         for (const u of fresh) {
@@ -680,24 +694,48 @@
       }
     }
 
+    // Every request page, one after another (a sort or filter needs them all).
+    // Stops when a page brings nothing new (failed): Load more stays then.
+    let allReqP = null;
+    const loadAllRequests = () =>
+      (allReqP ??= (async () => {
+        for (let i = 0; i < 60 && session.alive; i++) {
+          const l = lists.requests;
+          if (!l || l.done) break;
+          const before = l.items.length;
+          const st = await loadPage("requests");
+          if (st !== "ok" || (lists.requests.items.length === before && !lists.requests.done)) break;
+          if (!lists.requests.done) await sleep(250);
+        }
+      })().finally(() => (allReqP = null)));
+
     // Returns true when it drew the list (so render may restore scroll).
     async function renderList(kind, tok, all, stopGrids) {
       let state = "ok";
       if (!lists[kind]?.items.length) state = await loadPage(kind);
       if (tok !== renderTok || !session.alive) return false;
+      if (kind === "requests" && state === "ok" && reqPicky() && !lists.requests.done) {
+        stopGrids();
+        body.replaceChildren(h("div", { class: "fr-loading-all" }, ui.icon("clock", 18), h("span", { text: "Loading all requests..." })));
+        await loadAllRequests();
+        if (tok !== renderTok || !session.alive) return false;
+      }
       stopGrids();
       if (state === "private") return body.replaceChildren(ui.empty("This list is private.", { icon: "lock" })), false;
       if (state === "error") return body.replaceChildren(ui.empty("Could not load. Try again.", { icon: "users", action: retry(() => render()) })), false;
       const l = lists[kind];
       let items = l.items.filter(matches);
       const picky = kind === "requests" && (rv.mutual || rv.verified || rv.followers);
-      if (kind === "requests") items = requestView(items, l);
+      if (kind === "requests") {
+        items = requestView(items, l);
+        for (const t of l.tiles.values()) t.setSignals?.();
+      }
       if (!items.length && (l.done || !query || picky)) {
         if (picky && l.items.length) {
           // filters hid everyone: say so, offer to clear, keep Load more
           const clear = ui.button("Show all", { variant: "soft", size: "sm", onClick: clearReqFilters });
-          const waiting = rv.followers && fcPending();
-          body.replaceChildren(ui.empty(waiting ? "Checking followers..." : "No one matches.", { icon: waiting ? "clock" : "filter", action: waiting ? null : clear }));
+          const waiting = (rv.followers && fcPending()) || (rv.verified && l.items.some((u) => u.vfAsked));
+          body.replaceChildren(ui.empty(waiting ? "Checking..." : "No one matches.", { icon: waiting ? "clock" : "filter", action: waiting ? null : clear }));
           if (!l.done) body.append(h("div", { class: "fr-foot" }, loadMoreBtn(kind)));
           return true;
         }
@@ -726,10 +764,14 @@
     }
 
     // ---- requests: filter + sort, follower counts on demand
+    // An unknown follower count is not 0: under "Over X followers" those
+    // requests stay (with "Checking...") until the count is known.
+    const isVerified = (u) => (u.verified !== undefined ? u.verified : !!u.hasVerifiedBadge);
     function requestView(items, l) {
       if (needFollowers()) for (const u of l.items) wantFollowers(u);
+      if (rv.verified) wantVerified(l.items);
       const count = (u) => (typeof u.followers === "number" ? u.followers : -1);
-      let out = items.filter((u) => (!rv.mutual || u.mutual?.length) && (!rv.verified || u.hasVerifiedBadge) && (!rv.followers || count(u) > rv.min));
+      let out = items.filter((u) => (!rv.mutual || u.mutual?.length) && (!rv.verified || isVerified(u)) && (!rv.followers || typeof u.followers !== "number" || u.followers > rv.min));
       const order = new Map(l.items.map((u, i) => [u, i]));
       if (rv.sort === "mutual") out = [...out].sort((a, b) => (b.mutual?.length ?? 0) - (a.mutual?.length ?? 0) || order.get(a) - order.get(b));
       if (rv.sort === "followers") out = [...out].sort((a, b) => count(b) - count(a) || order.get(a) - order.get(b));
@@ -738,17 +780,46 @@
     // a count arrived: update its tile, and redraw (batched) when the
     // order or the filter depends on counts
     let redrawT = null;
+    const redrawSoon = () => {
+      clearTimeout(redrawT);
+      redrawT = setTimeout(() => session.alive && tab === "requests" && render(true), fcPending() ? 700 : 60);
+    };
+    // A failed lookup leaves u.followers undefined and is asked again (after
+    // 5 s, then 15 s). After 3 fails the tile offers Try again instead.
     function wantFollowers(u, urgent) {
-      if (u.followers !== undefined || u.fcAsked) return;
+      if (typeof u.followers === "number" || u.fcAsked || u.fcGaveUp || Date.now() < (u.fcRetryAt ?? 0)) return;
       u.fcAsked = true;
       followersCount(u.id, urgent).then((n) => {
-        u.followers = n;
-        u.fcAsked = n == null ? false : true; // a failed one may be asked again later
+        u.fcAsked = false;
+        if (typeof n === "number") u.followers = n;
+        else {
+          u.fcFails = (u.fcFails ?? 0) + 1;
+          u.fcGaveUp = u.fcFails >= 3;
+          u.fcRetryAt = Date.now() + (u.fcFails === 1 ? 5000 : 15000);
+          if (!u.fcGaveUp && session.alive) setTimeout(() => session.alive && tab === "requests" && needFollowers() && wantFollowers(u), u.fcRetryAt - Date.now() + 50);
+        }
         if (!session.alive) return;
         lists.requests?.tiles.get(String(u.id))?.setSignals?.();
         if (tab !== "requests" || !needFollowers()) return;
-        clearTimeout(redrawT);
-        redrawT = setTimeout(() => session.alive && tab === "requests" && render(true), fcPending() ? 700 : 60);
+        redrawSoon();
+      });
+    }
+    // Verified marks for request senders (batched by ui.js). Absent = the
+    // lookup failed: left undefined, so the next view asks again.
+    function wantVerified(list) {
+      if (!api.identity?.user) return;
+      const ask = list.filter((u) => u.verified === undefined && !u.vfAsked && Date.now() >= (u.vfRetryAt ?? 0));
+      if (!ask.length) return;
+      for (const u of ask) u.vfAsked = true;
+      api.identity.user.many(ask.map((u) => u.id)).then((m) => {
+        let got = 0;
+        for (const u of ask) {
+          u.vfAsked = false;
+          const v = m.get(String(u.id));
+          if (v) (u.verified = !!v.verified), got++;
+          else u.vfRetryAt = Date.now() + 20000; // busy: not again right away
+        }
+        if (got && session.alive && tab === "requests" && rv.verified) redrawSoon();
       });
     }
     function reqChanged() {
@@ -785,10 +856,25 @@
         const m = u.mutual?.length ?? 0;
         const f = typeof u.followers === "number" ? u.followers : u.followers === undefined ? followersKnown(u.id) : undefined;
         if (f !== undefined && u.followers === undefined) u.followers = f;
-        sig.replaceChildren(
-          m ? h("span", { class: "fr-sig-mutual", title: u.mutual.slice(0, 12).join(", "), text: m + (m === 1 ? " mutual friend" : " mutual friends") }) : "",
-          typeof f === "number" ? h("span", { class: "fr-sig-followers", title: CER.fmt.full(f), text: CER.fmt.num(f) + (f === 1 ? " follower" : " followers") }) : ""
-        );
+        // count unknown while a followers sort/filter is on: say so (or offer
+        // Try again after 3 fails), never show it as 0
+        let fol = "";
+        if (typeof f === "number") fol = h("span", { class: "fr-sig-followers", title: CER.fmt.full(f), text: CER.fmt.num(f) + (f === 1 ? " follower" : " followers") });
+        else if (u.fcGaveUp && needFollowers())
+          fol = h("button", {
+            type: "button",
+            class: "fr-sig-retry",
+            text: "Try again",
+            onClick: () => {
+              u.fcGaveUp = false;
+              u.fcFails = 0;
+              u.fcRetryAt = 0;
+              wantFollowers(u, true);
+              t.setSignals();
+            },
+          });
+        else if (needFollowers()) fol = h("span", { class: "fr-sig-wait", text: "Checking..." });
+        sig.replaceChildren(m ? h("span", { class: "fr-sig-mutual", title: u.mutual.slice(0, 12).join(", "), text: m + (m === 1 ? " mutual friend" : " mutual friends") }) : "", fol);
       };
       t.setSignals();
       t.querySelector(".fr-link").after(sig);
@@ -834,7 +920,7 @@
 
     reqBar.hidden = tab !== "requests";
     render();
-  });
+  }
 
   function skeletonGrid() {
     return h(

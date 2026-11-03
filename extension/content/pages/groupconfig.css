@@ -3,6 +3,10 @@
 [data-page="groupconfig"] .cer-gm {
   gap: 22px;
 }
+/* buttons and rows are display:flex, so [hidden] needs a push */
+[data-page="groupconfig"] .cer-gm [hidden] {
+  display: none !important;
+}
 
 /* ------------------------------------------------------------ header */
 [data-page="groupconfig"] .cer-gm-top {
@@ -16,7 +20,9 @@
   padding: 28px 32px;
   border-radius: var(--cer-r-xl);
   color: #fff;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--cer-acc) 45%, #0b0c12), #0b0c12);
+  /* art area: the icon glow sits on the theme surface, the shade below
+     keeps the white text readable on any theme */
+  background: color-mix(in srgb, var(--cer-acc) 30%, var(--cer-surface-2));
   box-shadow: var(--cer-shadow-lg);
 }
 [data-page="groupconfig"] .cer-gm-top-bg {
@@ -72,6 +78,7 @@
   height: 14px;
 }
 [data-page="groupconfig"] .cer-gm-top-name {
+  align-self: flex-start;
   font-size: clamp(26px, 2.6vw, 36px);
   font-weight: 800;
   line-height: 1.1;
@@ -96,9 +103,16 @@
 [data-page="groupconfig"] .cer-gm-top-meta .cer-icon {
   opacity: 0.8;
 }
+[data-page="groupconfig"] a.cer-gm-top-name:hover .cer-name-text {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
 [data-page="groupconfig"] .cer-gm-top-actions {
   flex: none;
   align-self: flex-end;
+  display: flex;
+  gap: 8px;
 }
 
 /* ------------------------------------------------------------ tab bar */
@@ -156,8 +170,28 @@
 [data-page="groupconfig"] .cer-gm-menu-item > span {
   flex: 1;
 }
+[data-page="groupconfig"] button.cer-gm-menu-item {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
 [data-page="groupconfig"] .cer-gm-menu-go {
   color: var(--cer-text-3);
+}
+[data-page="groupconfig"] .cer-gm-menu-line {
+  height: 1px;
+  margin: 6px 8px;
+  background: var(--cer-line);
+}
+/* a More pane is open: More reads as the active tab */
+[data-page="groupconfig"] .cer-gm-more > .cer-btn.is-active {
+  background: var(--cer-hover);
+  color: var(--cer-text) !important;
 }
 
 /* ------------------------------------------------------------ shared */
@@ -226,6 +260,10 @@
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+}
+/* a row whose only button is waiting for an edit takes no room */
+[data-page="groupconfig"] .cer-gm-row-end:not(:has(> :not([hidden]))) {
+  display: none;
 }
 [data-page="groupconfig"] .cer-gm-left {
   margin-right: auto;
@@ -538,8 +576,7 @@
   background: var(--cer-raise);
 }
 [data-page="groupconfig"] .cer-gm-roleedit .cer-gm-field,
-[data-page="groupconfig"] .cer-gm-roleedit .cer-gm-area,
-[data-page="groupconfig"] .cer-gm-card .cer-gm-area {
+[data-page="groupconfig"] .cer-gm-roleedit .cer-gm-area {
   background: var(--cer-raise);
 }
 [data-page="groupconfig"] .cer-gm-rolehead {
@@ -587,56 +624,33 @@
 }
 
 /* ------------------------------------------------------------ info */
+/* one plain column, no boxes: title, text, the box you type in */
 [data-page="groupconfig"] .cer-gm-info {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 32px;
-  align-items: start;
-}
-[data-page="groupconfig"] .cer-gm-info-art {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-[data-page="groupconfig"] .cer-gm-info-icon {
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: var(--cer-r-xl);
-  overflow: hidden;
-  background: var(--cer-surface-2);
-  box-shadow: var(--cer-shadow);
-}
-[data-page="groupconfig"] .cer-gm-info-col {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  gap: 34px;
   min-width: 0;
   max-width: 820px;
 }
-[data-page="groupconfig"] .cer-gm-info-name {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  min-width: 0;
-}
-[data-page="groupconfig"] .cer-gm-info-name > .cer-name {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.015em;
-  color: var(--cer-text) !important;
-}
-[data-page="groupconfig"] .cer-gm-info-name .cer-gm-quiet {
-  align-self: center;
-}
-[data-page="groupconfig"] .cer-gm-card {
+[data-page="groupconfig"] .cer-gm-block {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 20px;
-  border-radius: var(--cer-r-l);
-  background: var(--cer-raise);
+  min-width: 0;
+}
+[data-page="groupconfig"] .cer-gm-block > .cer-gm-sub {
+  font-size: 18px;
+}
+[data-page="groupconfig"] .cer-gm-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+[data-page="groupconfig"] .cer-gm-editor .cer-gm-area {
+  border-color: transparent;
+}
+[data-page="groupconfig"] .cer-gm-editor .cer-gm-area:focus {
+  border-color: var(--cer-acc);
 }
 [data-page="groupconfig"] .cer-gm-shout:empty {
   display: none;
@@ -644,13 +658,13 @@
 [data-page="groupconfig"] .cer-gm-shout {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px;
-  border-radius: var(--cer-r-m);
-  background: var(--cer-raise);
+  gap: 10px;
+  padding: 2px 0 2px 16px;
+  border-left: 3px solid var(--cer-acc);
 }
 [data-page="groupconfig"] .cer-gm-shout-body {
-  font-size: 15px;
+  font-size: 17px;
+  font-weight: 600;
   line-height: 1.5;
   color: var(--cer-text) !important;
   white-space: pre-line;
@@ -660,9 +674,22 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   font-size: 13px;
   font-weight: 700;
   color: var(--cer-text-2);
+}
+[data-page="groupconfig"] .cer-gm-shout-av {
+  display: flex;
+}
+[data-page="groupconfig"] .cer-gm-shout-by .cer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cer-text-2) !important;
+}
+[data-page="groupconfig"] .cer-gm-shout-by a.cer-name:hover {
+  color: var(--cer-text) !important;
 }
 
 /* ------------------------------------------------------------ links */
@@ -680,8 +707,11 @@
   align-items: center;
   gap: 14px;
   min-width: 0;
-  padding: 12px 12px 12px 14px;
+  padding: 10px 10px 10px 4px;
   border-radius: var(--cer-r-m);
+  transition: background 0.15s;
+}
+[data-page="groupconfig"] .cer-gm-link:hover {
   background: var(--cer-raise);
 }
 [data-page="groupconfig"] .cer-gm-link-icon {
@@ -777,15 +807,68 @@
   font-weight: 700;
 }
 
+/* ------------------------------------------------------------ log */
+[data-page="groupconfig"] .cer-gm-log {
+  display: flex;
+  flex-direction: column;
+  max-width: 900px;
+}
+[data-page="groupconfig"] .cer-gm-log > .cer-sk-row {
+  height: 56px;
+  margin-bottom: 6px;
+}
+[data-page="groupconfig"] .cer-gm-logrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 8px 10px 8px 4px;
+  border-radius: var(--cer-r-m);
+  transition: background 0.15s;
+}
+[data-page="groupconfig"] .cer-gm-logrow:hover {
+  background: var(--cer-raise);
+}
+[data-page="groupconfig"] .cer-gm-log-art {
+  flex: none;
+  display: flex;
+  width: 40px;
+}
+[data-page="groupconfig"] .cer-gm-log-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 7px;
+  font-size: 14.5px;
+}
+[data-page="groupconfig"] .cer-gm-log-text .cer-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+  color: var(--cer-text) !important;
+}
+[data-page="groupconfig"] .cer-gm-log-text a.cer-name:hover .cer-name-text {
+  text-decoration: underline;
+}
+[data-page="groupconfig"] .cer-gm-log-what {
+  color: var(--cer-text-2);
+  font-weight: 600;
+}
+[data-page="groupconfig"] .cer-gm-log-when {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+}
+
 /* ------------------------------------------------------------ narrow */
 @media (max-width: 1180px) {
   [data-page="groupconfig"] .cer-gm-roles {
     grid-template-columns: 230px minmax(0, 1fr);
     gap: 18px;
-  }
-  [data-page="groupconfig"] .cer-gm-info {
-    grid-template-columns: 180px minmax(0, 1fr);
-    gap: 24px;
   }
 }
 @media (max-width: 900px) {
@@ -798,19 +881,11 @@
     height: 96px;
     border-radius: 20px;
   }
-  [data-page="groupconfig"] .cer-gm-roles,
-  [data-page="groupconfig"] .cer-gm-info {
+  [data-page="groupconfig"] .cer-gm-roles {
     grid-template-columns: minmax(0, 1fr);
   }
   [data-page="groupconfig"] .cer-gm-rolelist {
     position: static;
-  }
-  [data-page="groupconfig"] .cer-gm-info-art {
-    flex-direction: row;
-    align-items: flex-end;
-  }
-  [data-page="groupconfig"] .cer-gm-info-icon {
-    width: 140px;
   }
   [data-page="groupconfig"] .cer-gm-linkform {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

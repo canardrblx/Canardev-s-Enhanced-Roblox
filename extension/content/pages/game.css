@@ -333,6 +333,21 @@
 [data-page="game"] .gx-note[hidden] {
   display: none;
 }
+/* game did not load: Try again + Roblox's page, quiet on the art */
+[data-page="game"] .gx-retry.cer-btn {
+  height: 46px;
+  border-radius: 999px;
+}
+[data-page="game"] .gx-native-link {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.78) !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-page="game"] .gx-native-link:hover {
+  color: #fff !important;
+}
 
 /* skeleton bits on the stage */
 [data-page="game"] .gx-sk {
@@ -476,6 +491,15 @@
 }
 
 /* ------------------------------------------------------------ servers */
+[data-page="game"] .gx-sv-note {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cer-text-2);
+}
+[data-page="game"] .gx-sv-note[hidden] {
+  display: none;
+}
 [data-page="game"] .gx-tools {
   display: flex;
   align-items: center;
@@ -635,6 +659,13 @@
   min-width: 0;
   font-size: 14px;
   color: var(--cer-text-3);
+}
+[data-page="game"] .gx-private-row.is-off {
+  opacity: 0.55;
+}
+[data-page="game"] .gx-private-row > .cer-btn {
+  flex: none;
+  min-width: 76px;
 }
 [data-page="game"] .gx-private-row > b {
   flex: 1;

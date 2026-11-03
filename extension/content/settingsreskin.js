@@ -11,7 +11,7 @@
   if (!isSettingsPath(location.pathname)) return;
   // /my/account is CER's own page now (pages/settings.js); this reskin stays
   // for ?cer=native, /my/settings and community configure pages
-  if ((await CER.takeover) === "settings") return;
+  if (["settings", "account"].includes(await CER.takeover)) return;
   // configure pages are CER's own group manager now (pages/groupconfig.js);
   // this reskin stays only for ?cer=native and /my/settings
   if ((await CER.takeover) === "groupconfig") return;

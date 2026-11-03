@@ -134,15 +134,33 @@
   const nothing = () => note("Nothing found. Try other words.");
 
   // Next page loads by itself when the end of the list scrolls near view.
+  // onMore() -> true (end of list), false (more to come) or null (failed:
+  // keep the cursor and show Try again, a failed page is not the end).
   function moreButton(onMore) {
-    const spot = h("div", { class: "sr-more" }, ui.skeleton("line"));
+    const spot = h("div", { class: "sr-more" });
+    const loading = () => spot.replaceChildren(ui.skeleton("line"));
     const arm = () =>
       ui.whenVisible(spot, async () => {
         if (!spot.isConnected) return;
         const done = await onMore();
-        if (done) spot.remove();
+        if (!spot.isConnected) return;
+        if (done === null) {
+          spot.classList.add("is-failed");
+          spot.replaceChildren(
+            ui.button("Try again", {
+              icon: "refresh",
+              size: "sm",
+              onClick: () => {
+                spot.classList.remove("is-failed");
+                loading();
+                arm();
+              },
+            })
+          );
+        } else if (done) spot.remove();
         else requestAnimationFrame(arm);
       });
+    loading();
     arm();
     return spot;
   }
@@ -178,9 +196,10 @@
         moreButton(async () => {
           const n = await omni(q, token);
           if (!ok()) return true;
+          if (!n?.searchResults) return null;
           const more = take(n?.searchResults ?? []);
           grid.append(...more.map((g) => ui.gameCard(g)));
-          token = n?.nextPageToken;
+          token = n.nextPageToken;
           return !token || !more.length;
         })
     );
@@ -199,8 +218,8 @@
       grid.append(...tiles.map((t) => t.el));
       // presence rings + "Playing X" fill in when presence arrives
       api.presence(list.map((u) => u.id)).then((pres) => {
-        for (const t of tiles) t.setPresence(pres.get(String(t.id)));
-      });
+        for (const t of tiles) t.setPresence(pres?.get(String(t.id)));
+      }, () => {});
     };
     addUsers(j.data);
     let cursor = j.nextPageCursor;
@@ -211,9 +230,10 @@
         moreButton(async () => {
           const n = await api.json(usersUrl(q, cursor), { ttl: 120000 });
           if (!ok()) return true;
-          if (n?.data?.length) addUsers(n.data);
-          cursor = n?.nextPageCursor;
-          return !cursor || !n?.data?.length;
+          if (!Array.isArray(n?.data)) return null;
+          if (n.data.length) addUsers(n.data);
+          cursor = n.nextPageCursor;
+          return !cursor || !n.data.length;
         })
     );
   }
@@ -221,6 +241,8 @@
   function personTile(u, q) {
     const href = `https://www.roblox.com/users/${u.id}/profile`;
     const av = ui.avatar(u.id, { size: 120 });
+    // plain person shape until the head shot fades in (or if it never comes)
+    av.append(h("span", { class: "sr-ph", "aria-hidden": "true" }, ui.icon("user", 44)));
     const status = h("span", { class: "sr-person-status" });
     // say why a result matched when it was an old name
     const lower = q.toLowerCase();
@@ -229,7 +251,8 @@
       "a",
       { class: "sr-person", href, title: u.displayName ?? u.name },
       av,
-      ui.nameTag({ type: "user", id: u.id, name: u.displayName || u.name, verified: u.hasVerifiedBadge, cls: "sr-person-name" }),
+      // real verified flag from the search result (never forced on)
+      ui.nameTag({ type: "user", id: u.id, name: u.displayName || u.name, verified: typeof u.hasVerifiedBadge === "boolean" ? u.hasVerifiedBadge : undefined, cls: "sr-person-name" }),
       h("span", { class: "sr-person-user", text: "@" + u.name }),
       was ? h("span", { class: "sr-person-was", text: "Was @" + was }) : status
     );
@@ -267,22 +290,25 @@
         moreButton(async () => {
           const n = await api.json(groupsUrl(q, cursor), { ttl: 120000 });
           if (!ok()) return true;
-          if (n?.data?.length) grid.append(...n.data.map(groupCard));
-          cursor = n?.nextPageCursor;
-          return !cursor || !n?.data?.length;
+          if (!Array.isArray(n?.data)) return null;
+          if (n.data.length) grid.append(...n.data.map(groupCard));
+          cursor = n.nextPageCursor;
+          return !cursor || !n.data.length;
         })
     );
   }
 
+  const initial = (name) => String(name ?? "").match(/[\p{L}\p{N}]/u)?.[0]?.toUpperCase() ?? "";
   function groupCard(g) {
     return h(
       "a",
       { class: "sr-group", href: `https://www.roblox.com/communities/${g.id}`, title: g.name },
-      h("span", { class: "sr-group-icon" }, ui.thumb("groupIcon", g.id, { alt: "" })),
+      // the group's first letter shows until the icon fades in, or if it is blank
+      h("span", { class: "sr-group-icon" }, ui.thumb("groupIcon", g.id, { alt: "" }), h("span", { class: "sr-ph", "aria-hidden": "true" }, initial(g.name) || ui.icon("users", 30))),
       h(
         "span",
         { class: "sr-group-main" },
-        ui.nameTag({ type: "group", id: g.id, name: g.name, verified: g.hasVerifiedBadge, cls: "sr-group-name" }),
+        ui.nameTag({ type: "group", id: g.id, name: g.name, verified: typeof g.hasVerifiedBadge === "boolean" ? g.hasVerifiedBadge : undefined, cls: "sr-group-name" }),
         h("span", { class: "sr-group-members", text: fmt.num(g.memberCount) + (g.memberCount === 1 ? " member" : " members") })
       )
     );

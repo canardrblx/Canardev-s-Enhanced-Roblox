@@ -1,10 +1,12 @@
 // Out-of-date notice. The background worker stores whether a newer GitHub
-// release exists (only for unpacked/git installs — store installs auto-update).
+// release exists (only for dev builds, see CER.dev: store installs
+// auto-update and never see this).
 // If so, we show a small notice with Update and a Cancel that stays locked for
 // 10 seconds. Cancel snoozes it for 24 hours; it comes back after that until the
 // user updates.
 (function () {
   if (typeof CER === "undefined" || window.top !== window) return;
+  if (!CER.dev) return; // store builds (Chrome and Firefox): no GitHub check, no modal
   const ext = CER.ext;
   const REPO = "canardrblx/Canardev-s-Enhanced-Roblox";
 

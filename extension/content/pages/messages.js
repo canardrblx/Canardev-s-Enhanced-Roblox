@@ -6,6 +6,8 @@
 // Selection: a checkbox per row (on hover, or on every row while selecting),
 // a select-all box and a count in the list head; bulk actions (mark read,
 // mark unread, archive, move to Inbox) show only while something is picked.
+// Select all picks every message in the tab, not just this page ("all mode"):
+// the bulk actions then page through the whole tab to find the ids.
 // Writes (mark read / unread, mark all read, archive, unarchive) go through `write()`,
 // which honours the dev dry-run switch: sessionStorage["cer-dry-writes"] = "1"
 // logs the request instead of sending it.
@@ -170,7 +172,8 @@
   };
 
   // ------------------------------------------------------------ page
-  ui.route("messages", async () => {
+  ui.route("messages", start);
+  async function start() {
     S?.stop();
     const session = (S = {
       alive: true,
@@ -204,7 +207,14 @@
 
     const me = await api.me();
     if (!session.alive) return;
-    if (!me) return ui.release();
+    if (!me) {
+      // only a real 401/403 means signed out; a busy or failed check gets
+      // Try again instead of Roblox's old page
+      if (CER.loggedOut) return ui.release();
+      toolbar.remove();
+      split.replaceWith(ui.empty("Could not load. Try again.", { icon: "mail", action: ui.button("Try again", { variant: "soft", onClick: () => start() }) }));
+      return;
+    }
 
     // ---- tabs
     const tabItems = [
@@ -226,6 +236,7 @@
     let news = null; // announcements collection, or null when the API has none
     let loadTok = 0;
     const sel = new Set(); // selected message ids (strings), this page only
+    let allMode = false; // Select all: every message in the tab, on every page
     let anchor = null; // last ticked id, for shift-click ranges
     const selectable = () => tab === "inbox" || tab === "archive";
 
@@ -251,6 +262,7 @@
     async function loadList() {
       const tok = ++loadTok;
       sel.clear();
+      allMode = false;
       listHead.hidden = true;
       listBody.replaceChildren(rowSkeletons());
       pager.replaceChildren();
@@ -336,8 +348,13 @@
     // ---- selection
     function tick(id, range) {
       const msgs = data?.collection ?? [];
-      const on = !sel.has(id);
       const ids = msgs.map((m) => String(m.id));
+      // un-ticking one row while all are picked: back to this page's rows
+      if (allMode) {
+        allMode = false;
+        ids.forEach((x) => sel.add(x));
+      }
+      const on = !sel.has(id);
       if (range && anchor && ids.includes(anchor)) {
         const [a, b] = [ids.indexOf(anchor), ids.indexOf(id)].sort((x, y) => x - y);
         for (const x of ids.slice(a, b + 1)) on ? sel.add(x) : sel.delete(x);
@@ -347,13 +364,16 @@
     }
     function clearSel() {
       sel.clear();
+      allMode = false;
       anchor = null;
       syncSel();
     }
+    const morePages = () => (data?.totalPages ?? 1) > 1;
     selAll.addEventListener("click", () => {
       const msgs = data?.collection ?? [];
-      if (sel.size && sel.size === msgs.length) return clearSel();
+      if (allMode || (sel.size && sel.size === msgs.length && !morePages())) return clearSel();
       for (const m of msgs) sel.add(String(m.id));
+      allMode = morePages(); // one page: the page is the whole tab
       syncSel();
     });
     // rows, head box, count and the bulk bar follow the selection
@@ -366,16 +386,18 @@
         r.box?.setAttribute("aria-checked", on ? "true" : "false");
       }
       listBody.classList.toggle("is-selecting", sel.size > 0);
-      selAll.setAttribute("aria-checked", !sel.size ? "false" : sel.size === msgs.length ? "true" : "mixed");
-      selText.textContent = sel.size ? sel.size + " selected" : "Select all";
+      selAll.setAttribute("aria-checked", !sel.size ? "false" : allMode || (sel.size === msgs.length && !morePages()) ? "true" : "mixed");
+      const total = data?.totalCollectionSize;
+      selText.textContent = allMode ? (total ? "All " + fmt.num(total) + " selected" : "All selected") : sel.size ? sel.size + " selected" : "Select all";
       // Mark all read when nothing is picked; the bulk bar while picking
       const anyUnread = (unread ?? 0) > 0 && tab === "inbox";
       markAll.hidden = !!sel.size || !(anyUnread || msgs.some((m) => !m.isRead && selectable()));
       bar.replaceChildren();
       if (!sel.size) return;
       const act = (label, kind) => ui.button(label, { variant: "soft", size: "sm", onClick: () => bulk(kind) });
-      if (picked.some((m) => !m.isRead)) bar.append(act("Read", "read"));
-      if (picked.some((m) => m.isRead)) bar.append(act("Unread", "unread"));
+      // all mode: other pages may hold either kind, so both are offered
+      if (allMode || picked.some((m) => !m.isRead)) bar.append(act("Read", "read"));
+      if (allMode || picked.some((m) => m.isRead)) bar.append(act("Unread", "unread"));
       bar.append(tab === "archive" ? act("To Inbox", "unarchive") : act("Archive", "archive"));
       bar.append(ui.button("", { icon: "x", variant: "ghost", size: "sm", title: "Clear", class: "ms-bar-x", onClick: clearSel }));
     }
@@ -385,7 +407,74 @@
     document.addEventListener("keydown", session.onKey);
 
     const BULK = { read: "mark-read", unread: "mark-unread", archive: "archive", unarchive: "unarchive" };
+    // Every message of a tab, page by page (all mode). null when a page failed:
+    // then nothing is written at all.
+    async function tabMessages(from) {
+      const out = [];
+      const seen = new Set();
+      for (let p = 0, pages = 1; p < Math.min(pages, 100); p++) {
+        const j = await api.json(`${PM}/messages?pageNumber=${p}&pageSize=${PAGE_SIZE}&messageTab=${from}`);
+        if (!session.alive || !Array.isArray(j?.collection)) return null;
+        for (const m of j.collection) if (!seen.has(m.id)) seen.add(m.id), out.push(m);
+        pages = j.totalPages ?? (j.collection.length < PAGE_SIZE ? p + 1 : p + 2);
+        await api.sleep(120);
+      }
+      return out;
+    }
+    const BULK_SAY = { read: "Mark all as read?", unread: "Mark all as unread?", archive: "Archive all messages?", unarchive: "Move all back to Inbox?" };
+    const BULK_YES = { read: "Mark read", unread: "Mark unread", archive: "Archive", unarchive: "Move" };
+    // all mode touches a whole tab: ask first, focus on Cancel
+    function confirmAll(kind) {
+      return new Promise((resolve) => {
+        let yes = false;
+        const m = ui.modal({
+          title: BULK_SAY[kind],
+          onClose: () => resolve(yes),
+          actions: [
+            { label: "Cancel", variant: "ghost" },
+            { label: BULK_YES[kind], variant: "primary", onClick: (close) => ((yes = true), close()) },
+          ],
+        });
+        requestAnimationFrame(() => m.el.querySelector(".cer-modal-actions .cer-btn")?.focus());
+      });
+    }
+    async function bulkAll(kind) {
+      const tok = loadTok;
+      const from = tab;
+      if (!(await confirmAll(kind)) || !session.alive || tok !== loadTok) return;
+      const btns = bar.querySelectorAll("button");
+      btns.forEach((b) => (b.disabled = true));
+      const all = await tabMessages(from);
+      if (!session.alive) return;
+      if (!all) {
+        syncSel();
+        return CER.toast("Could not do that. Try again.", "error");
+      }
+      let pick = all;
+      if (kind === "read") pick = all.filter((m) => !m.isRead);
+      if (kind === "unread") pick = all.filter((m) => m.isRead);
+      const ids = pick.map((m) => m.id);
+      let res = { ok: true };
+      for (let i = 0; i < ids.length && res.ok; i += 20) res = await write(`${PM}/messages/${BULK[kind]}`, { messageIds: ids.slice(i, i + 20) });
+      if (!session.alive) return;
+      if (!res.ok) {
+        syncSel();
+        if (!res.dry) recount();
+        return CER.toast(res.status === 429 ? "Too fast! Wait a moment." : "Could not do that. Try again.", "error");
+      }
+      const n = ids.length;
+      if (kind === "read" || kind === "unread") CER.toast(kind === "read" ? "Marked read" : "Marked unread");
+      else CER.toast(kind === "archive" ? n + " moved to Archive" : n + " moved to Inbox");
+      if (!res.dry) recount();
+      if (tok !== loadTok || from !== tab) return; // the list on screen changed meanwhile
+      clearSel();
+      if (res.dry) return; // dry run: the server still has them as they were
+      pageNo = 0;
+      closeReader();
+      loadList();
+    }
     async function bulk(kind) {
+      if (allMode) return bulkAll(kind);
       const msgs = data?.collection ?? [];
       let pick = msgs.filter((m) => sel.has(String(m.id)));
       if (kind === "read") pick = pick.filter((m) => !m.isRead);
@@ -507,10 +596,12 @@
       // mark as read (a write; dry-run switch respected)
       if (!m.isRead && tab !== "sent" && tab !== "news") {
         const tok = loadTok;
+        const from = tab;
         write(`${PM}/messages/mark-read`, { messageIds: [m.id] }).then((res) => {
           if (!res.ok || !session.alive) return;
           m.isRead = true;
-          if (unread != null) setUnread(unread - 1);
+          // the badge counts the Inbox only: reading in Archive leaves it alone
+          if (unread != null && from === "inbox") setUnread(unread - 1);
           if (tok !== loadTok) return; // another list is on screen now
           markRowRead(m.id);
           syncSel();
@@ -577,7 +668,7 @@
     window.addEventListener("hashchange", session.onHash);
 
     loadList();
-  });
+  }
 
   // Round-cornered checkbox button (role=checkbox, aria-checked true/false/mixed).
   function checkBox(label) {

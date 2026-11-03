@@ -11,25 +11,24 @@
   if (typeof CER === "undefined" || !CER.ui) return;
   const { h, icon } = CER.ui;
 
-  // The maker's games (source: canardev-site src/config.js), newest big ones first.
-  const GAMES = [
-    { name: "Build a Country", placeId: "82958998841721", universeId: "10200442730" },
-    { name: "Nations at War", placeId: "82862505117921", universeId: "10772391286" },
-    { name: "Catch and Pass!", placeId: "74379310940012", universeId: "10769981111" },
-    { name: "Lucky Blocks for Brainrots", placeId: "81091632887057", universeId: "9860836539" },
-    { name: "Dumpling Defense", placeId: "103709105146684", universeId: "10624853849" },
-    { name: "The Battle Noobs", placeId: "92697892386129", universeId: "6656660860" },
-  ];
   const MAKER_ID = 2614193870;
   // id = what callers pass to CER.openSettings(tab). Old tab names still work.
+  // Themes live on the account page (/my/account) only; General links there.
+  // Playtime shows only once there is some.
   const TABS = [
-    { id: "Themes", label: "Themes" },
     { id: "General", label: "General" },
     { id: "Playtime", label: "Playtime" },
     { id: "About", label: "About" },
   ];
-  const ALIAS = { Home: "General", "Roblox UI": "General", Features: "General", Join: "General" };
-  const tabFor = (id) => TABS.find((t) => t.id === (ALIAS[id] ?? id))?.id ?? "Themes";
+  const ALIAS = { Themes: "General", Home: "General", "Roblox UI": "General", Features: "General", Join: "General" };
+  const tabFor = (id, tabs = TABS) => tabs.find((t) => t.id === (ALIAS[id] ?? id))?.id ?? "General";
+  const readPlaytime = async () => {
+    try {
+      return (await CER.ext.storage.local.get("playtime")).playtime ?? {};
+    } catch {
+      return {}; // extension reloading
+    }
+  };
 
   CER.openSettings = openPanel;
 
@@ -97,11 +96,18 @@
       );
       host.appendChild(block);
     };
+    // Only Roblox's own controls count: CER's sidebar search rows are
+    // role=option too, and a click there must never reset the theme.
     document.addEventListener(
       "click",
       (e) => {
-        if (!onPrefs() || !e.isTrusted) return;
-        if (e.target.closest?.('[data-testid="app-theme-card"], [role="option"]')) CER.pickTheme("");
+        if (!onPrefs() || !e.isTrusted || e.target.closest?.(".cer-ui, #cer-app")) return;
+        const hit = e.target.closest?.('[data-testid="app-theme-card"], [role="option"]');
+        if (!hit) return;
+        // the theme cards sit in the settings column; the Mode menu's options
+        // may render in a body-level popup, so those only need a listbox
+        const roblox = hit.matches('[data-testid="app-theme-card"]') ? hit.closest("#content, main, .settings-container-v2") : hit.closest('[role="listbox"]');
+        if (roblox) CER.pickTheme("");
       },
       true
     );
@@ -209,9 +215,12 @@
     const warn = h("div", { class: "cer-sp-banner" }, h("span", { text: "Reload to see your changes. Close again to skip." }));
     warn.hidden = true;
 
-    let current = tabFor(startTab);
+    const hasPlaytime = Object.keys(await readPlaytime()).length > 0;
+    if (document.getElementById("cer-panel-overlay")) return; // a second open won the race
+    const shown = TABS.filter((t) => t.id !== "Playtime" || hasPlaytime);
+    let current = tabFor(startTab, shown);
     const tabs = CER.ui.tabs(
-      TABS.map((t) => ({ id: t.id, label: t.label })),
+      shown.map((t) => ({ id: t.id, label: t.label })),
       current,
       (id) => show(id)
     );
@@ -227,12 +236,12 @@
 
     let seq = 0;
     async function show(id) {
-      current = tabFor(id);
+      current = tabFor(id, shown);
       tabs.set(current);
       const my = ++seq;
       const view = h("div", { class: "cer-sp-view" });
-      const render = { Themes: renderThemes, General: renderGeneral, Playtime: renderPlaytime, About: renderAbout }[current];
-      await render(view, markDirty);
+      const render = { General: renderGeneral, Playtime: renderPlaytime, About: renderAbout }[current];
+      await render(view, markDirty, close);
       if (my !== seq) return; // a newer tab click won
       const keep = body.dataset.tab === current ? body.scrollTop : 0;
       body.replaceChildren(view);
@@ -248,10 +257,9 @@
     await show(current);
   }
 
-  // ---- tab: Themes ----
+  // ---- look: theme (a link to the account page, its one home) + font ----
 
-  async function renderThemes(body) {
-    const settings = await CER.get();
+  function lookRows(settings, closePanel) {
     const fonts = ["", "Arial", "Verdana", "Tahoma", "Trebuchet MS", "Georgia", "Times New Roman", "Courier New", "Comic Sans MS"];
     const sel = CER.ui.select(
       fonts.map((f) => ({ id: f, label: f === "" ? "Roblox font" : f })),
@@ -261,7 +269,18 @@
         await CER.set({ theme: { ...cur.theme, font: v } });
       }
     );
-    body.append(CER.themePicker(), group(null, row("Font", null, sel, "div")));
+    const theme = row("Theme", null, icon("right", 18), "a");
+    theme.classList.add("is-link");
+    theme.href = "https://www.roblox.com/my/account";
+    theme.addEventListener("click", (e) => {
+      // already on the account page: just show its theme grid
+      const grid = document.querySelector("#cer-app .cer-acct-theme");
+      if (!grid) return;
+      e.preventDefault();
+      closePanel();
+      grid.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return [theme, row("Font", null, sel, "div")];
   }
 
   // ---- tab: Playtime ----
@@ -271,12 +290,7 @@
     try {
       CER.ext.runtime.sendMessage({ cer: "playtime-tick" }, () => void CER.ext.runtime.lastError);
     } catch {}
-    let playtime = {};
-    try {
-      ({ playtime = {} } = await CER.ext.storage.local.get("playtime"));
-    } catch {
-      /* extension reloading: show the empty state */
-    }
+    const playtime = await readPlaytime();
     const games = Object.entries(playtime).map(([uni, e]) => ({ uni, ...e }));
     if (!games.length) {
       body.appendChild(CER.ui.empty("Play a game and your time shows up here.", { icon: "clock" }));
@@ -355,7 +369,7 @@
 
   // ---- tab: General ----
 
-  async function renderGeneral(body, markDirty) {
+  async function renderGeneral(body, markDirty, closePanel) {
     const settings = await CER.get();
 
     const regionSel = CER.ui.select(
@@ -434,7 +448,7 @@
       side("Chat", !settings.features.hideChat, (on, cur) => CER.set({ features: { ...cur.features, hideChat: !on } })),
     ];
 
-    body.append(group("Servers", servers), group("Sidebar", sidebar));
+    body.append(group("Look", lookRows(settings, closePanel)), group("Servers", servers), group("Sidebar", sidebar));
   }
 
   // ---- rival extension detection ----
@@ -485,19 +499,15 @@
         "div",
         { class: "cer-sp-about" },
         h("b", { text: "Canardev's Enhanced Roblox" }),
-        h("span", { text: "v" + CER.ext.runtime.getManifest().version + ". Free and open source. Runs only in your browser." })
+        h("span", { text: "v" + CER.ext.runtime.getManifest().version })
       )
     );
 
-    // the maker, then his games: art first, Play right on the card
+    // the maker
     const makerTag = (u) => CER.ui.nameTag({ type: "user", id: MAKER_ID, name: u.displayName, sub: "@" + u.name, verified: u.hasVerifiedBadge, size: "md" });
     const maker = h("a", { class: "cer-sp-maker", href: `https://www.roblox.com/users/${MAKER_ID}/profile` }, CER.ui.avatar(MAKER_ID, { size: 44 }), makerTag({ displayName: "canard", name: "canardev" }));
     CER.api.user(MAKER_ID).then((u) => u && maker.lastChild.replaceWith(makerTag(u)));
     body.appendChild(maker);
-    const games = GAMES.map((g) => ({ ...g }));
-    const grid = h("div", { class: "cer-sp-games" }, games.map((g) => CER.ui.gameCard(g)));
-    body.appendChild(group("Games", grid));
-    CER.ui.hydrateGames(games).then(() => grid.replaceChildren(...games.map((g) => CER.ui.gameCard(g))));
 
     body.appendChild(
       group(null, [
@@ -505,7 +515,7 @@
           "a",
           { class: "cer-sp-link", href: "https://www.roblox.com/games/127603609999069/", target: "_blank" },
           h("span", { class: "cer-sp-link-art" }, icon("heart", 22)),
-          h("span", { class: "cer-sp-link-text" }, h("b", { text: "Donate on Roblox" }), h("span", { text: "Totally optional. Thank you!" })),
+          h("span", { class: "cer-sp-link-text" }, h("b", { text: "Donate" })),
           icon("right", 18)
         ),
       ])
@@ -539,7 +549,18 @@
       }
       fbSend.busy(false);
     });
-    body.appendChild(group("Feedback", h("div", { class: "cer-sp-feedback" }, h("div", { class: "cer-sp-feedback-top" }, kinds, fbSend), fbText)));
+    body.appendChild(
+      group(
+        "Feedback",
+        h(
+          "div",
+          { class: "cer-sp-feedback" },
+          kinds,
+          fbText,
+          h("div", { class: "cer-sp-feedback-foot" }, h("span", { class: "cer-sp-feedback-note", text: "Sends your message and username." }), fbSend)
+        )
+      )
+    );
 
     body.appendChild(
       h(

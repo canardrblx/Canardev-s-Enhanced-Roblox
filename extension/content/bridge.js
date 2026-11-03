@@ -22,5 +22,12 @@ window.addEventListener("message", (event) => {
   } else if (msg.cer === "join-multiplayer" && msg.placeId && Number.isFinite(Number(msg.placeId))) {
     launcher.joinMultiplayerGame(Number(msg.placeId));
     window.postMessage({ cer: "launch-ack", nonce: msg.nonce }, location.origin);
+  } else if (msg.cer === "join-private" && msg.placeId && Number.isFinite(Number(msg.placeId)) && typeof launcher.joinPrivateGame === "function") {
+    // access code (own/joinable server) or link code (invite link); no ack without one
+    const access = typeof msg.accessCode === "string" && msg.accessCode ? msg.accessCode : null;
+    const link = typeof msg.linkCode === "string" && msg.linkCode ? msg.linkCode : null;
+    if (!access && !link) return;
+    launcher.joinPrivateGame(Number(msg.placeId), access, link);
+    window.postMessage({ cer: "launch-ack", nonce: msg.nonce }, location.origin);
   }
 });

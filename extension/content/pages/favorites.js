@@ -78,7 +78,14 @@
 
     const me = await meP;
     if (!alive()) return;
-    if (!me) return ui.release();
+    if (!me) {
+      // only a real 401/403 means signed out; anything else is a hiccup
+      if (CER.loggedOut) return ui.release();
+      headHost.replaceChildren();
+      tabHost.replaceChildren();
+      body.replaceChildren(ui.empty("Could not load. Try again.", { icon: "refresh", action: ui.button("Try again", { variant: "soft", icon: "refresh", onClick: () => start() }) }));
+      return;
+    }
     const isSelf = String(me.id) === String(id);
     if (isSelf) {
       document.title = "Favorites - Roblox";

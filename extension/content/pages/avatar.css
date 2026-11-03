@@ -155,7 +155,8 @@
   color: var(--cer-acc-ink);
 }
 
-/* wearing: art squares, click one to take it off */
+/* wearing: one row of art squares, click one to take it off. It scrolls
+   sideways (never clips a tile mid-row); the edge fades while more is hidden. */
 [data-page="avatar"] .cer-av-wearing {
   display: flex;
   flex-direction: column;
@@ -163,28 +164,44 @@
   min-width: 0;
 }
 [data-page="avatar"] .cer-av-worn {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  display: flex;
+  align-items: center;
   gap: 8px;
-  max-height: 136px;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
   padding: 2px;
   margin: -2px;
 }
-[data-page="avatar"] .cer-av-worn .cer-av-note {
-  grid-column: 1 / -1;
+[data-page="avatar"] .cer-av-worn::-webkit-scrollbar {
+  display: none;
+}
+[data-page="avatar"] .cer-av-worn.is-more-end {
+  -webkit-mask-image: linear-gradient(90deg, black calc(100% - 48px), transparent);
+  mask-image: linear-gradient(90deg, black calc(100% - 48px), transparent);
+}
+[data-page="avatar"] .cer-av-worn.is-more-start {
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 48px);
+  mask-image: linear-gradient(90deg, transparent, black 48px);
+}
+[data-page="avatar"] .cer-av-worn.is-more-start.is-more-end {
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 48px, black calc(100% - 48px), transparent);
+  mask-image: linear-gradient(90deg, transparent, black 48px, black calc(100% - 48px), transparent);
 }
 [data-page="avatar"] .cer-av-worn > .cer-btn {
-  justify-self: start;
-  grid-column: 1 / -1;
+  flex: none;
 }
 [data-page="avatar"] .cer-av-worn-sk {
+  flex: none;
+  width: 64px;
   aspect-ratio: 1;
   border-radius: var(--cer-r-s);
 }
 [data-page="avatar"] .cer-av-worn-item {
   position: relative;
+  flex: none;
+  width: 64px;
   aspect-ratio: 1;
   padding: 0;
   border: 0;
@@ -209,8 +226,18 @@
   border-radius: 50%;
   background: var(--cer-surface-2);
   color: var(--cer-text-2);
-  opacity: 0.9;
-  transition: background 0.15s, color 0.15s;
+  opacity: 0;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+/* the X shows on hover or keyboard focus; touch screens always show it */
+[data-page="avatar"] .cer-av-worn-item:hover .cer-av-worn-x,
+[data-page="avatar"] .cer-av-worn-item:focus-visible .cer-av-worn-x {
+  opacity: 1;
+}
+@media (hover: none) {
+  [data-page="avatar"] .cer-av-worn-x {
+    opacity: 0.9;
+  }
 }
 [data-page="avatar"] .cer-av-worn-x .cer-icon {
   stroke-width: 3;
@@ -220,7 +247,7 @@
 }
 [data-page="avatar"] .cer-av-worn-item:hover .cer-av-worn-x {
   background: var(--cer-bad);
-  color: #fff;
+  color: white;
 }
 [data-page="avatar"] .cer-av-worn-item:active {
   transform: scale(0.94);
@@ -243,7 +270,8 @@
 /* ------------------------------------------------------------ closet */
 [data-page="avatar"] .cer-av-closet {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  /* wide enough for "Accessories" */
+  grid-template-columns: 96px minmax(0, 1fr);
   gap: 22px;
   align-items: start;
   min-width: 0;
@@ -268,8 +296,8 @@
   justify-content: center;
   gap: 5px;
   width: 100%;
-  /* all 9 fit beside the sticky stage, even in a short window */
-  height: clamp(48px, calc((100vh - 110px) / 9), 64px);
+  /* all 7 fit beside the sticky stage, even in a short window */
+  height: clamp(48px, calc((100vh - 110px) / 7), 64px);
   padding: 0 2px;
   border: 0;
   border-radius: var(--cer-r-m);
@@ -649,12 +677,12 @@
     gap: 18px;
   }
   [data-page="avatar"] .cer-av-closet {
-    grid-template-columns: 68px minmax(0, 1fr);
+    grid-template-columns: 84px minmax(0, 1fr);
     gap: 14px;
   }
   [data-page="avatar"] .cer-av-cat {
-    height: clamp(46px, calc((100vh - 110px) / 9), 56px);
-    font-size: 11px;
+    height: clamp(46px, calc((100vh - 110px) / 7), 56px);
+    font-size: 10.5px;
   }
   [data-page="avatar"] .cer-av-grid.is-big {
     --av-tile: 140px;

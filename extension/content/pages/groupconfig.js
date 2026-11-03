@@ -1,9 +1,13 @@
 // CER group manager: /communities/configure?id=N, /communities/N/configure,
 // /groups/configure?id=N. Built on CER.ui (content/ui.js), from scratch.
 //
-// A guild screen for owners and admins: Members, Requests, Roles, Info,
-// Links, Settings. Each tab shows only when you have the right for it.
+// A guild screen for owners and admins. The hero is the group (icon, name,
+// Rename / Change icon); under it four tabs: Members, Requests, Roles, Info
+// (shout, about, links). Rare things (Settings, Log, Roblox-only sections)
+// sit under More. Each shows only when you have the right for it.
 // Data comes from groups.roblox.com only (never Roblox's page DOM).
+// Powerful rights (kick, ban, change roles, edit games...) and promotions to
+// a powerful role ask first, with Cancel focused.
 //
 // Writes are the official groups API, each behind a clear button:
 //   change role   PATCH  /v1/groups/{g}/users/{u}                 { roleId }
@@ -42,10 +46,15 @@
 
   // Roblox's configure sections (#!/name). Ours map to a tab; the rest are
   // Roblox-only (money, logs, forums...) and open its page.
-  const HASH_TAB = { information: "info", members: "members", requests: "requests", roles: "roles", socialLinks: "links", settings: "settings" };
-  const TAB_HASH = { info: "information", members: "members", requests: "requests", roles: "roles", links: "socialLinks", settings: "settings" };
+  const HASH_TAB = { information: "info", members: "members", requests: "requests", roles: "roles", socialLinks: "info", settings: "settings", auditLog: "log" };
+  const TAB_HASH = { info: "information", members: "members", requests: "requests", roles: "roles", settings: "settings", log: "auditLog" };
   const hashSection = () => location.hash.replace(/^#!?\/?/, "").split(/[/?]/)[0];
-  const NATIVE_ONLY = /^(revenue|payouts|affiliates|auditLog|forums|contentModeration|analytics|communityTier|bans|experiences)$/i;
+  const NATIVE_ONLY = /^(revenue|payouts|affiliates|forums|contentModeration|analytics|communityTier|bans|experiences)$/i;
+
+  // Rights that let a role hurt the group. Turning one on, or promoting
+  // someone into a role that has one, asks first.
+  const POWER = new Set(["changeRank", "removeMembers", "banMembers", "manageGroupGames", "manageItems", "manageRelationships", "manageKeywordBlockList"]);
+  const hasPower = (perms) => Object.values(perms ?? {}).some((cat) => cat && typeof cat === "object" && Object.entries(cat).some(([k, v]) => v === true && POWER.has(k)));
 
   // ---------------------------------------------------------------- writes
   // One official API call. { ok, status, data, msg }. Never throws.
@@ -69,19 +78,22 @@
   }
   const toastFail = (r) => CER.toast?.(failText(r), "error");
 
-  // Yes / no question. Resolves true only on the yes button.
+  // Yes / no question. Resolves true only on the yes button. Cancel has the
+  // focus, so Enter or a stray tap is the safe answer.
   function ask(o) {
     return new Promise((resolve) => {
-      ui.modal({
+      let yes = false;
+      const m = ui.modal({
         title: o.title,
         class: "cer-gm-ask",
         body: o.text && h("p", { text: o.text }),
-        onClose: () => resolve(false),
+        onClose: () => resolve(yes),
         actions: [
           { label: "Cancel", variant: "ghost", onClick: (close) => close() },
-          { label: o.ok, variant: o.tone ?? "danger", onClick: (close) => (resolve(true), close()) },
+          { label: o.ok, variant: o.tone ?? "danger", onClick: (close) => ((yes = true), close()) },
         ],
       });
+      m?.el?.querySelector(".cer-modal-actions .cer-btn")?.focus();
     });
   }
 
@@ -104,7 +116,7 @@
     const alive = () => current === run && page.isConnected;
 
     // shell first: header, tab bar and body as skeletons
-    const top = h("div", { class: "cer-gm-top is-loading" }, h("div", { class: "cer-gm-top-bg" }), h("div", { class: "cer-gm-top-shade" }), h("div", { class: "cer-gm-top-icon" }), h("div", { class: "cer-gm-top-text" }, ui.skeleton("line"), ui.skeleton("line")));
+    const top = h("div", { class: "cer-gm-top cer-on-art is-loading" }, h("div", { class: "cer-gm-top-bg" }), h("div", { class: "cer-gm-top-shade" }), h("div", { class: "cer-gm-top-icon" }), h("div", { class: "cer-gm-top-text" }, ui.skeleton("line"), ui.skeleton("line")));
     const bar = h("div", { class: "cer-gm-bar" }, h("div", { class: "cer-gm-bar-sk" }, ui.skeleton("line")));
     const body = h("div", { class: "cer-gm-body" }, h("div", { class: "cer-gm-sk" }, ui.skeleton("row", 6)));
     page.append(top, bar, body);
@@ -144,9 +156,21 @@
     };
     // not an admin at all: Roblox's page (it explains what you can see)
     if (!(owner || can.rank || can.invite || can.remove || can.shout || mem.canConfigure)) return ui.release();
+    if (section === "auditLog" && !can.log) {
+      location.replace(native(gid, section));
+      return;
+    }
 
     document.title = `Manage ${info.name} - Roblox`;
-    const ctx = { gid, info, mem, me, myRank, can, rolesP, alive, page };
+    // role rights, shared by Roles and the promotion check. A failed load is
+    // not kept, so the next ask tries again.
+    let permsP = null;
+    const rolePerms = () =>
+      (permsP ??= api.json(`${GROUPS}/v1/groups/${gid}/roles/permissions`).then((j) => {
+        if (!Array.isArray(j?.data)) permsP = null;
+        return j;
+      }));
+    const ctx = { gid, info, mem, me, myRank, can, rolesP, rolePerms, alive, page };
     header(ctx, top);
 
     // ---- tabs: only the ones you can use
@@ -155,9 +179,12 @@
     if (can.invite) tabs.push({ id: "requests", label: "Requests" });
     if (owner) tabs.push({ id: "roles", label: "Roles" });
     if (owner || can.shout) tabs.push({ id: "info", label: "Info" });
-    if (owner) tabs.push({ id: "links", label: "Links" });
-    if (owner) tabs.push({ id: "settings", label: "Settings" });
     if (!tabs.length) return ui.release();
+    // rarely used panes live under More
+    const extra = [];
+    if (owner) extra.push({ id: "settings", label: "Settings", icon: "sliders" });
+    if (can.log) extra.push({ id: "log", label: "Log", icon: "list" });
+    const known = (id) => tabs.some((t) => t.id === id) || extra.some((t) => t.id === id);
 
     const firstReq = await reqP;
     if (!alive()) return;
@@ -172,14 +199,15 @@
     if (reqTab && firstReq?.list.length) reqTab.count = firstReq.list.length;
 
     const wanted = HASH_TAB[section];
-    let active = tabs.some((t) => t.id === wanted) ? wanted : reqTab?.count ? "requests" : tabs[0].id;
+    let active = known(wanted) ? wanted : reqTab?.count ? "requests" : tabs[0].id;
     const panes = {};
-    const BUILD = { members: buildMembers, requests: buildRequests, roles: buildRoles, info: buildInfo, links: buildLinks, settings: buildSettings };
+    const BUILD = { members: buildMembers, requests: buildRequests, roles: buildRoles, info: buildInfo, settings: buildSettings, log: buildLog };
 
-    const more = moreMenu(ctx);
+    const more = moreMenu(ctx, extra, (id) => setTab(id));
     function renderBar() {
       if (!alive()) return;
-      bar.replaceChildren(ui.tabs(tabs, active, setTab), more);
+      bar.replaceChildren(...[ui.tabs(tabs, active, setTab), more].filter(Boolean));
+      more?.setActive(extra.some((t) => t.id === active));
     }
     function setTab(id) {
       active = id;
@@ -203,10 +231,11 @@
   }
 
   // ---------------------------------------------------------------- header
-  // Art first: the group icon over its own blurred colours, name, members,
-  // your role. One quiet way back to the group page.
+  // The group lives here and only here: icon over its own blurred colours,
+  // name, members, your role. The owner's Change icon / Rename sit on it
+  // (both open Roblox: renaming costs Robux). Icon and name go to the group.
   function header(ctx, top) {
-    const { gid, info, mem } = ctx;
+    const { gid, info, mem, can } = ctx;
     const role = mem.userRole?.role;
     const bg = top.querySelector(".cer-gm-top-bg");
     api.thumb("groupIconLg", gid).then((u) => {
@@ -221,49 +250,71 @@
       h(
         "div",
         { class: "cer-gm-top-text" },
-        ui.nameTag({ type: "group", id: gid, name: info.name, verified: info.hasVerifiedBadge, size: "lg", cls: "cer-gm-top-name" }),
+        ui.nameTag({ type: "group", id: gid, name: info.name, verified: info.hasVerifiedBadge, size: "lg", cls: "cer-gm-top-name", href: groupUrl(gid, info.name) }),
         h(
           "div",
           { class: "cer-gm-top-meta" },
           h("span", {}, ui.icon("users", 16), h("span", { text: fmt.full(info.memberCount) })),
-          role && h("span", {}, ui.icon(role.rank === 255 ? "crown" : "shield", 16), h("span", { text: role.name }))
+          role && !can.owner && h("span", {}, ui.icon("shield", 16), h("span", { text: role.name }))
         )
       ),
-      h("div", { class: "cer-gm-top-actions" }, ui.button("Open group", { variant: "glass", href: groupUrl(gid, info.name) }))
+      can.owner &&
+        h(
+          "div",
+          { class: "cer-gm-top-actions" },
+          ui.button("Change icon", { icon: "image", variant: "glass", size: "sm", href: native(gid, "information") }),
+          ui.button("Rename", { icon: "robux", variant: "glass", size: "sm", href: native(gid, "information"), title: "Renaming costs Robux. Opens Roblox." })
+        )
     );
   }
 
-  // "More" menu: Roblox-only sections, each opens Roblox's page
-  function moreMenu(ctx) {
+  // "More" menu: CER panes you rarely need (extra), then Roblox-only
+  // sections, each opening Roblox's page. null when there is nothing.
+  function moreMenu(ctx, extra, open) {
     const { gid, can } = ctx;
-    const items = [
+    const links = [
       can.money && { icon: "robux", label: "Robux and payouts", section: "revenue" },
       can.allies && { icon: "shield", label: "Allies", section: "affiliates" },
       can.ban && { icon: "lock", label: "Bans", section: "members" },
       can.forums && { icon: "chat", label: "Forums", section: "forums" },
       can.words && { icon: "eye", label: "Chat safety", section: "contentModeration" },
-      can.log && { icon: "list", label: "Log", section: "auditLog" },
       can.stats && { icon: "trophy", label: "Stats", section: "analytics" },
-      ctx.can.owner && { icon: "star", label: "Tier", section: "communityTier" },
+      can.owner && { icon: "star", label: "Tier", section: "communityTier" },
     ].filter(Boolean);
-    if (!items.length) return null;
+    if (!extra.length && !links.length) return null;
+    const btn = ui.button("More", { icon: "more", variant: "ghost", size: "sm" });
+    btn.setAttribute("aria-haspopup", "menu");
     const menu = h(
       "div",
       { class: "cer-gm-menu", role: "menu", hidden: true },
-      items.map((it) => h("a", { class: "cer-gm-menu-item", role: "menuitem", href: native(gid, it.section) }, ui.icon(it.icon, 17), h("span", { text: it.label }), ui.icon("external", 14, "cer-gm-menu-go")))
+      extra.map((it) =>
+        h("button", { type: "button", class: "cer-gm-menu-item", role: "menuitem", onClick: () => (hide(), open(it.id)) }, ui.icon(it.icon, 17), h("span", { text: it.label }))
+      ),
+      extra.length && links.length && h("div", { class: "cer-gm-menu-line" }),
+      links.map((it) => h("a", { class: "cer-gm-menu-item", role: "menuitem", href: native(gid, it.section) }, ui.icon(it.icon, 17), h("span", { text: it.label }), ui.icon("external", 14, "cer-gm-menu-go")))
     );
-    const btn = ui.button("More", { icon: "more", variant: "ghost", size: "sm" });
     const wrap = h("div", { class: "cer-gm-more" }, btn, menu);
-    const close = (e) => {
-      if (e && wrap.contains(e.target)) return;
-      menu.hidden = true;
-      document.removeEventListener("pointerdown", close, true);
+    const outside = (e) => !wrap.contains(e.target) && hide();
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      hide();
+      btn.focus();
     };
+    function hide() {
+      menu.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", onKey);
+    }
     btn.addEventListener("click", () => {
-      menu.hidden = !menu.hidden;
-      if (!menu.hidden) document.addEventListener("pointerdown", close, true);
+      if (!menu.hidden) return hide();
+      menu.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+      document.addEventListener("pointerdown", outside, true);
+      document.addEventListener("keydown", onKey);
     });
-    wrap.addEventListener("keydown", (e) => e.key === "Escape" && close());
+    // a More pane is on screen: the button reads as the active tab
+    wrap.setActive = (on) => btn.classList.toggle("is-active", !!on);
     return wrap;
   }
 
@@ -284,17 +335,49 @@
   const field = (props) => h("input", { class: "cer-gm-field", spellcheck: "false", autocomplete: "off", ...props });
   const area = (props) => h("textarea", { class: "cer-textarea cer-gm-area", ...props });
   const userName = (u, opts = {}) => ui.nameTag({ type: "user", id: u.id, name: u.displayName || u.name, sub: opts.sub === false ? null : "@" + u.name, verified: u.verified, size: opts.size ?? "md", href: profileUrl(u.id) });
-  // a "Save" button that wakes up when the form changes
-  function saveButton(label, onSave) {
-    const b = ui.button(label, { variant: "primary", size: "sm", disabled: true });
+  // a "Save" button that only shows once the form changes (b.hidden)
+  function saveButton(label, onSave, icon) {
+    const b = ui.button(label, { variant: "primary", size: "sm", icon });
+    b.hidden = true;
     b.addEventListener("click", async () => {
       if (b.disabled) return;
       b.busy(true);
       const ok = await onSave();
       b.busy(false);
-      b.disabled = !!ok;
+      if (ok) b.hidden = true;
     });
     return b;
+  }
+
+  // Text box with a counter that shows only while you type and a button
+  // that shows only once there is something to save. o: { value, max, rows,
+  // placeholder, label, button, icon, clear, onSave(text) -> ok }
+  function editor(o) {
+    let saved = o.clear ? "" : o.value ?? "";
+    const box = area({ value: saved, maxlength: String(o.max), rows: String(o.rows ?? 3), placeholder: o.placeholder ?? "", "aria-label": o.label });
+    const left = h("span", { class: "cer-gm-left" });
+    const save = saveButton(o.button ?? "Save", async () => {
+      const ok = await o.onSave(o.clear ? box.value.trim() : box.value);
+      if (!ok) return false;
+      saved = o.clear ? "" : box.value;
+      if (o.clear) box.value = "";
+      sync();
+      return true;
+    }, o.icon);
+    const row = h("div", { class: "cer-gm-row-end" }, left, save);
+    let focused = false;
+    function sync() {
+      const dirty = o.clear ? !!box.value.trim() : box.value !== saved;
+      left.textContent = fmt.full(o.max - box.value.length);
+      left.hidden = !focused;
+      save.hidden = !dirty;
+      row.hidden = !focused && !dirty;
+    }
+    box.addEventListener("input", sync);
+    box.addEventListener("focus", () => ((focused = true), sync()));
+    box.addEventListener("blur", () => ((focused = false), sync()));
+    sync();
+    return h("div", { class: "cer-gm-editor" }, box, row);
   }
 
   // ---------------------------------------------------------------- members
@@ -414,10 +497,31 @@
       return row;
     }
 
+    // Promoting into a role with strong rights asks first. If we cannot read
+    // the role rights, every promotion asks.
+    async function powerOf(roleId) {
+      const j = await ctx.rolePerms();
+      const row = j?.data?.find((x) => String(x.role?.id) === String(roleId));
+      return row ? hasPower(row.permissions) : null;
+    }
+
     async function changeRole(m, roleId, sel) {
       const role = roles.find((x) => String(x.id) === roleId);
       if (!role) return;
       sel.disabled = true;
+      if (role.rank > (m.role?.rank ?? 0)) {
+        const strong = await powerOf(role.id);
+        if (!ctx.alive()) return;
+        const name = m.displayName || m.name;
+        const ok =
+          strong === false ||
+          (await ask({ title: `Make ${name} ${role.name}?`, text: strong ? "This role has strong powers." : "This gives them a higher role.", ok: "Yes", tone: "primary" }));
+        if (!ok) {
+          sel.value = String(m.role.id);
+          sel.disabled = false;
+          return;
+        }
+      }
       const r = await write(`${GROUPS}/v1/groups/${gid}/users/${m.id}`, "PATCH", { roleId: Number(role.id) });
       sel.disabled = false;
       if (r.ok) {
@@ -625,7 +729,7 @@
     let data = [];
     let sel = null;
 
-    api.json(`${GROUPS}/v1/groups/${gid}/roles/permissions`).then((j) => {
+    ctx.rolePerms().then((j) => {
       if (!ctx.alive()) return;
       data = (j?.data ?? []).filter((x) => x.role).sort((a, b) => b.role.rank - a.role.rank);
       if (!data.length) return pane.replaceChildren(ui.empty("We could not load the roles.", { icon: "shield", action: ui.button("Open on Roblox", { variant: "soft", href: native(gid, "roles") }) }));
@@ -687,7 +791,7 @@
         CER.toast?.("Saved!");
         return true;
       });
-      const dirty = () => (save.disabled = name.value.trim() === role.name && Number(rank.value) === role.rank && desc.value === (role.description ?? ""));
+      const dirty = () => (save.hidden = name.value.trim() === role.name && Number(rank.value) === role.rank && desc.value === (role.description ?? ""));
       for (const el of [name, rank, desc]) el.addEventListener("input", dirty);
 
       const groups = PERMS.map(([cat, title, keys]) => {
@@ -697,7 +801,7 @@
           .filter(([k]) => k in have)
           .map(([k, label]) => {
             const locked = isOwnerRole || (isGuest && !GUEST_OK[k]);
-            const t = ui.toggle(have[k], (on) => setPerm(x, cat, k, on, t));
+            const t = ui.toggle(have[k], (on) => setPerm(x, cat, k, on, t, label));
             t.disabled = locked;
             t.setAttribute("aria-label", label);
             return h("label", { class: "cer-gm-perm" + (locked ? " is-locked" : "") }, h("span", { text: label }), t);
@@ -719,8 +823,14 @@
       );
     }
 
-    async function setPerm(x, cat, key, on, t) {
+    async function setPerm(x, cat, key, on, t, label) {
       t.disabled = true;
+      if (on && POWER.has(key)) {
+        t.checked = false; // stays off unless you say yes
+        const yes = await ask({ title: `Turn on ${label}?`, text: `Everyone who is ${x.role.name} can do it.`, ok: "Turn on", tone: "primary" });
+        if (!yes || !ctx.alive()) return void (t.disabled = false);
+        t.checked = true;
+      }
       const r = await write(`${GROUPS}/v1/groups/${gid}/roles/${x.role.id}/permissions`, "PATCH", { permissions: { [key]: on } });
       t.disabled = false;
       if (r.ok) x.permissions[cat][key] = on;
@@ -732,83 +842,75 @@
   }
 
   // ---------------------------------------------------------------- info
+  // One plain column: Shout, About, Links. No second copy of the name or
+  // icon (the hero has them), no boxes around the parts.
   function buildInfo(ctx, pane) {
     const { gid, info, can } = ctx;
-    const art = h(
-      "div",
-      { class: "cer-gm-info-art" },
-      h("div", { class: "cer-gm-info-icon" }, ui.thumb("groupIconLg", gid, { alt: "" })),
-      can.owner && ui.button("Change icon", { icon: "image", variant: "soft", size: "sm", href: native(gid, "information") })
-    );
-    const col = h("div", { class: "cer-gm-info-col" });
-
-    col.append(
-      h(
-        "div",
-        { class: "cer-gm-info-name" },
-        ui.nameTag({ type: "group", id: gid, name: info.name, verified: info.hasVerifiedBadge, size: "lg" }),
-        can.owner && h("a", { class: "cer-gm-quiet", href: native(gid, "information"), title: "Renaming costs Robux. Opens Roblox." }, ui.icon("robux", 15), h("span", { text: "Rename" }))
-      )
-    );
-
-    if (can.owner) {
-      let saved = info.description ?? "";
-      const desc = area({ value: saved, maxlength: "1000", rows: "6", placeholder: "Tell players what your group is about", "aria-label": "About" });
-      const left = h("span", { class: "cer-gm-left" });
-      const save = saveButton("Save", async () => {
-        const r = await write(`${GROUPS}/v1/groups/${gid}/description`, "PATCH", { description: desc.value });
-        if (!r.ok) return toastFail(r), false;
-        saved = r.data?.newDescription ?? desc.value;
-        info.description = saved;
-        CER.toast?.("Saved!");
-        return true;
-      });
-      const sync = () => {
-        left.textContent = fmt.full(1000 - desc.value.length);
-        save.disabled = desc.value === saved;
-      };
-      desc.addEventListener("input", sync);
-      sync();
-      col.append(h("section", { class: "cer-gm-card" }, h("h3", { class: "cer-gm-sub", text: "About" }), desc, h("div", { class: "cer-gm-row-end" }, left, save)));
-    }
+    const col = h("div", { class: "cer-gm-info" });
+    const block = (title, ...kids) => h("section", { class: "cer-gm-block" }, h("h3", { class: "cer-gm-sub", text: title }), ...kids);
 
     if (can.shout) {
       const now = h("div", { class: "cer-gm-shout" });
-      const showShout = (s) =>
+      const showShout = (s) => {
+        const p = s?.poster;
         now.replaceChildren(
           ...(s?.body
             ? [
                 h("p", { class: "cer-gm-shout-body", text: s.body }),
-                h("div", { class: "cer-gm-shout-by" }, s.poster && ui.avatar(s.poster.userId, { size: 22 }), s.poster && h("span", { text: s.poster.displayName || s.poster.username }), s.updated && h("span", { class: "cer-gm-muted", text: fmt.ago(s.updated) })),
+                h(
+                  "div",
+                  { class: "cer-gm-shout-by" },
+                  p && h("a", { class: "cer-gm-shout-av", href: profileUrl(p.userId), tabindex: "-1" }, ui.avatar(p.userId, { size: 22 })),
+                  p && ui.nameTag({ type: "user", id: p.userId, name: p.displayName || p.username, verified: p.hasVerifiedBadge, size: "sm", href: profileUrl(p.userId) }),
+                  s.updated && h("span", { class: "cer-gm-muted", text: fmt.ago(s.updated) })
+                ),
               ]
             : [])
         );
-      showShout(info.shout);
-      const msg = area({ maxlength: "255", rows: "2", placeholder: "Say something to everyone", "aria-label": "New shout" });
-      const left = h("span", { class: "cer-gm-left" });
-      const post = ui.button("Post", { icon: "megaphone", variant: "primary", size: "sm", disabled: true });
-      const sync = () => {
-        left.textContent = fmt.full(255 - msg.value.length);
-        post.disabled = !msg.value.trim();
       };
-      msg.addEventListener("input", sync);
-      sync();
-      post.addEventListener("click", async () => {
-        if (post.disabled) return;
-        post.busy(true);
-        const r = await write(`${GROUPS}/v1/groups/${gid}/status`, "PATCH", { message: msg.value.trim() });
-        post.busy(false);
-        if (!r.ok) return sync(), toastFail(r);
-        info.shout = r.data?.body ? r.data : { body: msg.value.trim(), poster: { userId: ctx.me.id, username: ctx.me.name, displayName: ctx.me.displayName } };
-        showShout(info.shout);
-        msg.value = "";
-        sync();
-        CER.toast?.("Shout posted!");
+      showShout(info.shout);
+      const post = editor({
+        clear: true,
+        max: 255,
+        rows: 2,
+        placeholder: "Say something to everyone",
+        label: "New shout",
+        button: "Post",
+        icon: "megaphone",
+        onSave: async (text) => {
+          const r = await write(`${GROUPS}/v1/groups/${gid}/status`, "PATCH", { message: text });
+          if (!r.ok) return toastFail(r), false;
+          // no verified flag on our own copy: the name tag looks it up
+          info.shout = r.data?.body ? r.data : { body: text, poster: { userId: ctx.me.id, username: ctx.me.name, displayName: ctx.me.displayName }, updated: new Date().toISOString() };
+          showShout(info.shout);
+          CER.toast?.("Shout posted!");
+          return true;
+        },
       });
-      col.append(h("section", { class: "cer-gm-card" }, h("h3", { class: "cer-gm-sub", text: "Shout" }), now, msg, h("div", { class: "cer-gm-row-end" }, left, post)));
+      col.append(block("Shout", now, post));
     }
 
-    pane.append(h("div", { class: "cer-gm-info" }, art, col));
+    if (can.owner) {
+      const about = editor({
+        value: info.description ?? "",
+        max: 1000,
+        rows: 6,
+        placeholder: "Tell players what your group is about",
+        label: "About",
+        onSave: async (text) => {
+          const r = await write(`${GROUPS}/v1/groups/${gid}/description`, "PATCH", { description: text });
+          if (!r.ok) return toastFail(r), false;
+          info.description = r.data?.newDescription ?? text;
+          CER.toast?.("Saved!");
+          return true;
+        },
+      });
+      const links = block("Links");
+      buildLinks(ctx, links);
+      col.append(block("About", about), links);
+    }
+
+    pane.append(col);
   }
 
   // ---------------------------------------------------------------- links
@@ -825,8 +927,8 @@
 
   function buildLinks(ctx, pane) {
     const { gid } = ctx;
-    const list = h("div", { class: "cer-gm-links" }, ui.skeleton("row", 3));
-    const add = ui.button("Add link", { icon: "plus", variant: "soft" });
+    const list = h("div", { class: "cer-gm-links" }, ui.skeleton("row", 2));
+    const add = ui.button("Add link", { icon: "plus", variant: "soft", size: "sm" });
     const addSlot = h("div", { class: "cer-gm-addslot" }, add);
     pane.append(list, addSlot);
     let links = [];
@@ -841,7 +943,7 @@
     load();
 
     function render() {
-      list.replaceChildren(...(links.length ? links.map(row) : [h("div", { class: "cer-gm-none" }, ui.empty("No links yet.", { icon: "link" }))]));
+      list.replaceChildren(...links.map(row)); // none yet: just the Add button
     }
 
     function row(l) {
@@ -947,5 +1049,89 @@
         );
       });
     load();
+  }
+  // ---------------------------------------------------------------- log
+  // Read only: who did what, newest first. Each name is a name tag.
+  // Plain words for the common actions; anything else uses Roblox's name.
+  const LOG_WORDS = {
+    changerank: "changed the role of",
+    removemember: "kicked",
+    acceptjoinrequest: "let in",
+    declinejoinrequest: "said no to",
+    banmember: "banned",
+    unbanmember: "unbanned",
+    blockuser: "blocked",
+    unblockuser: "unblocked",
+    poststatus: "posted a shout",
+    postshout: "posted a shout",
+    changedescription: "changed the about text",
+    updatedescription: "changed the about text",
+    addally: "added an ally",
+    removeally: "removed an ally",
+    createitems: "made an item",
+    configureitems: "changed an item",
+    configuregroupgame: "changed a game",
+    spendgroupfunds: "spent group Robux",
+    rename: "renamed the group",
+    changeowner: "changed the owner",
+  };
+  // the people actions: these have a user as the target
+  const LOG_TARGET = new Set(["changerank", "removemember", "acceptjoinrequest", "declinejoinrequest", "banmember", "unbanmember", "blockuser", "unblockuser", "changeowner"]);
+  const pick = (d, k) => d?.[k] ?? d?.[k[0].toLowerCase() + k.slice(1)];
+
+  function buildLog(ctx, pane) {
+    const { gid } = ctx;
+    const list = h("div", { class: "cer-gm-log" }, ui.skeleton("row", 8));
+    const foot = h("div", { class: "cer-gm-foot" });
+    pane.append(list, foot, h("a", { class: "cer-gm-quiet", href: native(gid, "auditLog") }, ui.icon("list", 15), h("span", { text: "Full log on Roblox" }), ui.icon("external", 13)));
+    let cursor = "";
+    let count = 0;
+
+    function row(e) {
+      const u = e.actor?.user;
+      const d = e.description ?? {};
+      const raw = String(e.actionType ?? "");
+      const key = raw.replace(/[^a-z]/gi, "").toLowerCase();
+      const words = LOG_WORDS[key] ?? raw.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+      const tid = pick(d, "TargetId");
+      const tname = pick(d, "TargetName");
+      const newRole = pick(d, "NewRoleSetName");
+      return h(
+        "div",
+        { class: "cer-gm-logrow" },
+        u?.userId ? h("a", { class: "cer-gm-log-art", href: profileUrl(u.userId), tabindex: "-1" }, ui.avatar(u.userId, { size: 40 })) : h("span", { class: "cer-gm-log-art" }),
+        h(
+          "div",
+          { class: "cer-gm-log-text" },
+          u?.userId && ui.nameTag({ type: "user", id: u.userId, name: u.displayName || u.username, verified: u.hasVerifiedBadge, size: "sm", href: profileUrl(u.userId) }),
+          h("span", { class: "cer-gm-log-what", text: words }),
+          LOG_TARGET.has(key) && tid && tname && /^\d+$/.test(String(tid)) && ui.nameTag({ type: "user", id: tid, name: tname, size: "sm", href: profileUrl(tid) }),
+          key === "changerank" && newRole && h("span", { class: "cer-gm-log-what", text: "to " + newRole })
+        ),
+        e.created && h("span", { class: "cer-gm-log-when", text: fmt.ago(e.created) })
+      );
+    }
+
+    async function page() {
+      const cur = cursor ? "&cursor=" + encodeURIComponent(cursor) : "";
+      const j = await api.json(`${GROUPS}/v1/groups/${gid}/audit-log?limit=100&sortOrder=Desc${cur}`);
+      if (!ctx.alive()) return false;
+      if (!Array.isArray(j?.data)) {
+        if (!count) list.replaceChildren(h("div", { class: "cer-gm-none" }, ui.empty("We could not load the log.", { icon: "list", action: ui.button("Try again", { variant: "soft", onClick: retry }) })));
+        return null;
+      }
+      if (!count) list.replaceChildren();
+      list.append(...j.data.map(row));
+      count += j.data.length;
+      if (!count) list.replaceChildren(h("div", { class: "cer-gm-none" }, ui.empty("Nothing here yet.", { icon: "list" })));
+      cursor = j.nextPageCursor ?? "";
+      if (cursor && !foot.firstChild) foot.append(loadMore(page));
+      return !!cursor;
+    }
+    function retry() {
+      list.replaceChildren(...ui.skeleton("row", 8));
+      page();
+    }
+    page();
   }
 })();

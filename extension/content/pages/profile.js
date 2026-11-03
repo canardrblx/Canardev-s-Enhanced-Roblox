@@ -120,12 +120,13 @@
     return list;
   }
 
-  // Public games of a user or group, as gameCard objects.
-  async function gamesOf(kind, id, pages = 2) {
+  // Public games of a user or group, as gameCard objects. null = failed.
+  // An empty answer is cached like any other (most groups have no games).
+  async function gamesOf(kind, id, pages = 2, ttl = 300000) {
     const out = [];
     let cursor = "";
     for (let i = 0; i < pages; i++) {
-      const j = await get(`https://games.roblox.com/v2/${kind}/${id}/games?accessFilter=Public&limit=50&sortOrder=Desc${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`, 300000);
+      const j = await get(`https://games.roblox.com/v2/${kind}/${id}/games?accessFilter=Public&limit=50&sortOrder=Desc${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`, ttl);
       if (!j) return i ? out : null;
       for (const g of j.data ?? []) out.push({ universeId: g.id, placeId: g.rootPlace?.id, name: g.name, visits: g.placeVisits ?? 0 });
       cursor = j.nextPageCursor;
@@ -136,6 +137,20 @@
 
   // Roblox writes go through the worker (CSRF handled there). { ok, status }
   const write = (url, body = {}) => CER.bgFetch(url, "POST", body);
+
+  // fn over items, at most n at a time (games.roblox.com rate limits bursts)
+  async function pool(items, n, fn) {
+    const out = new Array(items.length);
+    let next = 0;
+    const lane = async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, lane));
+    return out;
+  }
 
   // ---------------------------------------------------------------- small UI
   const presenceText = (p) => {
@@ -148,7 +163,8 @@
   // Line under a friend: only the game they are in (no other text).
   const friendSub = (f) => (api.presenceState(f.presence) === "ingame" && f.presence.lastLocation ? f.presence.lastLocation : "");
 
-  // Popover menu. items: () => [{ label, icon, href?, onClick? } | null]
+  // Popover menu. items: () => [{ label, icon, href?, onClick?, ext?, blank? } | null]
+  // ext: a small external mark (the link leaves CER). blank: opens a new tab.
   // Fixed-position and mounted outside the hero, so no rounded clip cuts it.
   function menu(items) {
     const btn = ui.button("", { icon: "more", variant: "soft", title: "More" });
@@ -177,6 +193,8 @@
                 class: "pf-menu-item",
                 role: "menuitem",
                 href: it.href,
+                target: it.href && it.blank ? "_blank" : null,
+                rel: it.href && it.blank ? "noopener" : null,
                 type: it.href ? null : "button",
                 onClick: () => {
                   setTimeout(close); // after a link's own navigation starts
@@ -184,7 +202,8 @@
                 },
               },
               ui.icon(it.icon ?? "right", 17),
-              h("span", { text: it.label })
+              h("span", { text: it.label }),
+              it.ext && h("span", { class: "pf-menu-ext", title: "Opens Roblox" }, ui.icon("external", 13))
             )
           )
       );
@@ -241,6 +260,24 @@
     return h("div", { class: "pf-bio-wrap" }, p, more);
   }
 
+  // A section whose call failed: a small line + Try again (failure is not "nothing")
+  const failBox = (retry) =>
+    h("div", { class: "pf-fail" }, h("span", { text: "Could not load." }), ui.button("Try again", { icon: "refresh", variant: "soft", size: "sm", onClick: retry }));
+
+  // Confirm for a powerful write. Focus starts on Cancel (the safe button).
+  function confirmAsk({ title, text, yes, onYes }) {
+    const m = ui.modal({
+      title,
+      body: text && h("p", { text }),
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        { label: yes, variant: "danger", onClick: (close) => (close(), onYes()) },
+      ],
+    });
+    requestAnimationFrame(() => m.el.querySelector(".cer-modal-actions .cer-btn")?.focus());
+    return m;
+  }
+
   const gameGrid = (games) => ui.grid(games.map((g) => ui.gameCard(g)), { min: 240, gap: 18 });
   const skelGrid = (n = 6, kind = "card", min = 240) => ui.grid(ui.skeleton(kind, n), { min, gap: 18 });
   // plain section: bold title, no icon / count / subtitle
@@ -255,15 +292,19 @@
     // data that only needs the id starts before anything else
     const userP = loadUser(id);
     const meP = api.me();
-    const presenceP = api.presenceOne(id);
+    const presenceP = api.presence([id]).then((m) => m.get(String(id)) ?? null, () => null);
     const countP = (k) => get(`https://friends.roblox.com/v1/users/${id}/${k}/count`, 120000).then((j) => j?.count ?? null);
     const countsP = Promise.all([countP("friends"), countP("followers")]);
-    const rolesP = get(`https://groups.roblox.com/v2/users/${id}/groups/roles`, 300000).then((j) => j?.data ?? null);
+    // null = the call failed (Try again), [] = really nothing. let: Try again re-asks.
+    const loadRoles = () => get(`https://groups.roblox.com/v2/users/${id}/groups/roles`, 300000).then((j) => (Array.isArray(j?.data) ? j.data : null));
+    let rolesP = loadRoles();
     const primaryP = get(`https://groups.roblox.com/v1/users/${id}/groups/primary/role`, 300000);
-    const ownGamesP = gamesOf("users", id);
-    const favP = get(`https://games.roblox.com/v2/users/${id}/favorite/games?limit=50&sortOrder=Desc`, 300000).then((j) =>
-      j ? (j.data ?? []).map((g) => ({ universeId: g.id, placeId: g.rootPlace?.id, name: g.name })) : null
-    );
+    let ownGamesP = gamesOf("users", id);
+    const loadFavs = () =>
+      get(`https://games.roblox.com/v2/users/${id}/favorite/games?limit=50&sortOrder=Desc`, 300000).then((j) =>
+        j ? (j.data ?? []).map((g) => ({ universeId: g.id, placeId: g.rootPlace?.id, name: g.name })) : null
+      );
+    let favP = loadFavs();
     const canViewP = get(`https://inventory.roblox.com/v1/users/${id}/can-view-inventory`, 300000).then((j) => j?.canView ?? null);
 
     // ---- shell (skeletons, mounted right away)
@@ -281,8 +322,10 @@
 
     const [res, me] = await Promise.all([userP, meP]);
     if (!alive()) return;
-    if (res.error) throw new Error("user lookup failed"); // route() shows Roblox's page
-    if (!me) return ui.release(); // logged out: Roblox's own page
+    // only a real 401/403 means signed out (Roblox's own page then); a busy
+    // or failed lookup is a hiccup: offer Try again, never dump to Roblox
+    if (!me && CER.loggedOut) return ui.release();
+    if (!me || res.error) return renderRetry(page);
     if (res.gone || res.user?.isBanned) return renderGone(page, res.user);
 
     const user = res.user;
@@ -290,8 +333,6 @@
     document.title = `${user.displayName} (@${user.name}) - Roblox`;
 
     // friends: theirs + mine (for mutuals first), shared by Overview + Friends
-    const theirFriendsP = friendsOf(id);
-    const myFriendIdsP = isSelf ? Promise.resolve(null) : friendsOf(me.id).then((l) => (l ? new Set(l.map((f) => String(f.id))) : null));
     // sort: friends you share, then in game, studio, online, offline
     const rank = { ingame: 0, studio: 1, online: 2, offline: 3 };
     const sortFriends = (list) => list.sort((a, b) => b.mutual - a.mutual || rank[api.presenceState(a.presence)] - rank[api.presenceState(b.presence)]);
@@ -300,14 +341,17 @@
       const pres = await api.presence(rows.map((f) => f.id));
       for (const f of rows) f.presence = pres.get(String(f.id)) ?? null;
     };
-    // Overview: presence for the first 100 only (one call)
-    const friendsP = Promise.all([theirFriendsP, myFriendIdsP]).then(async ([list, mine]) => {
-      if (!list) return null;
-      for (const f of list) f.mutual = !!mine?.has(String(f.id));
-      sortFriends(list);
-      await addPresence(list.slice(0, 100));
-      return sortFriends(list);
-    });
+    // Overview: presence for the first 100 only (one call). null = failed.
+    const loadFriends = () =>
+      Promise.all([friendsOf(id), isSelf ? null : friendsOf(me.id).then((l) => (l ? new Set(l.map((f) => String(f.id))) : null))]).then(async ([list, mine]) => {
+        if (!list) return null;
+        for (const f of list) f.mutual = !!mine?.has(String(f.id));
+        sortFriends(list);
+        await addPresence(list.slice(0, 100));
+        return sortFriends(list);
+      });
+    let friendsP = loadFriends();
+    const retryFriends = () => ((friendsP = loadFriends()), (allFriendsP = null));
     // Friends tab: the rest (up to 500 in all), only once it is opened
     let allFriendsP = null;
     const allFriends = () =>
@@ -317,19 +361,30 @@
         return sortFriends(list);
       }));
 
-    // games from groups the user OWNS count as their creations too
-    const groupGamesP = rolesP.then(async (roles) => {
-      const owned = (roles ?? []).filter((r) => r.role?.rank === 255).slice(0, 10);
-      const lists = await Promise.all(owned.map((r) => gamesOf("groups", r.group.id, 1).then((gs) => gs ?? [])));
-      return lists.flat();
-    });
-    const creationsP = Promise.all([ownGamesP, groupGamesP]).then(async ([own, grp]) => {
-      const seen = new Set();
-      const all = [...(own ?? []), ...grp].filter((g) => g.placeId && !seen.has(g.universeId) && seen.add(g.universeId));
-      all.sort((a, b) => b.visits - a.visits);
-      await ui.hydrateGames(all);
-      return { all, failed: own == null && !grp.length };
-    });
+    // games from groups the user OWNS count as their creations too. Asked
+    // only when the Games rail shows or the Games tab opens, 3 at a time, and
+    // empty answers stay cached (most groups have no games).
+    let creationsP = null;
+    const creations = () =>
+      (creationsP ??= Promise.all([
+        ownGamesP,
+        rolesP.then(async (roles) => {
+          const owned = (roles ?? []).filter((r) => r.role?.rank === 255).slice(0, 10);
+          const lists = await pool(owned, 3, (r) => gamesOf("groups", r.group.id, 1, 1800000));
+          return lists.filter(Boolean).flat();
+        }),
+      ]).then(async ([own, grp]) => {
+        const seen = new Set();
+        const all = [...(own ?? []), ...grp].filter((g) => g.placeId && !seen.has(g.universeId) && seen.add(g.universeId));
+        all.sort((a, b) => b.visits - a.visits);
+        await ui.hydrateGames(all);
+        return { all, failed: own == null && !grp.length };
+      }));
+    const retryCreations = () => {
+      ownGamesP = gamesOf("users", id);
+      rolesP = rolesP.then((r) => r ?? loadRoles());
+      creationsP = null;
+    };
 
     // count API is often rate limited: fall back to the loaded list (exact under 250)
     const heroCountsP = countsP.then(async ([fr, fo]) => {
@@ -401,31 +456,45 @@
           if (typeof v === "string" && /^https:\/\//i.test(v)) meta.appendChild(h("a", { class: "pf-meta-link", href: v, target: "_blank", rel: "noopener noreferrer", text: NICE[k] ?? k }));
       });
 
+      // each section vanishes only on a real empty answer; a failed call
+      // keeps it with a small Try again
       const games = section("Games", { label: "See all", onClick: () => show("games") });
+      const fillGames = () => {
+        ui.clear(games.body, ui.rail(ui.skeleton("card", 4), { item: 260 }));
+        creations().then((c) => {
+          if (!alive()) return;
+          if (!c.all.length) return c.failed ? ui.clear(games.body, failBox(() => (retryCreations(), fillGames()))) : games.remove();
+          ui.clear(games.body, ui.rail(c.all.slice(0, 10).map((g) => ui.gameCard(g)), { item: 260 }));
+        });
+      };
       games.body.appendChild(ui.rail(ui.skeleton("card", 4), { item: 260 }));
-      creationsP.then((c) => {
-        if (!alive()) return;
-        if (!c.all.length) return games.remove();
-        ui.clear(games.body, ui.rail(c.all.slice(0, 10).map((g) => ui.gameCard(g)), { item: 260 }));
-      });
+      ui.whenVisible(games, fillGames);
 
       const friends = section("Friends", { label: "See all", onClick: () => show("friends") });
-      friends.body.appendChild(ui.rail(ui.skeleton("tile", 8), { item: 104 }));
-      friendsP.then((list) => {
-        if (!alive()) return;
-        if (!list?.length) return friends.remove();
-        ui.clear(friends.body, ui.rail(list.slice(0, 24).map((f) => personTile(f, { size: 84, sub: friendSub(f) })), { item: 104 }));
-      });
+      const fillFriends = () => {
+        ui.clear(friends.body, ui.rail(ui.skeleton("tile", 8), { item: 104 }));
+        friendsP.then((list) => {
+          if (!alive()) return;
+          if (!list) return ui.clear(friends.body, failBox(() => (retryFriends(), fillFriends())));
+          if (!list.length) return friends.remove();
+          ui.clear(friends.body, ui.rail(list.slice(0, 24).map((f) => personTile(f, { size: 84, sub: friendSub(f) })), { item: 104 }));
+        });
+      };
+      fillFriends();
 
       const groups = section("Groups");
-      groups.body.appendChild(ui.rail(ui.skeleton("tile", 8), { item: 120 }));
-      Promise.all([rolesP, primaryP]).then(([roles, prim]) => {
-        if (!alive()) return;
-        if (!roles?.length) return groups.remove();
-        const pid = prim?.group?.id;
-        const list = [...roles].sort((a, b) => (b.group.id === pid) - (a.group.id === pid) || (b.role.rank === 255) - (a.role.rank === 255) || (b.group.memberCount ?? 0) - (a.group.memberCount ?? 0));
-        ui.clear(groups.body, ui.rail(list.map(groupTile), { item: 120 }));
-      });
+      const fillGroups = () => {
+        ui.clear(groups.body, ui.rail(ui.skeleton("tile", 8), { item: 120 }));
+        Promise.all([rolesP, primaryP]).then(([roles, prim]) => {
+          if (!alive()) return;
+          if (!roles) return ui.clear(groups.body, failBox(() => ((rolesP = loadRoles()), fillGroups())));
+          if (!roles.length) return groups.remove();
+          const pid = prim?.group?.id;
+          const list = [...roles].sort((a, b) => (b.group.id === pid) - (a.group.id === pid) || (b.role.rank === 255) - (a.role.rank === 255) || (b.group.memberCount ?? 0) - (a.group.memberCount ?? 0));
+          ui.clear(groups.body, ui.rail(list.map(groupTile), { item: 120 }));
+        });
+      };
+      fillGroups();
 
       const wearing = section("Wearing");
       wearing.body.appendChild(ui.grid(ui.skeleton("tile", 8), { min: 112, gap: 14 }));
@@ -445,7 +514,7 @@
         // busy (429): the plain id list still gives the art, just no names
         const w = await get(`https://avatar.roblox.com/v1/users/${id}/currently-wearing`, 120000);
         if (!alive()) return;
-        if (!w) return ui.clear(sec.body, ui.empty("Could not load this.", { icon: "shirt" }));
+        if (!w) return ui.clear(sec.body, failBox(() => (ui.clear(sec.body, ui.grid(ui.skeleton("tile", 8), { min: 112, gap: 14 })), fillWearing(sec))));
         items = (w.assetIds ?? []).map((a) => ({ id: a, name: "" }));
       }
       if (!items.length) return sec.remove();
@@ -460,24 +529,31 @@
 
     function gamesPanel(panel) {
       const made = section(isSelf ? "Your games" : "Creations");
-      made.body.appendChild(skelGrid(4));
       const favs = section("Favorites");
-      favs.body.appendChild(skelGrid(4));
       panel.append(made, favs);
-      creationsP.then((c) => {
-        if (!alive()) return;
-        if (!c.all.length) return c.failed ? ui.clear(made.body, ui.empty("Could not load games.", { icon: "gamepad" })) : made.remove();
-        ui.clear(made.body, gameGrid(c.all));
-      });
-      favP.then(async (list) => {
-        if (list?.length) await ui.hydrateGames(list);
-        if (!alive()) return;
-        if (!list?.length) return favs.remove();
-        ui.clear(favs.body, gameGrid(list));
-      });
+      const fillMade = () => {
+        ui.clear(made.body, skelGrid(4));
+        return creations().then((c) => {
+          if (!alive()) return c;
+          if (!c.all.length) c.failed ? ui.clear(made.body, failBox(() => (retryCreations(), fillMade()))) : made.remove();
+          else ui.clear(made.body, gameGrid(c.all));
+          return c;
+        });
+      };
+      const fillFavs = () => {
+        ui.clear(favs.body, skelGrid(4));
+        return favP.then(async (list) => {
+          if (list?.length) await ui.hydrateGames(list);
+          if (!alive()) return list;
+          if (!list) ui.clear(favs.body, failBox(() => ((favP = loadFavs()), fillFavs())));
+          else if (!list.length) favs.remove();
+          else ui.clear(favs.body, gameGrid(list));
+          return list;
+        });
+      };
       // nothing at all: one simple line instead of two empty sections
-      Promise.all([creationsP, favP]).then(([c, f]) => {
-        if (alive() && !c.all.length && !c.failed && !f?.length) panel.appendChild(ui.empty("No games yet.", { icon: "gamepad" }));
+      Promise.all([fillMade(), fillFavs()]).then(([c, f]) => {
+        if (alive() && !c.all.length && !c.failed && f && !f.length) panel.appendChild(ui.empty("No games yet.", { icon: "gamepad" }));
       });
     }
 
@@ -514,7 +590,13 @@
         if (!l?.length) {
           toolbar.hidden = true;
           grid.classList.add("is-empty");
-          grid.replaceChildren(ui.empty(l || count === 0 ? "No friends yet." : "Could not load friends.", { icon: "users" }));
+          const failed = !l && count !== 0;
+          grid.replaceChildren(
+            ui.empty(failed ? "Could not load friends." : "No friends yet.", {
+              icon: "users",
+              action: failed && ui.button("Try again", { icon: "refresh", variant: "soft", onClick: () => (retryFriends(), panel.replaceChildren(), friendsPanel(panel)) }),
+            })
+          );
           return;
         }
         list = l;
@@ -539,7 +621,7 @@
         if (!j && !first) return CER.toast("Could not load more.", "error"); // cursor + button stay
         if (first) {
           grid.replaceChildren(
-            ...(Array.isArray(rb) ? rb : []).map((b) => badgeTile({ href: `${RB}/info/roblox-badges#Badge${b.id}`, name: b.name, tip: b.description, img: ui.img(b.imageUrl, { alt: "" }), roblox: true }))
+            ...(Array.isArray(rb) ? rb : []).map((b) => badgeTile({ onClick: () => robloxBadgeModal(b), name: b.name, tip: b.description, img: ui.img(b.imageUrl, { alt: "" }), roblox: true }))
           );
         }
         const data = j?.data ?? [];
@@ -567,7 +649,22 @@
   }
 
   function badgeTile(b) {
-    return h("a", { class: "pf-badge" + (b.roblox ? " is-roblox" : ""), href: b.href, title: b.tip ?? "" }, h("div", { class: "pf-badge-img" }, b.img), h("span", { class: "pf-badge-name", text: b.name }));
+    return h(
+      b.onClick ? "button" : "a",
+      { class: "pf-badge" + (b.roblox ? " is-roblox" : ""), href: b.href, type: b.onClick ? "button" : null, onClick: b.onClick, title: b.tip ?? "" },
+      h("div", { class: "pf-badge-img" }, b.img),
+      h("span", { class: "pf-badge-name", text: b.name })
+    );
+  }
+
+  // Roblox's own badges (Veteran, Friendship, ...): what we already have,
+  // in a small CER window instead of Roblox's old info page
+  function robloxBadgeModal(b) {
+    ui.modal({
+      title: b.name ?? "Badge",
+      class: "pf-rb-modal",
+      body: h("div", { class: "pf-rb" }, h("div", { class: "pf-rb-img" }, ui.img(b.imageUrl, { alt: "" })), b.description && h("p", { class: "pf-rb-text", text: b.description })),
+    });
   }
 
   // ---------------------------------------------------------------- hero
@@ -593,8 +690,10 @@
       actions.append(
         ui.button("Edit avatar", { icon: "shirt", variant: "primary", size: "lg", href: `${RB}/my/avatar` }),
         menu(() => [
-          { label: "Edit profile", icon: "edit", href: `${RB}/my/account#!/info` },
+          // Roblox's own account info form (CER's settings hub owns the plain #!/info)
+          { label: "Edit profile", icon: "edit", href: ui.nativeUrl(`${RB}/my/account#!/info`), ext: true },
           { label: "My items", icon: "bag", href: `${RB}/users/${id}/inventory` },
+          { label: "Favorites", icon: "star", href: `${RB}/users/${id}/favorites` },
           { label: "Copy link", icon: "link", onClick: () => ui.copy(profileUrl, "Link copied") },
           { label: "Roblox page", icon: "external", href: ui.nativeUrl(profileUrl) },
         ])
@@ -603,6 +702,12 @@
       const friendSlot = h("span", { class: "pf-slot" }, ui.button("Add friend", { icon: "userPlus", variant: "primary", size: "lg", disabled: true }));
       const chatSlot = h("span", { class: "pf-slot" });
       const follow = followState(id);
+      const block = blockState(id);
+      const reportUrl = ui.reportUrl?.("user", id) ?? ui.nativeUrl(`${RB}/abusereport/userprofile?id=${id}`);
+      const askBlock = () =>
+        block.on
+          ? confirmAsk({ title: "Unblock " + user.displayName + "?", yes: "Unblock", onYes: () => block.toggle() })
+          : confirmAsk({ title: "Block " + user.displayName + "?", text: "They will not be able to chat with you.", yes: "Block", onYes: () => block.toggle().then((ok) => ok && wireFriend(friendSlot, chatSlot, id, me, user)) });
       actions.append(
         friendSlot,
         chatSlot,
@@ -610,10 +715,14 @@
           follow.ready && { label: follow.on ? "Unfollow" : "Follow", icon: follow.on ? "minus" : "plus", onClick: () => follow.toggle() },
           { label: "My note", icon: "edit", onClick: () => noteModal(id, user) },
           { label: "See items", icon: "bag", href: `${RB}/users/${id}/inventory` },
-          { label: "Trade", icon: "box", href: `${RB}/users/${id}/trade` },
+          { label: "Favorites", icon: "star", href: `${RB}/users/${id}/favorites` },
+          // trades are Roblox's (money rule): its own trade window
+          { label: "Trade", icon: "box", href: ui.nativeUrl(`${RB}/users/${id}/trade`), ext: true },
           { label: "Copy link", icon: "link", onClick: () => ui.copy(profileUrl, "Link copied") },
           { label: "Copy ID", icon: "hash", onClick: () => ui.copy(String(id), "ID copied") },
           { label: "Roblox page", icon: "external", href: ui.nativeUrl(profileUrl) },
+          { label: "Report", icon: "shield", href: reportUrl, blank: true, ext: true },
+          block.ready && { label: block.on ? "Unblock" : "Block", icon: block.on ? "check" : "x", onClick: askBlock },
         ])
       );
       wireFriend(friendSlot, chatSlot, id, me, user);
@@ -730,11 +839,11 @@
         });
       }
       slot.replaceChildren(b);
-      // chat is for friends: CER's chat panel when on, else Roblox's profile
+      // chat is for friends: CER's chat with them when on, else Roblox's profile
       chatSlot.replaceChildren(
         status === "Friends"
-          ? CER.toggleChat
-            ? ui.button("", { icon: "chat", variant: "soft", size: "lg", title: "Chat", onClick: () => CER.toggleChat() })
+          ? CER.openChat || CER.toggleChat
+            ? ui.button("", { icon: "chat", variant: "soft", size: "lg", title: "Chat", onClick: () => (CER.openChat ? CER.openChat(id) : CER.toggleChat?.()) })
             : ui.button("", { icon: "chat", variant: "soft", size: "lg", title: "Chat", href: ui.nativeUrl() })
           : ""
       );
@@ -756,6 +865,30 @@
         CER.toast(st.on ? "Following" : "Not following");
       } else if (r.status === 403) askRoblox(); // captcha: Roblox's page runs it
       else CER.toast("Could not do that", "error");
+    };
+    return st;
+  }
+
+  // Block state for the menu: { ready, on, toggle() → ok }. Official
+  // user-blocking API; the write only ever runs after the confirm.
+  function blockState(id) {
+    const base = `https://apis.roblox.com/user-blocking-api/v1/users/${id}`;
+    const st = { ready: false, on: false };
+    get(base + "/is-blocked", 0).then((v) => {
+      // unknown: still offer Block (blocking twice is harmless), never Unblock
+      st.on = v === true || v?.isBlocked === true;
+      st.ready = true;
+    });
+    st.toggle = async () => {
+      const r = await write(`${base}/${st.on ? "unblock-user" : "block-user"}`);
+      if (r.ok) {
+        st.on = !st.on;
+        CER.toast(st.on ? "Blocked" : "Unblocked");
+        return true;
+      }
+      if (r.status === 403) askRoblox();
+      else CER.toast("Could not do that", "error");
+      return false;
     };
     return st;
   }
@@ -783,6 +916,20 @@
     };
     ui.modal({ title: "Note about " + user.displayName, body: area, actions: [{ label: "Save", variant: "primary", onClick: (close) => (save(), close()) }] });
     requestAnimationFrame(() => area.focus());
+  }
+
+  // The lookup failed (busy or offline), not "gone": Try again re-runs the page.
+  function renderRetry(page) {
+    page.replaceChildren(
+      h(
+        "div",
+        { class: "pf-gone" },
+        ui.empty("Could not load. Try again.", {
+          icon: "refresh",
+          action: ui.button("Try again", { icon: "refresh", variant: "soft", onClick: () => start() }),
+        })
+      )
+    );
   }
 
   // Banned, deleted or unknown account.

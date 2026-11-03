@@ -47,6 +47,9 @@ html.cer-takeover #container-main {
   --cer-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.18);
   --cer-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.2), 0 24px 60px rgba(0, 0, 0, 0.35);
   --cer-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* over hero art the verified mark never follows the page theme */
+  --cer-art-plate: #fff;
+  --cer-art-ink: #0b0c12;
   --cer-font: "Builder Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--cer-text);
   font-family: var(--cer-font);
@@ -86,7 +89,7 @@ html.cer-takeover #container-main {
   margin-left: 0;
 }
 html.cer-cnav .cer-app-floating {
-  margin-left: 288px;
+  margin-left: var(--cer-nav-w, 288px);
 }
 .cer-view {
   max-width: 1480px;
@@ -1016,12 +1019,28 @@ a.cer-card-box:hover {
 .cer-vb-check {
   stroke: none !important; /* older page rules stroked the last path of the old icon */
 }
-/* white text over hero art: the badge follows that text, not the page theme */
+/* over art (.cer-on-art on any hero/art container; .cer-hero has it built
+   in): a fixed light plate with a dark check, readable on any art and in any
+   theme (the theme accent is near black in Light and dark in the light
+   tints). Plus / Premium take the same light ink. A soft shadow keeps all
+   three clear on bright art too. */
+.cer-on-art .cer-vb-plate,
 .cer-hero .cer-vb-plate {
-  fill: var(--cer-accent, #fff);
+  fill: var(--cer-art-plate);
 }
+.cer-on-art .cer-vb-check,
 .cer-hero .cer-vb-check {
-  fill: var(--cer-accent-ink, #0b0c12);
+  fill: var(--cer-art-ink);
+}
+.cer-on-art .cer-name-badge,
+.cer-hero .cer-name-badge {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+.cer-on-art .cer-name-badge.is-premium,
+.cer-on-art .cer-name-badge.is-robloxPlus,
+.cer-hero .cer-name-badge.is-premium,
+.cer-hero .cer-name-badge.is-robloxPlus {
+  color: var(--cer-art-plate);
 }
 /* big titles wrap like text, badges ride after the last word */
 .cer-name-lg {
@@ -1196,8 +1215,7 @@ a.cer-card-box:hover {
 .cer-sk,
 .cer-sk-media,
 .cer-sk-line {
-  background: linear-gradient(90deg, var(--cer-raise) 0%, var(--cer-hover) 50%, var(--cer-raise) 100%);
-  background-size: 200% 100%;
+  background: var(--cer-hover);
   animation: cer-shimmer 1.3s ease-in-out infinite;
   border-radius: var(--cer-r-m);
 }
@@ -1233,13 +1251,55 @@ a.cer-card-box:hover {
   height: 340px;
   border-radius: var(--cer-r-xl);
 }
+/* an opacity pulse: runs on the compositor, so a page full of skeletons
+   costs no repaints (it used to slide background-position every frame).
+   Pages that still paint their own gradient with cer-shimmer pulse too. */
 @keyframes cer-shimmer {
-  from {
-    background-position: 100% 0;
+  0%,
+  100% {
+    opacity: 1;
   }
-  to {
-    background-position: -100% 0;
+  50% {
+    opacity: 0.5;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cer-sk,
+  .cer-sk-media,
+  .cer-sk-line {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------ back to CER */
+/* on a ?cer=native load (ui.js): one small chip back to CER's page */
+.cer-native-back {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 2147482000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px 0 12px;
+  border: 1px solid var(--cer-line-2);
+  border-radius: 999px;
+  background: var(--cer-surface-2);
+  color: var(--cer-text);
+  box-shadow: var(--cer-shadow);
+  font: 700 14px/1 var(--cer-font);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.12s var(--cer-ease);
+}
+.cer-native-back:hover {
+  background: color-mix(in srgb, var(--cer-surface-2) 88%, var(--cer-text));
+}
+.cer-native-back:active {
+  transform: scale(0.97);
+}
+html.cer-cnav .cer-native-back {
+  left: calc(var(--cer-nav-w, 288px) + 16px);
 }
 
 /* ------------------------------------------------------------ modal */

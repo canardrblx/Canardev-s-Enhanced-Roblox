@@ -4,7 +4,7 @@
 // its own checks; this page only reads a couple of statuses.
 (function () {
   if (typeof CER === "undefined" || !CER.ui) return;
-  const { ui, api, fmt } = CER;
+  const { ui, api } = CER;
   const h = ui.h;
 
   const native = (section) => ui.nativeUrl("/my/account#!/" + section);
@@ -37,10 +37,10 @@
     }
     const { page } = ui.page("settings", "cer-acct");
 
-    const account = row({ icon: "user", label: "Account", href: native("info") });
+    const account = row({ icon: "user", label: "Account", href: "/my/account#!/info" });
     const security = row({ icon: "shield", label: "Security", href: native("security") });
-    const privacy = row({ icon: "lock", label: "Privacy", href: native("privacy") });
-    const notes = row({ icon: "bell", label: "Notifications", href: native("notifications") });
+    const privacy = row({ icon: "lock", label: "Privacy", href: "/my/account#!/privacy" });
+    const notes = row({ icon: "bell", label: "Notifications", href: "/my/account#!/notifications" });
     const billing = row({ icon: "wallet", label: "Billing", href: native("billing") });
     const parents = row({ icon: "users", label: "Parental controls", href: native("parental-controls") });
     const cer = row({ icon: "sliders", label: "CER settings", onClick: () => CER.openSettings?.() });
@@ -58,17 +58,8 @@
       h("nav", { class: "cer-acct-list" }, cer)
     );
 
-    // Three small reads, one after another (no burst on account endpoints).
-    const c = await api.json("https://economy.roblox.com/v1/user/currency");
-    if (c?.robux != null) billing.status(h("span", { class: "cer-acct-robux" }, ui.icon("robux", 16), fmt.full(c.robux)));
-
+    // Rows stay bare; the one status worth showing is a missing 2-step.
     const tsv = await api.json(`https://twostepverification.roblox.com/v1/users/${me.id}/configuration`);
-    if (Array.isArray(tsv?.methods)) {
-      const on = tsv.methods.some((m) => m.enabled);
-      security.status(on ? "2-step on" : "2-step off", on ? null : "warn");
-    }
-
-    const n = await api.json("https://notifications.roblox.com/v2/stream-notifications/unread-count");
-    if (n?.unreadNotifications > 0) notes.status(fmt.num(n.unreadNotifications) + " new");
+    if (Array.isArray(tsv?.methods) && !tsv.methods.some((m) => m.enabled)) security.status("2-step off", "warn");
   });
 })();

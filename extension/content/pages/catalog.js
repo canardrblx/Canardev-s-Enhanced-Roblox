@@ -278,7 +278,7 @@
     return el;
   }
 
-  // Item card: big art, name, price + creator.
+  // Item card: big art, name, price. The creator shows on the item page only.
   function itemCard(it) {
     const kind = kindOf(it);
     const p = priceOf(it);
@@ -289,7 +289,7 @@
         { class: "ct-card", href, title: it.name },
         h("div", { class: "ct-card-art" }, art(kind === "Bundle" ? "bundle" : "asset", it.id), p.limited && h("span", { class: "ct-tag", text: p.limited })),
         h("div", { class: "ct-card-name", text: it.name ?? "" }),
-        h("div", { class: "ct-card-meta" }, priceNode(p), creatorTag(rowCreator(it)))
+        h("div", { class: "ct-card-meta" }, priceNode(p))
       ),
       href
     );
@@ -523,7 +523,11 @@
       sub,
       mode,
       creator: (get("creator", "CreatorName", "creatorName") ?? "").trim().slice(0, 50),
+      // from an item's "More from" link: lets the title show the creator's badges
+      creatorId: /^\d{1,19}$/.test(get("creatorId") ?? "") ? get("creatorId") : "",
+      creatorType: get("creatorType") === "group" ? "group" : "user",
     };
+    if (!st.creator) st.creatorId = "";
     if (st.mode === "best" && !st.q) st.mode = null;
     return st;
   }
@@ -534,10 +538,14 @@
     if (st.sub) q.set("sub", st.sub);
     if (st.mode && !(st.mode === "best" && !st.q)) q.set("show", st.mode);
     if (st.creator) q.set("creator", st.creator);
+    if (st.creator && st.creatorId) {
+      q.set("creatorId", st.creatorId);
+      q.set("creatorType", st.creatorType === "group" ? "group" : "user");
+    }
     const s = q.toString();
     return "/catalog" + (s ? "?" + s : "");
   }
-  const blank = () => ({ q: "", cat: "all", sub: "", mode: null, creator: "" });
+  const blank = () => ({ q: "", cat: "all", sub: "", mode: null, creator: "", creatorId: "", creatorType: "user" });
   const isFront = (st) => !st.q && st.cat === "all" && !st.sub && !st.mode && !st.creator;
 
   // ------------------------------------------------------------ shop views
@@ -590,7 +598,8 @@
     return h("div", { class: "ct-top" }, box);
   }
 
-  // Category art tiles (front) and the compact category bar (shelves).
+  // Category art tiles (front) and the compact category bar (shelves). The
+  // bar is words only: the art lives on the front tiles.
   function catTiles() {
     const tiles = CATS.filter((c) => c.tile !== false).map((c) => {
       const href = "https://www.roblox.com" + stateUrl({ ...blank(), cat: c.id });
@@ -605,18 +614,10 @@
       "nav",
       { class: "ct-catbar" },
       CATS.filter((c) => c.id === "all" || c.tile !== false || c.id === st.cat).map((c) => {
-        const next = c.id === "all" && !st.q && !st.creator ? blank() : { ...blank(), q: st.q, creator: st.creator, cat: c.id };
+        const next = c.id === "all" && !st.q && !st.creator ? blank() : { ...blank(), q: st.q, creator: st.creator, creatorId: st.creatorId, creatorType: st.creatorType, cat: c.id };
         const href = "https://www.roblox.com" + stateUrl(next);
         const on = c.id === st.cat;
-        return spaLink(
-          h(
-            "a",
-            { class: "ct-pill" + (on ? " is-on" : ""), href, "aria-current": on ? "page" : null },
-            c.art ? h("span", { class: "ct-pill-art" }, art(c.art[0], c.art[1])) : h("span", { class: "ct-pill-art is-icon" }, ui.icon("grid", 16)),
-            h("span", { text: c.label })
-          ),
-          href
-        );
+        return spaLink(h("a", { class: "ct-pill" + (on ? " is-on" : ""), href, "aria-current": on ? "page" : null, text: c.label }), href);
       })
     );
     // keep the chosen one in sight
@@ -649,11 +650,14 @@
 
     // Popular feeds the spotlight AND its rail: one call
     let popP = null;
-    const popular = () => (popP ??= search({ ...blank(), mode: "popular" }, null, { limit: 60, alive, paid: true }).then((r) => (r === undefined && (popP = null), r)));
+    // a skipped or failed call is not kept, so Try again asks again
+    const popular = () => (popP ??= search({ ...blank(), mode: "popular" }, null, { limit: 60, alive, paid: true }).then((r) => (r == null && (popP = null), r)));
     const spot = () =>
       popular().then((res) => {
         if (res === undefined) return void ui.whenVisible(hero, spot);
-        fillSpotlight(hero, spotPicks(res?.data));
+        // failed: hide it for now; the Popular rail's Try again brings it back
+        hero.hidden = !res;
+        if (res) fillSpotlight(hero, spotPicks(res.data));
       });
     spot();
     for (const r of rails) {
@@ -664,7 +668,10 @@
           // Popular: things you can see (emotes have their own tile), minus
           // what the spotlight took
           const shown = r.mode === "popular" ? new Set(spotPicks(res?.data)) : null;
-          fillRail(r.sec, shown ? res?.data?.filter((x) => !shown.has(x) && stillArt(x)).slice(0, 30) : res?.data);
+          fillRail(r.sec, shown ? res?.data?.filter((x) => !shown.has(x) && stillArt(x)).slice(0, 30) : res?.data, () => {
+            if (r.mode === "popular" && hero.hidden) spot();
+            load();
+          });
         });
       };
       r.mode === "popular" ? load() : ui.whenVisible(r.sec, load);
@@ -675,8 +682,12 @@
   const MOVES = new Set([24, 48, 50, 51, 52, 53, 54, 55, 56, 61]);
   const stillArt = (x) => (kindOf(x) === "Bundle" ? Number(x.bundleType) !== 2 : !MOVES.has(x.assetType));
   const spotPicks = (list) => (list ?? []).filter(stillArt).slice(0, 5);
-  function fillRail(sec, items) {
-    if (!items) return void sec.body.replaceChildren(ui.empty("The shop is busy. Try again soon.", { icon: "refresh" }));
+  // items null = the call failed: say so, with Try again (retry re-asks)
+  function fillRail(sec, items, retry) {
+    if (!items) {
+      const again = retry && ui.button("Try again", { variant: "soft", icon: "refresh", onClick: () => (sec.body.replaceChildren(railSkeleton()), retry()) });
+      return void sec.body.replaceChildren(ui.empty("The shop is busy. Try again soon.", { icon: "refresh", action: again }));
+    }
     if (!items.length) return void sec.remove();
     sec.body.replaceChildren(railOf(items));
   }
@@ -684,11 +695,11 @@
   // Spotlight: one big item with its art, four more to flip through.
   function fillSpotlight(hero, items) {
     if (!items.length) return void hero.remove();
+    if (!hero.classList.contains("is-loading")) return; // already filled
     hero.classList.remove("is-loading");
     const bgEl = hero.querySelector(".ct-hero-bg");
     const stage = h("a", { class: "ct-hero-art" });
     const name = h("h1", { class: "ct-hero-name" });
-    const by = h("div", { class: "ct-hero-by" });
     const price = h("div", { class: "ct-hero-price" });
     const cta = ui.button("See it", { variant: "light", size: "lg", class: "ct-hero-cta", href: "#" });
     const picks = h("div", { class: "ct-hero-picks" });
@@ -704,7 +715,6 @@
       stage.replaceChildren(img);
       api.thumb(thumbKind, it.id).then((u) => u && items[at] === it && (bgEl.style.backgroundImage = bg(u)));
       name.textContent = it.name;
-      ui.clear(by, creatorTag(rowCreator(it), "md"));
       ui.clear(price, priceNode(priceOf(it), "is-big"));
       [...picks.children].forEach((b, j) => b.classList.toggle("is-on", j === i));
     };
@@ -719,7 +729,7 @@
         h("button", { type: "button", class: "ct-hero-pick", title: it.name, "aria-label": it.name, onClick: () => (paint(i), (paused = true)) }, art(kindOf(it) === "Bundle" ? "bundle" : "asset", it.id))
       )
     );
-    hero.append(h("div", { class: "ct-hero-text" }, h("span", { class: "ct-hero-eyebrow", text: "Popular now" }), name, by, price, cta), stage, picks);
+    hero.append(h("div", { class: "ct-hero-text" }, h("span", { class: "ct-hero-eyebrow", text: "Popular now" }), name, price, cta), stage, picks);
     paint(0);
     // flips every 6 s while nobody is pointing at it
     let paused = false;
@@ -742,11 +752,13 @@
     const c = own(CAT, st.cat) ? CAT[st.cat] : CAT.all;
     const ALL_TITLES = { popular: "Popular now", new: "New", free: "Free", limited: "Limiteds", cheap: "Cheap" };
     const title = st.creator || (st.q ? "“" + st.q + "”" : c.id === "all" ? ALL_TITLES[modeOf(st).id] ?? "Catalog" : c.label);
+    // a creator we know by id shows with its badges; a typed name stays plain
+    const titleEl = st.creator && st.creatorId ? ui.nameTag({ type: st.creatorType, id: st.creatorId, name: st.creator, size: "md" }) : h("span", { text: title });
     entry.title = (st.q || st.creator || c.label) + " - Catalog";
     const head = h(
       "div",
       { class: "ct-shelf-head" },
-      h("h1", { class: "ct-shelf-title" }, h("span", { text: title }), st.creator && ui.button("", { icon: "x", variant: "ghost", size: "sm", title: "Everyone", onClick: () => update({ creator: "" }, true) })),
+      h("h1", { class: "ct-shelf-title" }, titleEl, st.creator && ui.button("", { icon: "x", variant: "ghost", size: "sm", title: "Everyone", onClick: () => update({ creator: "", creatorId: "" }, true) })),
       h("div", { class: "ct-modes" })
     );
     const modes = head.lastChild;
@@ -791,6 +803,10 @@
         if (first) {
           grid.classList.add("is-empty");
           grid.replaceChildren(ui.empty("The shop is busy. Try again soon.", { icon: "refresh", action: ui.button("Try again", { variant: "soft", icon: "refresh", onClick: () => reload() }) }));
+        } else {
+          // a later page failed: the observer will not fire again by itself
+          sentinel.classList.add("is-retry");
+          sentinel.replaceChildren(ui.button("Load more", { variant: "soft", icon: "refresh", onClick: () => (clearRetry(), loadPage()) }));
         }
         return;
       }
@@ -816,8 +832,9 @@
       // the sentinel may still be on screen (short page): keep going
       if (!done) requestAnimationFrame(() => near() && loadPage());
     }
+    const clearRetry = () => (sentinel.classList.remove("is-retry"), sentinel.replaceChildren());
     const near = () => sentinel.isConnected && sentinel.getBoundingClientRect().top < window.innerHeight + 900;
-    new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && !loading && !done && loadPage(), { rootMargin: "900px" }).observe(sentinel);
+    new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && !loading && !done && !sentinel.classList.contains("is-retry") && loadPage(), { rootMargin: "900px" }).observe(sentinel);
 
     function reload() {
       token++;
@@ -827,6 +844,7 @@
       count = 0;
       gotFirst = false;
       seen.clear();
+      clearRetry();
       grid.classList.remove("is-empty");
       grid.replaceChildren(...cardSkeletons(18));
       loadPage();
@@ -878,7 +896,7 @@
     const pic = art(thumbKind, id);
     const stage = h("div", { class: "ct-stage" }, pic);
     const info = h("div", { class: "ct-info" }, h("div", { class: "cer-sk ct-sk-title" }), h("div", { class: "cer-sk cer-sk-line short" }), h("div", { class: "cer-sk ct-sk-price" }), h("div", { class: "cer-sk ct-sk-btn" }));
-    const top = h("section", { class: "ct-item-top" }, backdrop, h("div", { class: "ct-item-shade" }), stage, info);
+    const top = h("section", { class: "ct-item-top cer-on-art" }, backdrop, h("div", { class: "ct-item-shade" }), stage, info);
     const below = h("div", { class: "ct-item-below" });
     view.append(back, top, below);
     api.thumb(thumbKind, id).then((u) => u && (backdrop.style.backgroundImage = bg(u)));
@@ -951,8 +969,11 @@
     if (kind === "Bundle" && it.bundleItems?.length) below.append(bundleSection(it));
     // rails, lazily
     const likeThis = ui.section("More like this");
-    const creatorUrl = stateUrl({ ...blank(), creator: it.creator.name });
-    const fromCreator = ui.section("More from " + it.creator.name, { action: { label: "See all", href: "https://www.roblox.com" + creatorUrl } });
+    const cr = it.creator;
+    const crType = isGroup(cr.type) ? "group" : "user";
+    const creatorUrl = stateUrl({ ...blank(), creator: cr.name, creatorId: cr.id ? String(cr.id) : "", creatorType: crType });
+    const fromTitle = h("span", { class: "ct-from" }, "More from ", cr.id ? ui.nameTag({ type: crType, id: cr.id, name: cr.name, verified: !!cr.verified, size: "md" }) : cr.name);
+    const fromCreator = ui.section(fromTitle, { action: { label: "See all", href: "https://www.roblox.com" + creatorUrl } });
     spaLink(fromCreator.head.querySelector(".cer-link"), creatorUrl);
     for (const s of [likeThis, fromCreator]) {
       s.classList.add("ct-railsec");
@@ -1052,12 +1073,17 @@
     const actions = h("div", { class: "ct-info-actions" });
     const desc = (it.description ?? "").trim();
     const about = desc ? h("div", { class: "ct-info-desc" }, ui.clamp(desc, 3)) : null;
+    // Roblox's own report flow, kept small at the end
+    const reportUrl = it.kind === "Asset" ? ui.reportUrl?.("asset", it.id) : null;
+    const report = reportUrl ? h("a", { class: "ct-report", href: reportUrl, target: "_blank", rel: "noopener", text: "Report" }) : null;
     let owned = false;
     const tryOn = makeTryOn(it, stage, pic, stale);
 
     function paint() {
       const p = it.p ?? { state: "off" };
-      ui.clear(type, h("span", { text: it.typeLabel ?? "" }), p.limited && h("span", { class: "ct-tag", text: p.limited }), owned && h("span", { class: "ct-tag is-owned", text: "Owned" }));
+      // only real news here (Limited, Owned): the kind of item shows in the art
+      ui.clear(type, p.limited && h("span", { class: "ct-tag", text: p.limited }), owned && h("span", { class: "ct-tag is-owned", text: "Owned" }));
+      type.hidden = !type.firstChild;
       ui.clear(fav, it.favorites > 0 && [ui.icon("heart", 15), h("span", { text: fmt.num(it.favorites) })]);
       if (!fav.parentNode && it.favorites > 0) by.append(fav);
       const notes = [p.left != null && fmt.num(p.left) + " left", p.fromResale && "From sellers", p.timed && endsIn(p.timed)].filter(Boolean);
@@ -1073,7 +1099,7 @@
     }
     paint();
     return {
-      nodes: [type, title, by, priceRow, actions, about],
+      nodes: [type, title, by, priceRow, actions, about, report],
       refresh: () => (tryOn.sync(), paint()),
       setOwned: () => {
         owned = true;
@@ -1089,18 +1115,27 @@
     if (it.kind === "Asset") return SHOWABLE.has(it.assetType);
     return [1, 3, 4, 5].includes(Number(it.bundleType));
   }
+  // A quiet round icon button next to Buy. Hidden for logged-out visitors
+  // (it needs your avatar), also after the item details fill in later.
   function makeTryOn(it, stage, pic, stale) {
-    const button = ui.button("Try on", { variant: "glass", size: "lg", icon: "user", class: "ct-try" });
-    let on = false, shot = null, busy = false;
+    const button = ui.button("", { variant: "glass", size: "lg", icon: "user", class: "ct-try", title: "Try on" });
+    let on = false, shot = null, busy = false, noUser = false;
     const sync = () => {
-      button.hidden = !canTry(it);
+      button.hidden = noUser || !canTry(it);
     };
     sync();
-    api.me().then((me) => !me && (button.hidden = true));
+    api.me().then((me) => {
+      noUser = !me;
+      sync();
+    });
     const set = (next) => {
       on = next;
       stage.classList.toggle("is-on", on);
-      button.querySelector("span").textContent = on ? "Show item" : "Try on";
+      const label = on ? "Show item" : "Try on";
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+      button.replaceChildren(ui.icon(on ? "image" : "user", 20));
       button.classList.toggle("is-on", on);
     };
     button.addEventListener("click", async () => {
@@ -1192,7 +1227,7 @@
     if (!it.creator.name) return void sec.remove();
     const res = await search({ ...blank(), creator: it.creator.name, mode: "popular" }, null, { limit: 30, alive });
     if (res === undefined || !alive()) return;
-    fillRail(sec, res && res.data.filter((x) => !(x.id === it.id && kindOf(x) === it.kind)).slice(0, 24));
+    fillRail(sec, res && res.data.filter((x) => !(x.id === it.id && kindOf(x) === it.kind)).slice(0, 24), () => loadCreatorRail(sec, it, alive));
   }
 
   async function loadRecs(sec, it, alive) {
@@ -1202,7 +1237,7 @@
         : `https://catalog.roblox.com/v2/recommendations/assets?numItems=24&details=true&assetId=${it.id}&assetTypeId=${it.assetType ?? 8}`;
     const j = await cat(url, { ttl: 600000, alive });
     if (j === undefined || !alive()) return;
-    fillRail(sec, j && keepRows((j.data ?? []).filter((x) => x && typeof x === "object" && x.name && String(x.id) !== String(it.id))));
+    fillRail(sec, j && keepRows((j.data ?? []).filter((x) => x && typeof x === "object" && x.name && String(x.id) !== String(it.id))), () => loadRecs(sec, it, alive));
   }
 
   ui.route(TAG, start);

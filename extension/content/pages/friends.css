@@ -71,6 +71,7 @@
 
 /* person tile: avatar, name, status. No box; a soft wash on hover. */
 [data-page="friends"] .fr-tile {
+  --fr-av: clamp(84px, 9vw, 112px);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -106,7 +107,7 @@
   transform: translateY(-2px);
 }
 [data-page="friends"] .fr-face .cer-avatar {
-  --sz: clamp(84px, 9vw, 112px) !important;
+  --sz: var(--fr-av) !important;
 }
 [data-page="friends"] .fr-tile:hover .cer-avatar {
   --cer-bg-ring: color-mix(in srgb, var(--cer-text) 5%, var(--cer-bg));
@@ -192,6 +193,39 @@
 }
 [data-page="friends"] .fr-sig-mutual {
   color: var(--cer-text-2);
+}
+[data-page="friends"] .fr-sig-retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--cer-acc) !important;
+  cursor: pointer;
+}
+[data-page="friends"] .fr-sig-retry:hover {
+  text-decoration: underline;
+}
+
+/* sort / filter on: every request page loads first */
+[data-page="friends"] .fr-loading-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 160px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cer-text-3);
+}
+
+/* pending requests: a small dot on the tab, no number */
+[data-page="friends"] .fr-req-dot {
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--cer-bad);
+  flex: none;
 }
 
 /* requests: filters + sort, one quiet row */
@@ -290,9 +324,31 @@
 [data-page="friends"] .fr-actions:empty {
   display: none;
 }
+/* Join: small round button on the avatar's bottom-left (the game icon sits
+   bottom-right). Shows on hover / keyboard focus; always on touch screens. */
 [data-page="friends"] .fr-join {
-  height: 30px;
-  padding: 0 16px;
+  position: absolute;
+  top: calc(10px + var(--fr-av) - 32px);
+  left: calc(50% - var(--fr-av) / 2 - 4px);
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--cer-bg), 0 4px 12px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.15s, transform 0.2s var(--cer-ease);
+}
+[data-page="friends"] .fr-tile:hover .fr-join,
+[data-page="friends"] .fr-tile:focus-within .fr-join {
+  opacity: 1;
+  transform: translateY(-2px);
+}
+@media (hover: none) {
+  [data-page="friends"] .fr-join {
+    opacity: 1;
+    transform: none;
+  }
 }
 [data-page="friends"] .fr-done {
   font-size: 13px;

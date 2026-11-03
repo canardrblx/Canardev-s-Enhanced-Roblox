@@ -1,6 +1,6 @@
 # Privacy Policy — Canardev's Enhanced Roblox
 
-Last updated: 2026-07-04
+Last updated: 2026-11-03
 
 Canardev's Enhanced Roblox (CER) is a browser extension that restyles the Roblox
 website. This policy explains exactly what it does with data. The short version:
@@ -16,14 +16,33 @@ everything runs on your own device, and nothing is tracked or sold.
   only to draw the page in front of you and is not stored or sent anywhere else.
 - Your settings (theme, toggles) and your local playtime totals are saved on your
   device using the browser's local storage. They never leave your device.
+- Playtime: about once a minute CER asks Roblox (with your login) whether you
+  are in a game, and adds the minutes to your local totals. This request goes
+  only to Roblox, and the totals stay on your device.
+- Preferred-region join: when you choose to join a server in a region, CER asks
+  Roblox's own server list and join service about up to 15 servers to find one
+  in that region. These requests go only to Roblox, only when you start the
+  search, and stop when you cancel it.
 
 ## The one thing that can leave your device
 
 CER has an optional feedback box. If you choose to type a message and press send,
-CER sends that message text, your Roblox username and user id, and the extension
-version to the developer's private Discord channel, so the developer can read
-your feedback. This only happens when you press send. If you never use the
-feedback box, nothing is ever sent off your device.
+CER sends one message to the developer's private Discord channel, so the
+developer can read your feedback. It contains exactly:
+
+- the kind you picked (Bug, Idea or Other),
+- your Roblox username and user id (or "unknown user" if you are signed out),
+- the CER version number,
+- the text you typed (up to about 1900 characters).
+
+Nothing else is attached, and mentions such as @everyone are switched off. This
+only happens when you press send, at most once every 10 minutes. If you never
+use the feedback box, nothing is ever sent off your device.
+
+Developer copies only: if you load CER yourself from its source code (not from
+a browser store), it also asks GitHub every few hours whether a newer version
+exists. GitHub sees that request (your IP address and browser) like any web
+request. Store versions never make this request.
 
 ## What CER does NOT do
 
@@ -39,6 +58,8 @@ feedback box, nothing is ever sent off your device.
   can be shown.
 - Access to a Discord webhook address: used only to deliver the text you type in
   the feedback box to the developer. Nothing else is sent to it.
+- Access to api.github.com: only for the developer-copy version check described
+  above. Store versions never use it.
 - Storage: to save your theme, settings, and local playtime on your device.
 - Alarms: to update the local playtime tracker about once a minute.
 

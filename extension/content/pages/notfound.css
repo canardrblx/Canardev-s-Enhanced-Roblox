@@ -1,0 +1,78 @@
+/* CER not-found / error page. Scope every rule under [data-page="notfound"]. */
+
+[data-page="notfound"] .cer-nf {
+  max-width: 720px;
+  min-height: calc(100vh - 120px);
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+}
+
+/* the art: a faint giant code behind your avatar */
+[data-page="notfound"] .cer-nf-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(360px, 80vw);
+  aspect-ratio: 1;
+}
+[data-page="notfound"] .cer-nf-art::before {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--cer-acc-soft) 0%, transparent 70%);
+}
+[data-page="notfound"] .cer-nf-code {
+  position: absolute;
+  font-size: clamp(110px, 22vw, 190px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.06em;
+  color: var(--cer-raise);
+  user-select: none;
+}
+[data-page="notfound"] .cer-nf-avatar {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: rotate(-6deg);
+  animation: cer-nf-float 3.2s ease-in-out infinite;
+}
+[data-page="notfound"] .cer-nf-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: var(--cer-raise);
+  color: var(--cer-text-2);
+}
+@keyframes cer-nf-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-page="notfound"] .cer-nf-avatar {
+    animation: none;
+  }
+}
+
+[data-page="notfound"] .cer-nf-line {
+  font-size: clamp(26px, 4vw, 38px);
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--cer-text);
+}
+[data-page="notfound"] .cer-nf-home {
+  margin-top: 6px;
+}

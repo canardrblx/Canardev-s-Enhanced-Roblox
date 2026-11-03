@@ -192,6 +192,67 @@
     return wrap;
   }
 
+  // Popover menu behind a "more" button. items: () => [{ label, icon, href?, onClick?, newTab? } | null]
+  // Fixed position, mounted outside the hero, so its rounded clip never cuts it.
+  function menu(items) {
+    const btn = ui.button("", { icon: "more", variant: "glass", title: "More" });
+    btn.setAttribute("aria-haspopup", "menu");
+    let pop = null;
+    const close = () => {
+      pop?.remove();
+      pop = null;
+      btn.setAttribute("aria-expanded", "false");
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+    const outside = (e) => !btn.contains(e.target) && !pop?.contains(e.target) && close();
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      close();
+      btn.focus();
+    };
+    btn.addEventListener("click", () => {
+      if (pop) return close();
+      pop = h(
+        "div",
+        { class: "cer-gp-menu", role: "menu" },
+        items()
+          .filter(Boolean)
+          .map((it) =>
+            h(
+              it.href ? "a" : "button",
+              {
+                class: "cer-gp-menu-item",
+                role: "menuitem",
+                href: it.href,
+                target: it.href && it.newTab ? "_blank" : null,
+                rel: it.href && it.newTab ? "noopener noreferrer" : null,
+                type: it.href ? null : "button",
+                onClick: () => {
+                  setTimeout(close); // after a link's own navigation starts
+                  it.onClick?.();
+                },
+              },
+              ui.icon(it.icon ?? "right", 17),
+              h("span", { text: it.label })
+            )
+          )
+      );
+      const r = btn.getBoundingClientRect();
+      pop.style.top = r.bottom + 8 + "px";
+      pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 230)) + "px";
+      (btn.closest("#cer-app") ?? document.body).appendChild(pop);
+      btn.setAttribute("aria-expanded", "true");
+      document.addEventListener("pointerdown", outside, true);
+      document.addEventListener("keydown", onKey);
+      window.addEventListener("scroll", close, true);
+      window.addEventListener("resize", close);
+    });
+    return btn;
+  }
+
   // ---------------------------------------------------------------- group page
   async function groupPage(gid) {
     const { page } = ui.page(TAG, "cer-gp");
@@ -244,7 +305,7 @@
     const actions = h("div", { class: "cer-gp-actions" });
     const owner = info.owner;
     const hero = ui.hero({
-      class: "cer-gp-hero",
+      class: "cer-gp-hero cer-on-art",
       image: heroImage,
       art: ui.thumb("groupIconLg", gid, { alt: info.name }),
       title: info.name,
@@ -273,7 +334,20 @@
       });
     heroSlot.replaceChildren(hero);
 
-    // ---- action: Join for visitors, your role (+ Manage) for members
+    // ---- "more": copy link, report, Roblox's page. Always there.
+    const pageUrl = groupUrl(gid, info.name);
+    const more = menu(() => {
+      const report = ui.reportUrl?.("group", gid);
+      return [
+        { label: "Copy link", icon: "link", onClick: () => ui.copy(pageUrl, "Link copied") },
+        report && { label: "Report", icon: ui.ICONS?.flag ? "flag" : "shield", href: report, newTab: true },
+        { label: "Roblox page", icon: "external", href: ui.nativeUrl(pageUrl) },
+      ];
+    });
+    actions.append(more);
+
+    // ---- action: Join for visitors, your role (+ Manage) for members.
+    // Owners get just Manage (it already says the group is theirs).
     const renderActions = (mem) => {
       if (!alive()) return;
       const out = [];
@@ -282,9 +356,9 @@
       } else if (!mem.me) {
         out.push(ui.button("Join", { variant: "light", size: "lg", href: ui.nativeUrl() }));
       } else if (mem.role) {
-        const own = mem.role.rank === 255;
-        out.push(h("span", { class: "cer-gp-role", title: "You are in this " + word }, ui.icon(own ? "crown" : "check", 16), h("span", { text: mem.role.name })));
-        if (canManage(info, mem)) out.push(ui.button("Manage", { variant: "glass", href: configureUrl(gid) }));
+        const own = mem.role.rank === 255 || info.owner?.userId === mem.me.id;
+        if (!own) out.push(h("span", { class: "cer-gp-role", title: "You are in this " + word }, ui.icon("check", 16), h("span", { text: mem.role.name })));
+        if (canManage(info, mem)) out.push(ui.button("Manage", { variant: own ? "light" : "glass", size: own ? "lg" : null, href: configureUrl(gid) }));
       } else if (mem.pending) {
         out.push(ui.button("Request sent", { variant: "glass", size: "lg", disabled: true }));
       } else if (!info.isLocked) {
@@ -292,12 +366,24 @@
         btn.addEventListener("click", () => join(ctx, btn, renderActions, mem));
         out.push(btn);
       }
-      actions.replaceChildren(...out);
+      actions.replaceChildren(...out, more);
     };
     memP.then(renderActions);
 
     // ---- tabs (only the ones with something in them)
     const has = { overview: true, games: false, members: true, store: false, allies: false };
+    // Overview with nothing but games is the Games tab twice: drop it. Only
+    // when we know (a failed allies or links call keeps it).
+    if (state.tab === "overview" && !info.description?.trim()) {
+      const [g, a, s] = await Promise.all([gamesP, alliesP, socialP]);
+      if (!alive()) return;
+      if (g?.length && a && !a.relatedGroups?.length && s && !(s.data ?? []).some((l) => safeHref(l.url))) {
+        has.overview = false;
+        has.games = true;
+        state.tab = "games";
+        store(); // the Store tab still shows up if it sells something
+      }
+    }
     const LABEL = { overview: "Overview", games: "Games", members: "Members", store: "Store", allies: "Allies" };
     const renderTabs = () => {
       if (!alive()) return;
@@ -307,6 +393,7 @@
     const BUILD = { overview: buildOverview, games: buildGames, store: buildStore, members: buildMembers, allies: buildAllies };
     function setTab(id, write = true) {
       if (!TABS.includes(id)) id = "overview";
+      if (id === "overview" && !has.overview) id = "games";
       state.tab = id;
       if (write) writeTab(id);
       renderTabs();

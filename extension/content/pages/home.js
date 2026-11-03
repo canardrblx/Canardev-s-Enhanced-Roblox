@@ -75,19 +75,13 @@
     return games.filter((g) => g.placeId && g.name);
   }
 
-  // Presence without the batcher's forever-cache (so the 60 s refresh is fresh).
-  async function fetchPresence(ids) {
-    const out = new Map();
-    const chunks = [];
-    for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
-    const res = await Promise.all(chunks.map((c) => api.json("https://presence.roblox.com/v1/presence/users", { method: "POST", body: { userIds: c.map(Number) } })));
-    let any = false;
-    for (const j of res) {
-      if (!j) continue;
-      any = true;
-      for (const p of j.userPresences ?? []) out.set(String(p.userId), p);
-    }
-    return any || !ids.length ? out : null;
+  // Shared presence (core cache, short TTL). Ids whose lookup failed are
+  // absent from the Map: they keep their last known presence, never "offline".
+  async function fetchPresence(ids, prev) {
+    const got = (await safe(api.presence?.(ids))) ?? new Map();
+    const out = new Map(prev ?? []);
+    for (const [id, p] of got) out.set(String(id), p);
+    return out;
   }
 
   // ------------------------------------------------------------ pins
@@ -179,7 +173,7 @@
 
   // ------------------------------------------------------------ shell
   function buildShell(page) {
-    const r = { page };
+    const r = { page, gameNames: new Map() };
     r.hero = h("div", { class: "cer-sk home-hero-sk" });
     r.contRail = h("div", { class: "home-cq home-cont" }, cardSkeletons(6));
     r.top = h("section", { class: "home-top" }, r.hero, r.contRail);
@@ -283,7 +277,7 @@
   function friendTile(f, p) {
     const state = api.presenceState(p);
     const name = f.displayName || f.name || "";
-    const game = state === "ingame" ? p.lastLocation || "" : "";
+    const game = state === "ingame" ? clean(S.gameNames?.get(gameKey(p))) || p.lastLocation || "" : "";
     const join =
       state === "ingame" &&
       p.placeId &&
@@ -308,7 +302,7 @@
       { class: "home-friend is-" + state, href: `https://www.roblox.com/users/${f.id}/profile`, title: game ? name + ": " + game : name },
       h("span", { class: "home-friend-av" }, ui.avatar(f.id, { size: 76, presence: p }), join),
       ui.nameTag({ type: "user", id: f.id, name, verified: f.hasVerifiedBadge, size: "sm", cls: "home-friend-name", title: game ? name + ": " + game : name }),
-      h("span", { class: "home-friend-game", text: game || " " })
+      h("span", { class: "home-friend-game", dataset: state === "ingame" ? { gk: gameKey(p) } : null, text: game || " " })
     );
   }
   function renderFriends(list, pres) {
@@ -331,14 +325,16 @@
   }
 
   // games friends are in, most friends first
+  const gameKey = (p) => String(p?.universeId ?? "p" + p?.rootPlaceId);
   function groupPlaying(list, pres) {
     const groups = new Map();
     if (!pres) return groups;
     for (const f of list) {
       const p = pres.get(String(f.id));
       if (api.presenceState(p) !== "ingame" || !(p.universeId || p.rootPlaceId)) continue;
-      const key = String(p.universeId ?? "p" + p.rootPlaceId);
-      if (!groups.has(key)) groups.set(key, { key, game: { universeId: p.universeId ?? null, placeId: p.rootPlaceId ?? p.placeId ?? null, name: p.lastLocation || null }, friends: [] });
+      const key = gameKey(p);
+      // name comes from the game info (lastLocation can be a sub-place name)
+      if (!groups.has(key)) groups.set(key, { key, loc: p.lastLocation || null, game: { universeId: p.universeId ?? null, placeId: p.rootPlaceId ?? p.placeId ?? null, name: S.gameNames?.get(key) ?? null }, friends: [] });
       groups.get(key).friends.push(f);
     }
     return groups;
@@ -351,9 +347,19 @@
     if (S.playSig === sig) return;
     S.playSig = sig;
     if (!list.length) return (sec.hidden = true);
-    const games = await fill(list.map((g) => g.game));
+    await safe(ui.hydrateGames(list.map((g) => g.game)));
     if (my !== gen || S.playSig !== sig) return;
-    // fill() hydrates these same objects in place (universeId may start null)
+    // the game's own name wins; the place name only when game info failed
+    for (const grp of list) {
+      const g = grp.game;
+      if (g.info?.name) {
+        g.name = g.info.name;
+        S.gameNames.set(grp.key, g.name);
+        for (const el of S.page.querySelectorAll(`.home-friend-game[data-gk="${grp.key}"]`)) el.textContent = clean(g.name);
+      } else g.name ??= grp.loc;
+    }
+    const games = list.map((g) => g.game).filter((g) => g.placeId && g.name);
+    // hydrateGames filled these same objects in place (universeId may start null)
     const byGame = new Map(list.map((grp) => [grp.game, grp]));
     const cards = games.map((g) => {
       const grp = byGame.get(g);
@@ -386,16 +392,20 @@
   }
 
   // ------------------------------------------------------------ lazy rails
-  // null = failed (small error), [] = nothing (section hides)
+  // null = failed (small error + Try again), [] = nothing (section hides)
   function lazyRail(sec, load) {
-    ui.whenVisible(sec, async () => {
+    const run = async () => {
       const my = gen;
       const games = await safe(load());
       if (my !== gen) return;
-      if (!games) return sec.body.replaceChildren(ui.empty("Could not load this.", { icon: "refresh" }));
+      if (!games) {
+        const again = ui.button("Try again", { icon: "refresh", onClick: () => (sec.body.replaceChildren(cardSkeletons(6)), run()) });
+        return sec.body.replaceChildren(ui.empty("Could not load this.", { icon: "refresh", action: again }));
+      }
       if (!games.length) return (sec.hidden = true);
       sec.body.replaceChildren(rail(games.map((g) => card(g))));
-    });
+    };
+    ui.whenVisible(sec, run);
   }
 
   async function loadFavorites(uid) {
@@ -439,6 +449,7 @@
       return page.replaceChildren(ui.empty("Could not load. Try again.", { icon: "refresh", action: ui.button("Try again", { icon: "refresh", onClick: () => start() }) }));
     }
     feats = (await settingsP).features ?? {};
+    S.favorites.head.querySelector(".cer-block-tools")?.append(ui.link("See all", { href: `https://www.roblox.com/users/${me.id}/favorites` }));
 
     // everything below runs in parallel
     // null = the call failed, [] = nothing to show
@@ -472,30 +483,49 @@
 
     // friends + presence
     let friendList = null;
-    const loadPresence = () => (friendList?.length ? fetchPresence(friendList.map((f) => f.id)) : Promise.resolve(null));
+    let presMap = null; // last known presence, merged on every refresh
+    const loadPresence = async () => {
+      if (!friendList?.length) return null;
+      presMap = await fetchPresence(friendList.map((f) => f.id), presMap);
+      return presMap;
+    };
     const applyPresence = (pres) => {
       renderFriends(friendList, pres);
       S.groups = groupPlaying(friendList, pres);
       heroFaces();
       renderPlaying(S.groups);
     };
-    friendsP.then(async (list) => {
+    const onFriends = async (list) => {
       if (!alive()) return;
       friendList = list;
-      if (!list?.length) return renderFriends(list, null);
+      if (!list) {
+        // failed, not "no friends": say so and let them retry
+        const again = ui.button("Try again", {
+          icon: "refresh",
+          onClick: () => {
+            again.busy(true);
+            safe(api.friends(me.id, { ttl: 0 })).then(onFriends);
+          },
+        });
+        return S.friends.body.replaceChildren(ui.empty("Could not load friends.", { icon: "users", action: again }));
+      }
+      if (!list.length) return renderFriends(list, null);
       // names first (rings fill a beat later) so the strip never waits
-      renderFriends(list, null);
+      S.friendSig = null;
+      renderFriends(list, presMap);
       const pres = await loadPresence();
       if (!alive()) return;
       applyPresence(pres);
       // keep presence fresh while the tab is open (60 s, visible tabs only)
+      clearInterval(refreshTimer);
       refreshTimer = setInterval(async () => {
         if (!alive()) return clearInterval(refreshTimer);
         if (document.visibilityState !== "visible") return;
         const p = await loadPresence();
         if (p && alive()) applyPresence(p);
       }, 60000);
-    });
+    };
+    friendsP.then(onFriends);
 
     // lower rails, only when scrolled near
     lazyRail(S.favorites, () => loadFavorites(me.id));

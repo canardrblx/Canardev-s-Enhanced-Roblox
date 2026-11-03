@@ -123,13 +123,14 @@
       ic("robux", 16),
       robuxAmt
     );
-    const showRobux = (n) => {
+    const showRobux = (n, { failed = false } = {}) => {
       // millions go short (1.22M) so your name and its badges keep their room;
-      // the exact amount is in the tooltip
+      // the exact amount is in the tooltip. failed: no amount and no
+      // placeholder bar, just the Robux icon (its menu still works).
       const v = Number(n);
       robuxAmt.textContent = n == null ? "" : v >= 1e6 ? new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 2 }).format(v) : v.toLocaleString();
       robuxBtn.title = n == null ? "Robux" : v.toLocaleString() + " Robux";
-      robuxBtn.classList.toggle("is-loading", n == null);
+      robuxBtn.classList.toggle("is-loading", n == null && !failed);
     };
     robuxBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -229,12 +230,17 @@
     let prefs = snap.prefs ?? { groupsLabel: "Groups", opt: [], chat: true };
     let friendsBadge = null;
     let onlineCount = null;
+    // "something new" dots: friend requests on Friends, unread on Messages
+    const DOTS = { friends: "New friend requests", messages: "New messages" };
+    const dots = {};
+    const dotOn = {};
 
     function item({ label, icon: name, href, onClick, badge, id }) {
+      const dot = DOTS[id] ? (dots[id] = h("span", { class: "cer-cnav-dot", hidden: !dotOn[id], title: DOTS[id], "aria-label": DOTS[id] })) : null;
       const a = h(
         href ? "a" : "button",
         { class: "cer-cnav-item", href, type: href ? null : "button", "data-id": id, title: label }, // title: the narrow icon-only rail has no labels
-        h("span", { class: "cer-cnav-ic" }, ic(name, 20)),
+        h("span", { class: "cer-cnav-ic" }, ic(name, 20), dot),
         h("span", { class: "cer-cnav-label", text: label }),
         badge
       );
@@ -275,6 +281,11 @@
       }
     }
 
+    function showDot(id, on) {
+      dotOn[id] = !!on;
+      if (dots[id]) dots[id].hidden = !on;
+    }
+
     function showOnline(n) {
       onlineCount = n;
       if (!friendsBadge) return;
@@ -292,9 +303,11 @@
       for (const en of entries) {
         const el = h(
           en.href ? "a" : "button",
-          { class: "cer-ctx-item" + (en.danger ? " is-danger" : ""), href: en.href, type: en.href ? null : "button", role: "menuitem" },
+          { class: "cer-ctx-item" + (en.danger ? " is-danger" : ""), href: en.href, target: en.newTab ? "_blank" : null, rel: en.newTab ? "noopener" : null, type: en.href ? null : "button", role: "menuitem" },
           en.icon && ic(en.icon, 17),
-          h("span", { text: en.label })
+          h("span", { text: en.label }),
+          // leaves CER for a Roblox page or site
+          en.out && h("span", { class: "cer-ctx-out", title: "Opens a Roblox page" }, ic("external", 14))
         );
         if (en.onClick)
           el.addEventListener("click", (e) => {
@@ -349,9 +362,9 @@
               CER.openSettings?.();
             },
           },
-          { label: "Roblox settings", icon: "gear", href: "https://www.roblox.com/my/account" },
-          { label: "Create", icon: "pen", href: "https://create.roblox.com/" },
-          { label: "Quick sign in", icon: "phone", href: "https://www.roblox.com/crossdevicelogin/ConfirmCode" },
+          { label: "Account", icon: "user", href: "https://www.roblox.com/my/account" },
+          { label: "Create", icon: "pen", href: "https://create.roblox.com/", out: true, newTab: true },
+          { label: "Quick sign in", icon: "phone", href: "https://www.roblox.com/crossdevicelogin/ConfirmCode", out: true },
           {
             label: "Log out",
             icon: "logout",
@@ -437,10 +450,13 @@
         saveSnap({ head: url });
       });
 
-      // Robux: fresh at most once a minute per tab
-      const fresh = (key, ms) => {
+      // Small numbers shared by every tab for a minute (localStorage), so a
+      // page load inside that window costs no request at all. Failures are
+      // never cached.
+      const LS = (key) => "cer:" + key + ":" + me.id;
+      const fresh = (key, ms = 60000) => {
         try {
-          const c = JSON.parse(sessionStorage.getItem("cer-" + key + ":" + me.id));
+          const c = JSON.parse(localStorage.getItem(LS(key)));
           return c && Date.now() - c.t < ms ? c.v : undefined;
         } catch {
           return undefined;
@@ -448,32 +464,84 @@
       };
       const stamp = (key, v) => {
         try {
-          sessionStorage.setItem("cer-" + key + ":" + me.id, JSON.stringify({ t: Date.now(), v }));
+          localStorage.setItem(LS(key), JSON.stringify({ t: Date.now(), v }));
         } catch {}
       };
-      const rbx = fresh("robux", 60000);
-      if (rbx !== undefined) showRobux(rbx);
-      else
-        CER.api.json("https://economy.roblox.com/v1/user/currency").then((d) => {
-          if (d?.robux == null) return;
-          showRobux(d.robux);
-          stamp("robux", d.robux);
-          saveSnap({ robux: d.robux });
-        });
+      const idle = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 4000 }) : setTimeout(f, 1500));
 
-      // friends online: not urgent, wait for idle; cached a minute per tab
-      const on = fresh("online", 60000);
-      if (on !== undefined) return showOnline(on);
-      (window.requestIdleCallback ?? ((f) => setTimeout(f, 1500)))(async () => {
-        const j = await CER.api.json(`https://friends.roblox.com/v1/users/${me.id}/friends`, { ttl: 60000 });
-        const ids = (j?.data ?? []).map((f) => f.id);
-        if (!j) return;
-        const pres = ids.length ? await CER.api.presence(ids) : new Map();
-        let n = 0;
-        for (const p of pres.values()) if (p.userPresenceType > 0) n++;
-        stamp("online", n);
-        showOnline(n);
+      // Robux: one retry after a pause, then just the icon (no grey bar forever)
+      const rbx = fresh("robux");
+      if (rbx !== undefined) showRobux(rbx);
+      else {
+        const getRobux = (retry) =>
+          CER.api.json("https://economy.roblox.com/v1/user/currency").then((d) => {
+            if (d?.robux == null) {
+              if (retry) setTimeout(() => getRobux(false), 8000);
+              else if (snap.robux == null) showRobux(null, { failed: true });
+              return;
+            }
+            showRobux(d.robux);
+            stamp("robux", d.robux);
+            saveSnap({ robux: d.robux });
+          });
+        getRobux(true);
+      }
+
+      // friend requests + unread messages: a dot each, checked at most once
+      // a minute (page load, SPA move, tab back in view)
+      const COUNTS = [
+        ["friends", "https://friends.roblox.com/v1/user/friend-requests/count"],
+        ["messages", "https://privatemessages.roblox.com/v1/messages/unread/count"],
+      ];
+      const loadDots = () => {
+        for (const [id, url] of COUNTS) {
+          const c = fresh("dot-" + id);
+          if (c !== undefined) {
+            showDot(id, c > 0);
+            continue;
+          }
+          CER.api.json(url).then((d) => {
+            if (typeof d?.count !== "number") return; // failed: keep what shows, ask again later
+            stamp("dot-" + id, d.count);
+            showDot(id, d.count > 0);
+          });
+        }
+      };
+
+      // friends online: not urgent, wait for idle
+      let onlineBusy = false;
+      const loadOnline = async () => {
+        const on = fresh("online");
+        if (on !== undefined) return showOnline(on);
+        if (onlineBusy) return;
+        onlineBusy = true;
+        try {
+          const j = await CER.api.json(`https://friends.roblox.com/v1/users/${me.id}/friends`, { ttl: 60000 });
+          if (!j) return;
+          const ids = (j.data ?? []).map((f) => f.id);
+          // ids whose lookup failed are absent from the Map (not offline)
+          const pres = ids.length ? await CER.api.presence(ids) : new Map();
+          if (ids.length && !pres?.size) return; // presence failed: keep the old number
+          let n = 0;
+          for (const p of pres.values()) if (p.userPresenceType > 0) n++;
+          stamp("online", n);
+          showOnline(n);
+        } finally {
+          onlineBusy = false;
+        }
+      };
+
+      idle(() => {
+        loadDots();
+        loadOnline();
       });
+      const refresh = () => {
+        if (document.hidden || !CER.alive?.()) return;
+        loadDots();
+        loadOnline();
+      };
+      CER.onNavigate?.(refresh);
+      document.addEventListener("visibilitychange", refresh);
     });
     loadLive();
 

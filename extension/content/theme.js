@@ -39,6 +39,9 @@
       setTimeout(() => {
         if (!document.querySelector(".cer-custom-nav")) root.classList.remove("cer-cnav");
       }, 5000);
+      // Roblox's full-bleed marketing pages stay native: styles.css moves them
+      // right of the nav so the sidebar doesn't cover their left edge
+      if (/^\/(giftcards?|upgrades\/robux|plus|premium\/membership|redeem)(\/|$)/i.test(location.pathname)) root.classList.add("cer-fullbleed");
     }
 
     // ---- content veil ----
@@ -416,13 +419,6 @@
   // runs at document_start now (kills the default-theme flash); body-class
   // toggles need the body, so re-apply once the DOM exists
   document.addEventListener("DOMContentLoaded", () => apply());
-
-  // veil the home feed until sections.js has applied the hide-prefs, so
-  // default-hidden sections don't flash (opacity keeps layout stable)
-  if (location.pathname.startsWith("/home")) {
-    document.documentElement.classList.add("cer-sections-pending");
-    setTimeout(() => document.documentElement.classList.remove("cer-sections-pending"), 6000);
-  }
 
   await apply();
 })();

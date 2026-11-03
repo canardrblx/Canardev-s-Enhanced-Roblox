@@ -220,6 +220,7 @@
     const rails = h("div", { class: "dc-rails" }, skeletonSections(3));
     const allView = h("div", { class: "dc-all", hidden: true });
     const main = [heroSlot, rails, allView];
+    S.loggedOut = !!CER.loggedOut;
     const side = friendsColumn(root);
     const cols = ui.cols(main, side, { side: 300 });
     S.cols = cols;
@@ -227,6 +228,8 @@
     cols.classList.toggle("dc-fg-off", S.friendsHidden);
     chipWrap.classList.toggle("dc-fg-off", S.friendsHidden);
     S.chipWrap = chipWrap;
+    if (S.loggedOut) friendsOff();
+    else api.me().then((me) => !me && CER.loggedOut && alive(root) && friendsOff());
     page.append(chipWrap, cols);
     // the hero spans the main column; on wide screens it sits beside friends
     S.heroSlot = heroSlot;
@@ -235,6 +238,13 @@
     S.chipRow = chipRow;
     S.hero = null;
     render(root);
+  }
+
+  // logged out: no friends column and no button to bring it back
+  function friendsOff() {
+    S.loggedOut = true;
+    S.cols?.classList.add("dc-fg-none");
+    S.chipWrap?.classList.add("dc-fg-none");
   }
 
   // hide / show the friends column, remembered in uiState
@@ -420,9 +430,10 @@
 
   // ------------------------------------------------------------ hero
   // One hero element, reused across genres: content swaps with a short fade
-  // and the backdrop cross-fades. A JS clock advances every 8 s (paused on
-  // hover/focus, hidden tab, loading); the dot fill bar only mirrors it, so
-  // rotation still works when reduced motion turns animations off.
+  // and the backdrop cross-fades. One timeout per slide advances it after 8 s
+  // (paused on hover/focus, hidden tab, loading: the time left is kept); the
+  // dot fill bar only mirrors it, so rotation still works when reduced motion
+  // turns animations off.
   function showHero(games) {
     const list = games.filter((g) => g.placeId).slice(0, 5);
     S.heroSlot.hidden = !list.length;
@@ -464,6 +475,8 @@
     let lastSig = "";
     let idx = 0;
     let token = 0;
+    const SLIDE = 8000;
+    let remain = SLIDE;
     const urls = new Map();
     const urlOf = (g) => {
       if (!urls.has(g.universeId)) {
@@ -484,6 +497,8 @@
         : Promise.resolve();
 
     const paintDots = () => {
+      // a repaint (new slide, or back from a hidden tab) starts the bar where the clock is
+      const done = SLIDE - remain;
       dots.replaceChildren(
         ...list.map((g, i) => {
           const d = h(
@@ -495,7 +510,7 @@
               "aria-label": "Show game " + (i + 1),
               onClick: () => i !== idx && go(i),
             },
-            h("span", { class: "dc-dot-fill" })
+            h("span", { class: "dc-dot-fill", style: i === idx && done > 0 ? { animationDelay: -done + "ms" } : null })
           );
           return d;
         })
@@ -505,9 +520,11 @@
     async function go(i, first) {
       const my = ++token;
       idx = i;
-      elapsed = 0;
+      stop();
+      remain = SLIDE;
       const g = list[i];
       paintDots();
+      tick();
       const infoP = api.game(g.universeId);
       const url = await urlOf(g);
       if (!first) {
@@ -533,6 +550,7 @@
       artImg.classList.toggle("is-none", !url);
       hero.classList.remove("is-loading");
       body.classList.remove("is-swapping");
+      tick();
     }
 
     // creator line; filled late if the games call was slower than the art
@@ -555,27 +573,45 @@
       });
     };
 
-    // the rotation clock: pauses while the pointer or focus is on the hero,
-    // the tab is hidden, or a genre is loading; stops when the page is gone
-    let elapsed = 0;
-    const STEP = 250;
-    const clock = setInterval(() => {
-      if (!hero.isConnected) return clearInterval(clock); // page left or rebuilt
-      if (document.hidden || list.length < 2) return;
-      if (hero.classList.contains("is-paused") || hero.classList.contains("is-loading")) return;
-      elapsed += STEP;
-      if (elapsed >= 8000) go((idx + 1) % list.length);
-    }, STEP);
-    hero.addEventListener("mouseenter", () => hero.classList.add("is-paused"));
-    hero.addEventListener("mouseleave", () => hero.classList.remove("is-paused"));
-    hero.addEventListener("focusin", () => hero.classList.add("is-paused"));
-    hero.addEventListener("focusout", () => hero.classList.remove("is-paused"));
+    // the rotation clock: one timeout for the time left on this slide. It
+    // stops while the pointer or focus is on the hero, the tab is hidden, or
+    // a genre is loading, and resumes with the time that was left.
+    let timer = 0;
+    let startedAt = 0;
+    const canRun = () => hero.isConnected && !document.hidden && list.length > 1 && !hero.classList.contains("is-paused") && !hero.classList.contains("is-loading");
+    function stop() {
+      if (!timer) return;
+      clearTimeout(timer);
+      timer = 0;
+      remain = Math.max(0, remain - (Date.now() - startedAt));
+    }
+    function tick() {
+      if (timer || !canRun()) return;
+      startedAt = Date.now();
+      timer = setTimeout(() => {
+        timer = 0;
+        if (canRun()) go((idx + 1) % list.length);
+      }, remain);
+    }
+    const pause = () => (hero.classList.add("is-paused"), stop());
+    const resume = () => (hero.classList.remove("is-paused"), tick());
+    hero.addEventListener("mouseenter", pause);
+    hero.addEventListener("mouseleave", resume);
+    hero.addEventListener("focusin", pause);
+    hero.addEventListener("focusout", resume);
+    const onVis = () => {
+      if (!hero.isConnected) return document.removeEventListener("visibilitychange", onVis); // page left or rebuilt
+      if (document.hidden) return stop();
+      paintDots(); // the bar kept running while hidden: put it back in step
+      tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
 
     return {
       el: hero,
       set(games) {
         const sig = games.map((g) => g.universeId).join();
-        if (sig === lastSig) return hero.classList.remove("is-loading");
+        if (sig === lastSig) return hero.classList.remove("is-loading"), tick();
         lastSig = sig;
         list = games;
         hero.classList.toggle("is-single", list.length < 2);
@@ -585,6 +621,7 @@
       },
       loading(on) {
         hero.classList.toggle("is-loading", on);
+        on ? stop() : tick();
       },
     };
   }
@@ -681,32 +718,66 @@
     const list = h("div", { class: "dc-fg-list" }, ui.skeleton("row", 4));
     const hide = ui.button("", { icon: "x", variant: "ghost", size: "sm", class: "dc-fg-hide", title: "Hide friends", onClick: () => setFriendsHidden(true) });
     const box = h("div", { class: "dc-fg" }, h("div", { class: "dc-fg-head" }, h("h2", { class: "cer-block-title dc-fg-title", text: "Friends' games" }), hide), list);
-    const note = (text) => list.replaceChildren(h("p", { class: "dc-fg-note", text }));
+    const note = (text, action) => list.replaceChildren(h("div", { class: "dc-fg-note" }, h("p", { text }), action));
     let friends = null;
+    let pres = null; // last known presence: ids a refresh missed keep theirs
+    let busy = false;
+    let retryT = 0;
+    let autoRetried = false;
+    // a failed load is not "no friends": say so, retry once soon, offer a button
+    const fail = () => {
+      if (pres) return; // keep the rows we already show
+      note(
+        "Friends did not load.",
+        ui.button("Try again", {
+          icon: "refresh",
+          size: "sm",
+          onClick: () => {
+            list.replaceChildren(ui.skeleton("row", 4));
+            load();
+          },
+        })
+      );
+      if (!autoRetried) {
+        autoRetried = true;
+        clearTimeout(retryT);
+        retryT = setTimeout(() => !S.friendsHidden && load(), 4000);
+      }
+    };
     const load = async () => {
-      if (!alive(root)) return;
+      if (!alive(root) || busy || S.loggedOut) return;
+      busy = true;
+      try {
+        await loadNow();
+      } finally {
+        busy = false;
+      }
+    };
+    const loadNow = async () => {
       const me = await api.me();
-      if (!me) return note(CER.loggedOut ? "Log in to see what friends play." : "Friends did not load.");
-      if (!friends) friends = await api.friends(me.id); // null on failure: retried next tick
       if (!alive(root)) return;
-      if (!friends) return note("Friends did not load.");
+      if (!me) return CER.loggedOut ? friendsOff() : fail();
+      if (!friends) friends = await api.friends(me.id); // null on failure: retried
+      if (!alive(root)) return;
+      if (!friends) return fail();
       if (!friends.length) {
         note("Add friends to see what they play.");
         return;
       }
-      const pres = await api.presence(friends.map((f) => f.id));
+      const got = (await api.presence?.(friends.map((f) => f.id)).catch(() => null)) ?? new Map();
       if (!alive(root)) return;
-      if (!pres.size) {
-        note("Friends did not load.");
-        return;
-      }
+      if (!got.size && !pres) return fail();
+      pres = new Map(pres ?? []);
+      for (const [id, p] of got) pres.set(String(id), p);
+      autoRetried = false;
       // group friends by the game they are in
       const games = new Map();
       for (const f of friends) {
         const p = pres.get(String(f.id));
         if (p?.userPresenceType !== 2 || !p.placeId) continue;
         const key = String(p.universeId ?? p.rootPlaceId ?? p.placeId);
-        if (!games.has(key)) games.set(key, { universeId: p.universeId, placeId: p.rootPlaceId ?? p.placeId, name: p.lastLocation, people: [] });
+        // the name comes from the game info below (lastLocation can be a sub-place)
+        if (!games.has(key)) games.set(key, { universeId: p.universeId, placeId: p.rootPlaceId ?? p.placeId, name: null, loc: p.lastLocation, people: [] });
         games.get(key).people.push({ ...f, gameId: p.gameId, placeId: p.placeId });
       }
       const rows = [...games.values()].sort((a, b) => b.people.length - a.people.length);
@@ -717,13 +788,16 @@
       // presence hides some universe ids: look them up so icons still show
       await Promise.all(rows.filter((r) => !r.universeId).map(async (r) => (r.universeId = await api.universeOf(r.placeId))));
       if (!alive(root)) return;
+      const info = await api.games(rows.map((r) => r.universeId).filter(Boolean)).catch(() => null);
+      if (!alive(root)) return;
+      for (const r of rows) r.name = info?.get(String(r.universeId))?.name || r.loc;
       list.replaceChildren(...rows.map(friendGameRow));
     };
     // nothing is fetched while the column is hidden; showing it loads now
     box.load = load;
     if (!S.friendsHidden) load();
     const t = setInterval(() => {
-      if (!alive(root)) return clearInterval(t);
+      if (!alive(root) || S.loggedOut) return clearInterval(t);
       if (!document.hidden && !S.friendsHidden) load();
     }, 60000);
     return box;

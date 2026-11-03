@@ -122,18 +122,22 @@
   // Each visit gets a run id; work from an older visit (SPA navigation)
   // stops at its next await instead of building into the new page.
   let runId = 0;
-  ui.route("game", async () => {
+  ui.route("game", start);
+  async function start() {
     runCleanups();
     const my = ++runId;
     const live = () => my === runId;
     const placeId = location.pathname.match(/^\/games\/(\d+)/i)?.[1];
     if (!placeId) return ui.release();
+    // shared private server invite (/games/ID?privateServerLinkCode=...)
+    const linkCode = new URLSearchParams(location.search).get("privateServerLinkCode");
+    const priv = linkCode && /^[\w-]{1,200}$/.test(linkCode) ? { linkCode } : null;
 
     const { page } = ui.page("game", "gx");
     const mePromise = api.me().catch(() => null);
 
     // shell first (shimmer), filled as data lands
-    const stage = buildStage(placeId);
+    const stage = buildStage(placeId, priv, start);
     const about = h("div", { class: "gx-about" });
     const tabsHost = h("div", { class: "gx-tabbar" });
     const panes = h("div", { class: "gx-panes" });
@@ -144,7 +148,8 @@
     const universeId = await api.universeOf(placeId);
     if (!live()) return;
     if (!universeId) {
-      stage.fail("We could not find this game.");
+      // usually a busy API, not a missing game: Play still works by place id
+      stage.fail("This game did not load.");
       return;
     }
     const U = String(universeId);
@@ -156,7 +161,7 @@
     const info = await infoP;
     if (!live()) return;
     if (!info) {
-      stage.fail("This game did not load. Try again soon.");
+      stage.fail("This game did not load.");
       return;
     }
     const ctx = { placeId, universeId: U, info, feats, mePromise, live };
@@ -208,12 +213,13 @@
     };
     window.addEventListener("hashchange", onHash);
     onCleanup(() => window.removeEventListener("hashchange", onHash));
-  });
+  }
 
   // ------------------------------------------------------------ stage (hero)
   // The art is the hero: the game's pictures fill the stage, slowly
   // crossfading. Title, Play and the quiet buttons sit on the art.
-  function buildStage(placeId) {
+  function buildStage(placeId, priv, retry) {
+    let uni = null; // universe id, once known (Report needs it)
     const ambient = h("div", { class: "gx-ambient" });
     const slides = h("div", { class: "gx-slides" });
     const strip = h("div", { class: "gx-strip" });
@@ -225,8 +231,9 @@
     const meta = h("div", { class: "gx-meta" }, h("span", { class: "gx-sk gx-sk-line" }));
     const note = h("p", { class: "gx-note", hidden: true });
 
-    const playBtn = ui.button("Play", { icon: "play", variant: "light", size: "lg", class: "gx-play" });
-    playBtn.addEventListener("click", () => playNow(placeId));
+    // an invite link's Play goes to that private server
+    const playBtn = ui.button(priv ? "Join private server" : "Play", { icon: "play", variant: "light", size: "lg", class: "gx-play" });
+    playBtn.addEventListener("click", () => (priv ? playPrivate(placeId, priv) : playNow(placeId)));
     const playSlot = h("div", { class: "gx-play-slot" }, playBtn);
     const social = h("div", { class: "gx-quiet" });
     const quiet = (icon, title, onClick) => ui.button("", { icon, variant: "glass", title, class: "gx-qbtn", onClick });
@@ -237,7 +244,16 @@
     const more = moreMenu([
       { icon: "link", label: "Copy link", onClick: () => ui.copy(`https://www.roblox.com/games/${placeId}`, "Link copied!") },
       { icon: "sliders", label: "Join options", onClick: () => CER.openSettings?.("Join") },
-    ]);
+      // Roblox's own report flow, in a new tab
+      ui.reportUrl && {
+        icon: ui.ICONS?.flag ? "flag" : "shield",
+        label: "Report",
+        onClick: () => {
+          const url = ui.reportUrl("game", placeId);
+          if (url) window.open(url, "_blank", "noopener");
+        },
+      },
+    ].filter(Boolean));
 
     const overlay = h(
       "div",
@@ -248,7 +264,7 @@
       h("div", { class: "gx-actions" }, playSlot, pinBtn, social, more.el),
       note
     );
-    const stageEl = h("div", { class: "gx-stage is-loading", tabindex: "0" }, slides, h("div", { class: "gx-shade" }), prev, next, overlay, strip);
+    const stageEl = h("div", { class: "gx-stage cer-on-art is-loading", tabindex: "0" }, slides, h("div", { class: "gx-shade" }), prev, next, overlay, strip);
     const el = h("section", { class: "gx-hero" }, ambient, stageEl);
 
     // ---- gallery ----
@@ -338,17 +354,23 @@
         if (g) bits.push(h("span", { text: g }));
         meta.replaceChildren(...bits);
       },
+      // games API down: Play still works (place id from the URL), plus a
+      // retry and Roblox's own page
       fail(text) {
         stageEl.classList.remove("is-loading");
         stageEl.classList.add("is-empty");
         title.replaceChildren(text);
         meta.replaceChildren();
-        playBtn.remove();
         pinBtn.remove();
         more.el.remove();
+        social.replaceChildren(
+          ui.button("Try again", { icon: "refresh", variant: "glass", class: "gx-retry", onClick: () => retry?.().catch?.(() => ui.release()) }),
+          h("a", { class: "gx-native-link", href: ui.nativeUrl(location.href), text: "Open on Roblox" })
+        );
       },
       // Pin / Unpin: reads and writes the same list as Home's Pinned rail
       wirePin(U, info) {
+        uni = U;
         let on = false;
         const paint = () => {
           pinBtn.classList.toggle("is-on", on);
@@ -519,6 +541,16 @@
     if (region && region !== "auto" && CER.REGIONS?.[region]) return regionJoin(placeId, region, CER.REGIONS[region]);
     ui.play(placeId);
   }
+  // Private server: an invite link code or a server's access code.
+  // bridge.js has no private-server message yet, so with no ack CER.launch
+  // falls back to the same roblox:// start link Roblox uses (accessCode /
+  // linkCode params) after 500 ms.
+  function playPrivate(placeId, { accessCode, linkCode }) {
+    const q = new URLSearchParams({ placeId: String(placeId) });
+    if (accessCode) q.set("accessCode", accessCode);
+    if (linkCode) q.set("linkCode", linkCode);
+    CER.launch({ cer: "join-private", placeId, accessCode: accessCode ?? null, linkCode: linkCode ?? null }, "roblox://experiences/start?" + q);
+  }
 
   // Preferred-region join (background.js probes servers one at a time).
   // Ported from gameredesign.js: live progress, a clear "you are NOT in X"
@@ -536,17 +568,22 @@
       onClose: () => {
         settled = true;
         clearTimeout(timeout);
-        try {
-          port?.disconnect();
-        } catch {
-          /* gone */
-        }
+        stop();
       },
     });
+    // closing the port is what stops the background search
+    const stop = () => {
+      try {
+        port?.disconnect();
+      } catch {
+        /* gone */
+      }
+    };
     const fail = (titleText, subText) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      stop();
       m.el.querySelector(".cer-modal-head h3").textContent = titleText;
       status.textContent = subText;
       bar.remove();
@@ -564,7 +601,8 @@
       m.close();
       return ui.play(placeId);
     }
-    timeout = setTimeout(() => fail("Search took too long", "You are NOT joining " + regionName + "."), 22000);
+    // worst case in background.js: 1 list call + 15 probes, 500 ms apart
+    timeout = setTimeout(() => fail("Search took too long", "You are NOT joining " + regionName + "."), 60000);
     port.onDisconnect?.addListener?.(() => fail("Search stopped", "You are NOT joining " + regionName + "."));
     port.onMessage.addListener((msg) => {
       if (settled) return;
@@ -588,8 +626,10 @@
         m.close();
         ui.play(placeId);
       } else if (msg.error === "cooldown") fail("Please wait", "Too many searches. Wait a few minutes. You are NOT in " + regionName + ".");
+      else if (msg.error === "busy") fail("Please wait", "Another search is running. You are NOT in " + regionName + ".");
       else if (msg.error === "notfound" && msg.detected === 0) fail("Region check failed", "We could not read any server's region. You are NOT in " + regionName + ".");
-      else fail("No " + regionName + " server", `Checked ${msg.probed || 15} servers. You are NOT joining ${regionName}.`);
+      else if (msg.error === "notfound") fail("No " + regionName + " server", `Checked ${msg.probed || 15} servers. You are NOT joining ${regionName}.`);
+      else fail("Search failed", "You are NOT joining " + regionName + ".");
     });
     port.postMessage({ cer: "start", placeId, region });
   }
@@ -656,20 +696,51 @@
     }
   }
 
-  // player token -> headshot url, batched through thumbnails/v1/batch
+  // player token -> headshot url, batched through thumbnails/v1/batch.
+  // A token is asked for once: while its batch is in flight, later calls
+  // wait for that same request instead of sending it again.
   const tokenCache = new Map();
+  const tokenWait = new Map(); // token -> in-flight batch promise
   async function headshotsFor(tokens) {
-    const need = tokens.filter((t) => !tokenCache.has(t));
+    const need = [...new Set(tokens)].filter((t) => !tokenCache.has(t) && !tokenWait.has(t));
     for (let i = 0; i < need.length; i += 100) {
       const chunk = need.slice(i, i + 100);
-      const res = await api.json("https://thumbnails.roblox.com/v1/batch", {
-        method: "POST",
-        body: chunk.map((t) => ({ requestId: t, token: t, type: "AvatarHeadShot", size: "48x48", format: "webp", isCircular: true })),
-      });
-      for (const it of res?.data ?? []) if (it.imageUrl) tokenCache.set(it.requestId, it.imageUrl);
-      for (const t of chunk) if (!tokenCache.has(t)) tokenCache.set(t, null);
+      const p = api
+        .json("https://thumbnails.roblox.com/v1/batch", {
+          method: "POST",
+          body: chunk.map((t) => ({ requestId: t, token: t, type: "AvatarHeadShot", size: "48x48", format: "webp", isCircular: true })),
+        })
+        .then((res) => {
+          for (const it of res?.data ?? []) if (it.imageUrl) tokenCache.set(it.requestId, it.imageUrl);
+          for (const t of chunk) {
+            if (!tokenCache.has(t)) tokenCache.set(t, null);
+            tokenWait.delete(t);
+          }
+        });
+      for (const t of chunk) tokenWait.set(t, p);
     }
+    await Promise.all(new Set(tokens.map((t) => tokenWait.get(t)).filter(Boolean)));
   }
+
+  // One page of public servers. This endpoint has one of Roblox's tightest
+  // limits, so: one page per ask, and one retry about 2 s after a 429.
+  // full: also list full servers (used when every open one is gone).
+  // → { data, next, status } (data null when it failed)
+  async function serverPage(placeId, order, cursor, full) {
+    const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100&sortOrder=${order}${full ? "" : "&excludeFullGames=true"}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
+    let res = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch(url, { credentials: "include" }).catch(() => null);
+      if (res?.status !== 429 || attempt) break;
+      await api.sleep(2000);
+    }
+    const body = res?.ok ? await res.json().catch(() => null) : null;
+    if (!Array.isArray(body?.data)) return { data: null, next: null, status: res?.status ?? 0 };
+    return { data: body.data, next: body.nextPageCursor || null, status: res.status };
+  }
+
+  const MAX_SERVERS = 500; // 5 pages at most, and only when asked for
+  const REFRESH_GAP = 5000;
 
   function buildServers(pane, ctx) {
     const { placeId } = ctx;
@@ -677,10 +748,14 @@
     let seen = {};
     let sort = "most";
     let order = "Desc"; // API order: Desc = fullest first, Asc = emptiest first
+    let full = false; // true = every open server was gone, so full ones are listed
+    let cursor = null; // next page, null = we have them all
     let shown = 12;
     let seq = 0;
-    let loading = false;
-    let loaded = null;
+    let loaded = null; // page 1 of the current list
+    let paging = null; // a later page in flight
+    let lastLoad = 0;
+    let drawn = []; // server ids on screen, in order
     let friendJobs = new Map(); // jobId -> [{ friend, presence }]
 
     const sortSel = ui.select(
@@ -695,30 +770,43 @@
       (v) => {
         sort = v;
         shown = 12;
-        // big games have thousands of servers: ask Roblox for the right end
-        const want = v === "least" ? "Asc" : "Desc";
-        if (want !== order) {
+        // a whole list sorts here; a cut-off one asks Roblox for the right end
+        const want = v === "least" ? "Asc" : v === "most" ? "Desc" : order;
+        if (want !== order && cursor) {
           order = want;
-          load();
-        } else render();
+          return load();
+        }
+        render();
+        // ping / age sorts mean more with more servers: one more page
+        if ((v === "ping" || v === "newest" || v === "oldest") && servers.length < 200) more();
       }
     );
     const byId = ui.button("", { icon: "hash", variant: "ghost", title: "Join by server ID", onClick: () => joinByIdModal(placeId) });
-    const refresh = ui.button("", { icon: "refresh", variant: "ghost", title: "Refresh", onClick: () => load() });
+    const refresh = ui.button("", {
+      icon: "refresh",
+      variant: "ghost",
+      title: "Refresh",
+      onClick: () => {
+        if (Date.now() - lastLoad < REFRESH_GAP) return CER.toast("Wait a moment.");
+        load();
+      },
+    });
     const best = ui.button("Join best", { variant: "soft", title: "Join the fullest server with room", onClick: () => joinBest() });
 
     const friendsSec = section("Friends here");
     friendsSec.hidden = true;
     const privHost = h("div", { class: "gx-private-host" });
+    const note = h("p", { class: "gx-sv-note", hidden: true });
     const list = h("div", { class: "gx-servers" });
     const footer = h("div", { class: "gx-foot" });
     const sentinel = h("div", { class: "gx-sentinel" });
     // no "Servers" title: the tab already says it
     const tools = h("div", { class: "gx-tools" }, sortSel, byId, refresh, h("span", { class: "gx-grow" }), best);
-    const main = h("div", { class: "gx-main" }, tools, list, footer, sentinel);
+    const main = h("div", { class: "gx-main" }, tools, note, list, footer, sentinel);
     pane.append(friendsSec, main, privHost);
 
-    // show more when the bottom comes into view
+    // show more of what is loaded when the bottom comes into view
+    // (a new page is only fetched on a Show more click)
     const io = new IntersectionObserver(
       (es) => {
         if (es.some((e) => e.isIntersecting) && !pane.hidden && shown < servers.length) {
@@ -742,13 +830,34 @@
       return rows;
     }
 
+    // Cards already on screen stay; only new ones are added (and only new
+    // ones ask for player heads). A changed order rebuilds the list.
     function render() {
       if (!servers.length) return;
       const rows = sorted();
       const visible = rows.slice(0, shown);
-      list.replaceChildren(...visible.map((s) => serverCard(s)));
-      footer.replaceChildren(shown < rows.length ? ui.button("Show more", { variant: "soft", onClick: () => ((shown += 12), render()) }) : loading ? h("span", { class: "gx-muted", text: "Loading more..." }) : "");
-      fillHeads(visible);
+      const same = drawn.length && drawn.length <= visible.length && drawn.every((id, i) => visible[i].id === id) && list.querySelector(".gx-server");
+      const fresh = same ? visible.slice(drawn.length) : visible;
+      if (same) list.append(...fresh.map((s) => serverCard(s)));
+      else list.replaceChildren(...fresh.map((s) => serverCard(s)));
+      drawn = visible.map((s) => s.id);
+      paintFoot(rows.length);
+      if (fresh.length) fillHeads(fresh);
+    }
+    function paintFoot(total = servers.length) {
+      const can = shown < total || (cursor && servers.length < MAX_SERVERS);
+      footer.replaceChildren(
+        paging
+          ? h("span", { class: "gx-muted", text: "Loading more..." })
+          : can
+            ? ui.button("Show more", { variant: "soft", onClick: showMore })
+            : ""
+      );
+    }
+    async function showMore() {
+      if (shown >= servers.length) await more();
+      shown += 12;
+      render();
     }
 
     async function fillHeads(visible) {
@@ -802,72 +911,104 @@
       );
     }
 
-    // Page 1 renders as soon as it lands; up to 5 pages (500 servers) keep
-    // loading in the background so sorting means something. Refresh cancels.
+    function addPage(data) {
+      const known = new Set(servers.map((s) => s.id));
+      servers = servers.concat(data.filter((s) => s?.id && !known.has(s.id)));
+    }
+    async function remember() {
+      const my = seq;
+      const fresh = await markSeen(placeId, servers.map((s) => s.id));
+      if (fresh && my === seq) seen = fresh;
+    }
+
+    // Page 1 only. More pages come on Show more, an age or ping sort, or
+    // Join best. Refresh starts over (at most once every 5 s).
     function load() {
       const my = ++seq;
-      loading = true;
+      lastLoad = Date.now();
+      paging = null;
       loaded = (async () => {
         shown = 12;
         servers = [];
+        cursor = null;
+        full = false;
+        drawn = [];
+        note.hidden = true;
         list.replaceChildren(...ui.skeleton("row", 8).map((x) => (x.classList.add("gx-sv-sk"), x)));
         footer.replaceChildren();
         seen = await readSeen(placeId);
-        let cursor = "";
-        for (let pg = 0; pg < 5; pg++) {
+        let r = await serverPage(placeId, order, "", false);
+        if (my !== seq || !ctx.live()) return;
+        // no open server: maybe they are all full, not empty
+        if (r.data && !r.data.length && !r.next) {
+          const all = await serverPage(placeId, order, "", true);
           if (my !== seq || !ctx.live()) return;
-          const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100&excludeFullGames=true&sortOrder=${order}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
-          let res = null;
-          for (let attempt = 0; attempt < 2; attempt++) {
-            res = await fetch(url, { credentials: "include" }).catch(() => null);
-            if (res?.status !== 429 || pg === 0) break;
-            await api.sleep(2000);
-          }
-          if (my !== seq) return;
-          if (!res || !res.ok) {
-            if (pg === 0) {
-              loading = false;
-              list.replaceChildren(ui.empty(res?.status === 429 ? "Too many tries. Wait a moment." : "Servers did not load.", { icon: "server", action: ui.button("Try again", { variant: "soft", onClick: () => load() }) }));
-              return;
-            }
-            break;
-          }
-          const body = await res.json().catch(() => null);
-          if (!body?.data) break;
-          const known = new Set(servers.map((s) => s.id));
-          servers = servers.concat(body.data.filter((s) => !known.has(s.id)));
-          cursor = body.nextPageCursor;
-          if (!cursor) loading = false;
-          render();
-          if (!cursor) break;
-          await api.sleep(250);
+          if (all.data?.length) full = true;
+          if (!all.data || full) r = all;
         }
-        loading = false;
-        if (my !== seq) return;
+        if (!r.data) {
+          list.replaceChildren(ui.empty(r.status === 429 ? "Too many tries. Wait a moment." : "Servers did not load.", { icon: "server", action: ui.button("Try again", { variant: "soft", onClick: () => load() }) }));
+          return;
+        }
+        addPage(r.data);
+        cursor = r.next;
         if (!servers.length) {
           list.replaceChildren(ui.empty("Nobody is playing. Press Play to start a server!", { icon: "server" }));
-          footer.replaceChildren();
           return;
+        }
+        if (full) {
+          note.textContent = "All servers are full.";
+          note.hidden = false;
         }
         render();
         renderFriends();
-        const fresh = await markSeen(placeId, servers.map((s) => s.id));
-        if (fresh && my === seq) seen = fresh;
+        remember();
       })();
       return loaded;
+    }
+
+    // the next page of the current list (one at a time)
+    function more() {
+      if (paging) return paging;
+      if (!cursor || servers.length >= MAX_SERVERS) return Promise.resolve(false);
+      const my = seq;
+      paging = (async () => {
+        const r = await serverPage(placeId, order, cursor, full);
+        if (my !== seq || !ctx.live()) return false;
+        paging = null;
+        if (!r.data) {
+          paintFoot();
+          CER.toast("Could not load more. Try again.", "error");
+          return false; // cursor kept: Show more tries the same page again
+        }
+        addPage(r.data);
+        cursor = r.next;
+        render();
+        renderFriends();
+        remember();
+        return true;
+      })();
+      paintFoot(); // "Loading more..."
+      return paging;
     }
 
     async function joinBest() {
       if (!loaded) load();
       best.busy(true);
       await loaded;
-      best.busy(false);
       const settings = await CER.get();
-      let open = servers.filter((s) => s.playing < s.maxPlayers);
-      if (settings.joinPrefs?.avoidFriends && friendJobs.size) {
-        const away = open.filter((s) => !friendJobs.has(s.id));
-        if (away.length) open = away;
-      }
+      const pick = () => {
+        let open = servers.filter((s) => s.playing < s.maxPlayers);
+        if (settings.joinPrefs?.avoidFriends && friendJobs.size) {
+          const away = open.filter((s) => !friendJobs.has(s.id));
+          if (away.length) open = away;
+        }
+        return open;
+      };
+      let open = pick();
+      // nothing open in what we have: look at up to 2 more pages
+      for (let i = 0; !open.length && i < 2 && (await more()); i++) open = pick();
+      best.busy(false);
       if (!open.length) return ui.play(placeId); // nothing open: Roblox picks or starts one
       // fullest server that still has room, then the lowest ping
       open.sort((a, b) => b.playing / b.maxPlayers - a.playing / a.maxPlayers || (a.ping ?? 999) - (b.ping ?? 999));
@@ -886,6 +1027,7 @@
       if (!friendJobs.size) return;
       friendsSec.hidden = false;
       renderFriends();
+      drawn = []; // friend faces go on the cards: rebuild them once
       render();
     });
     // friend cards use the real server row once the list has it
@@ -924,8 +1066,9 @@
     requestAnimationFrame(() => input.focus());
   }
 
-  // Private (VIP) servers: one quiet row, only when the game has them.
-  // Buying, creating and settings stay on Roblox's own page.
+  // Private (VIP) servers: one row each, only when the game has them.
+  // Every server you can join is a Join button here; only buying one
+  // ("Get one") stays on Roblox's own page.
   async function buildPrivate(host, ctx) {
     const { placeId, universeId: U } = ctx;
     const me = await ctx.mePromise;
@@ -933,28 +1076,38 @@
       api.json(`https://games.roblox.com/v1/private-servers/enabled-in-universe/${U}`, { ttl: 600000 }),
       me ? api.json(`https://games.roblox.com/v1/games/${placeId}/private-servers?limit=25`) : null,
     ]);
+    if (!ctx.live()) return;
     const rows = mine?.data ?? [];
-    if (!enabled?.privateServersEnabled && !ctx.info.createVipServersAllowed && !rows.length) return;
-    const native = ui.nativeUrl(`https://www.roblox.com/games/${placeId}#!/game-instances`);
-    const sec = section("Private servers", { action: { label: rows.length ? "Manage" : "Get one", href: native } });
-    if (rows.length)
+    const canBuy = !!(enabled?.privateServersEnabled || ctx.info.createVipServersAllowed);
+    const failed = !!me && !mine && enabled?.privateServersEnabled !== false;
+    if (!canBuy && !rows.length && !failed) return;
+    const sec = section("Private servers", { action: canBuy && { label: "Get one", href: ui.nativeUrl(`https://www.roblox.com/games/${placeId}#!/game-instances`) } });
+    if (failed)
+      sec.body.append(
+        ui.empty("Could not load.", {
+          icon: "server",
+          action: ui.button("Try again", { variant: "soft", onClick: () => (host.replaceChildren(), buildPrivate(host, ctx)) }),
+        })
+      );
+    else if (rows.length)
       sec.body.append(
         h(
           "div",
           { class: "gx-private" },
           rows.map((s) =>
             h(
-              "a",
-              { class: "gx-private-row", href: native },
+              "div",
+              { class: "gx-private-row" + (s.accessCode ? "" : " is-off") },
               s.owner?.id ? ui.avatar(s.owner.id, { size: 32 }) : null,
               h("b", { text: s.name || "Private server" }),
               s.owner?.id && ui.nameTag({ type: "user", id: s.owner.id, name: s.owner.displayName || s.owner.name || "", verified: s.owner.hasVerifiedBadge, size: "sm", cls: "gx-private-owner" }),
-              h("span", { class: "gx-muted", text: s.playing ? `${s.playing}/${s.maxPlayers}` : "" })
+              h("span", { class: "gx-muted", text: s.playing ? `${s.playing}/${s.maxPlayers}` : "" }),
+              s.accessCode && ui.button("Join", { variant: "primary", size: "sm", onClick: () => playPrivate(placeId, { accessCode: s.accessCode }) })
             )
           )
         )
       );
-    host.append(sec);
+    host.replaceChildren(sec);
   }
 
   // ------------------------------------------------------------ Store
@@ -979,6 +1132,20 @@
       );
     return passCache.get(key);
   }
+  // first page failed: say so (not "no items") and let them rebuild the tab
+  function failed(pane, ctx, builder, icon) {
+    return ui.empty("Could not load.", {
+      icon,
+      action: ui.button("Try again", {
+        variant: "soft",
+        onClick: () => {
+          for (const k of [...passCache.keys()]) if (k.startsWith(ctx.universeId + "|")) passCache.delete(k);
+          pane.replaceChildren();
+          builder(pane, ctx);
+        },
+      }),
+    });
+  }
   function buildStore(pane, ctx) {
     const grid = ui.grid(ui.skeleton("card", 6), { min: 170, gap: 22, class: "gx-passes" });
     const foot = h("div", { class: "gx-foot" });
@@ -993,10 +1160,8 @@
       }
       if (first) grid.replaceChildren();
       first = false;
-      if (!r || (!r.items.length && !grid.children.length)) {
-        pane.replaceChildren(ui.empty(r ? "No passes in this game." : "The store did not load.", { icon: "bag" }));
-        return;
-      }
+      if (!r) return pane.replaceChildren(failed(pane, ctx, buildStore, "bag"));
+      if (!r.items.length && !grid.children.length) return pane.replaceChildren(ui.empty("No passes in this game.", { icon: "bag" }));
       // things you can buy first, then owned, then off sale
       const rank = (p) => (p.isOwned ? 1 : p.isForSale !== false && p.price != null ? 0 : 2);
       grid.append(...r.items.slice().sort((a, b) => rank(a) - rank(b)).map(passCard));
@@ -1032,17 +1197,23 @@
       }
       if (first) list.replaceChildren();
       first = false;
-      if (!r || (!r.items.length && !list.children.length)) {
-        pane.replaceChildren(ui.empty(r ? "No badges in this game." : "Badges did not load.", { icon: "medal" }));
-        return;
-      }
+      if (!r) return pane.replaceChildren(failed(pane, ctx, buildBadges, "medal"));
+      if (!r.items.length && !list.children.length) return pane.replaceChildren(ui.empty("No badges in this game.", { icon: "medal" }));
       list.append(...r.items.filter((b) => b.enabled !== false).map(badgeRow));
       foot.replaceChildren(r.next ? ui.button("Show more", { variant: "soft", onClick: (e) => (e.currentTarget.busy?.(true), more(r.next)) }) : "");
       // which of these you have: one call per 50 badges
       const me = await ctx.mePromise;
       if (!me) return;
-      const own = await api.json(`https://badges.roblox.com/v1/users/${me.id}/badges/awarded-dates?badgeIds=${r.items.map((b) => b.id).join(",")}`);
-      for (const o of own?.data ?? []) {
+      // tight per-account limit (see badge.js): one quiet retry 6 s later,
+      // and nothing is marked when both fail
+      const url = `https://badges.roblox.com/v1/users/${me.id}/badges/awarded-dates?badgeIds=${r.items.map((b) => b.id).join(",")}`;
+      let own = await api.json(url);
+      if (!own && ctx.live()) {
+        await api.sleep(6000);
+        if (ctx.live() && list.isConnected) own = await api.json(url);
+      }
+      if (!own || !ctx.live()) return;
+      for (const o of own.data ?? []) {
         const el = list.querySelector(`[data-badge="${o.badgeId}"]`);
         if (!el) continue;
         el.classList.add("is-owned");

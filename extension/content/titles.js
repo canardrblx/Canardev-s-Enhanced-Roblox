@@ -54,6 +54,12 @@
     }
   }
   const RENAME_SEL = HEADING_SELECTOR + ", button, a";
+  // CER's own UI (pages, nav, panels) already writes clean titles and labels;
+  // on a CER-owned page there is nothing of Roblox's left to fix
+  const OURS = ".cer-ui, #cer-app";
+  const html = document.documentElement;
+  const owned = () => html.classList.contains("cer-takeover");
+  const ours = (n) => (n.nodeType === Node.ELEMENT_NODE ? n : n.parentElement)?.closest?.(OURS);
   // only look inside what changed — a full-page querySelectorAll of every
   // span after each React update was the biggest idle CPU cost on busy pages
   function process(root) {
@@ -61,10 +67,12 @@
       if (root.nodeType === Node.TEXT_NODE && root.parentElement) process(root.parentElement);
       return;
     }
+    if (ours(root)) return;
     if (root.matches(RENAME_SEL)) fixText(root);
     if (root.matches(SELECTOR)) fixTitle(root);
-    for (const el of root.querySelectorAll(RENAME_SEL)) fixText(el);
-    for (const el of root.querySelectorAll(SELECTOR)) fixTitle(el);
+    const full = root === document.body; // only the full pass can reach our UI
+    for (const el of root.querySelectorAll(RENAME_SEL)) if (!full || !el.closest(OURS)) fixText(el);
+    for (const el of root.querySelectorAll(SELECTOR)) if (!full || !el.closest(OURS)) fixTitle(el);
   }
 
   const pending = new Set();
@@ -75,7 +83,9 @@
     pending.clear();
   };
   new MutationObserver((muts) => {
+    if (owned()) return;
     for (const m of muts) {
+      if (ours(m.target)) continue; // inside CER's UI
       if (m.type === "characterData") {
         if (m.target.nodeValue !== m.target.cerWritten) pending.add(m.target);
       } else for (const n of m.addedNodes) pending.add(n);
@@ -89,7 +99,13 @@
     if (!changes.features) return;
     settings = await CER.get();
     RENAMES = renames();
-    process(document.body);
+    if (!owned()) process(document.body);
   });
-  process(document.body);
+  // a CER page handing the page back to Roblox: fix what Roblox then shows
+  let wasOwned = owned();
+  new MutationObserver(() => {
+    if (wasOwned === (wasOwned = owned())) return;
+    if (!wasOwned) process(document.body);
+  }).observe(html, { attributes: true, attributeFilter: ["class"] });
+  if (!owned()) process(document.body);
 })();

@@ -163,6 +163,11 @@
 [data-page="trades"] .tr-items > .cer-sk-tile {
   border-radius: var(--cer-r-m);
 }
+[data-page="trades"] .tr-items > .cer-btn {
+  grid-column: 1 / -1;
+  justify-self: center;
+  margin-top: -18px;
+}
 [data-page="trades"] .tr-side-none {
   grid-column: 1 / -1;
   padding: 26px 0;

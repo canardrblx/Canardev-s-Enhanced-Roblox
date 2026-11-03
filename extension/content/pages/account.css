@@ -1,0 +1,235 @@
+/* CER account sections (privacy, notifications, info). Scope every rule under [data-page="account"]. */
+
+[data-page="account"] .cer-ac {
+  max-width: 720px;
+  gap: 24px;
+  padding-top: 32px;
+}
+[data-page="account"] .cer-ac-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: -8px;
+}
+[data-page="account"] .cer-ac-h1 {
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+[data-page="account"] .cer-ac-body,
+[data-page="account"] .cer-ac-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+[data-page="account"] .cer-ac-title {
+  margin-top: 12px;
+  padding: 0 4px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* one list of rows */
+[data-page="account"] .cer-ac-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: var(--cer-r-l);
+  background: var(--cer-raise);
+}
+[data-page="account"] .cer-ac-list > .cer-sk-row {
+  height: 56px;
+  border-radius: var(--cer-r-m);
+}
+[data-page="account"] .cer-ac-list > .cer-empty {
+  padding: 28px 16px;
+}
+[data-page="account"] .cer-ac-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  min-height: 56px;
+  padding: 8px 14px;
+  border-radius: var(--cer-r-m);
+  color: var(--cer-text) !important;
+}
+[data-page="account"] .cer-ac-row.is-link {
+  transition: background 0.15s;
+}
+[data-page="account"] .cer-ac-row.is-link:hover {
+  background: var(--cer-hover);
+}
+[data-page="account"] .cer-ac-label {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+[data-page="account"] .cer-ac-ctl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: auto;
+  min-width: 0;
+}
+[data-page="account"] .cer-ac-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cer-text-2);
+  overflow-wrap: anywhere;
+}
+[data-page="account"] .cer-ac-value.is-warn {
+  color: var(--cer-warn);
+}
+[data-page="account"] .cer-ac-value .cer-sk {
+  display: inline-block;
+  width: 90px;
+  height: 14px;
+}
+[data-page="account"] .cer-ac-go {
+  flex: none;
+  color: var(--cer-text-3);
+  transition: transform 0.15s var(--cer-ease);
+}
+[data-page="account"] .cer-ac-row.is-link:hover .cer-ac-go {
+  transform: translateX(2px);
+  color: var(--cer-text-2);
+}
+[data-page="account"] .cer-ac-native {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cer-text-3) !important;
+}
+[data-page="account"] .cer-ac-native:hover {
+  color: var(--cer-text) !important;
+}
+[data-page="account"] .cer-ac-row .cer-dropdown {
+  max-width: 260px;
+  text-overflow: ellipsis;
+}
+[data-page="account"] .cer-ac-row .cer-dropdown:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* inline save state */
+[data-page="account"] .cer-ac-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cer-text-3);
+  white-space: nowrap;
+}
+[data-page="account"] .cer-ac-state:empty {
+  display: none;
+}
+[data-page="account"] .cer-ac-state.is-good {
+  color: var(--cer-good);
+}
+[data-page="account"] .cer-ac-state.is-bad {
+  color: var(--cer-bad);
+}
+[data-page="account"] .cer-ac-state.is-warn,
+[data-page="account"] .cer-ac-state.is-warn a {
+  color: var(--cer-warn) !important;
+}
+[data-page="account"] .cer-ac-state.is-warn a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+[data-page="account"] .cer-ac-more {
+  display: flex;
+  justify-content: center;
+  padding: 0 4px;
+}
+[data-page="account"] .cer-ac-body > .cer-ac-more {
+  justify-content: flex-end;
+  margin-top: -6px;
+}
+[data-page="account"] .cer-ac-retry {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* blocked people */
+[data-page="account"] .cer-ac-user {
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+[data-page="account"] .cer-ac-who {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cer-text) !important;
+}
+
+/* notification channels: pressed = on */
+[data-page="account"] .cer-ac-chs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+[data-page="account"] .cer-ac-ch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--cer-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cer-text-3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+[data-page="account"] .cer-ac-ch:hover:not(:disabled) {
+  background: var(--cer-hover);
+  color: var(--cer-text);
+}
+[data-page="account"] .cer-ac-ch-on {
+  display: none;
+}
+[data-page="account"] .cer-ac-ch[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--cer-acc);
+  color: var(--cer-acc-ink);
+}
+[data-page="account"] .cer-ac-ch[aria-pressed="true"] .cer-ac-ch-on {
+  display: block;
+}
+[data-page="account"] .cer-ac-ch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* about */
+[data-page="account"] .cer-ac-about-box {
+  gap: 10px;
+  padding: 10px;
+}
+[data-page="account"] .cer-ac-about {
+  background: var(--cer-surface);
+}
+[data-page="account"] .cer-ac-about:disabled {
+  opacity: 0.6;
+}
+[data-page="account"] .cer-ac-about-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}

@@ -5,6 +5,19 @@
 // fetch those hosts directly — cookies included, CSRF dance handled here.
 const ext = globalThis.browser ?? globalThis.chrome;
 
+// Dev build = the repo's extension/ folder: its manifest has "cer_dev": true
+// (build-firefox.sh and store zips strip it) and no store update_url. Only dev
+// builds get the GitHub update check and the page-triggered reload. Firefox
+// store installs have no update_url either, so that alone is not enough.
+const CER_DEV = (() => {
+  try {
+    const m = ext.runtime.getManifest();
+    return m.cer_dev === true && !m.update_url;
+  } catch {
+    return false;
+  }
+})();
+
 ext.runtime.onInstalled.addListener(() => {
   console.log("Canardev's Enhanced Roblox installed");
   checkForUpdate();
@@ -14,8 +27,8 @@ ext.runtime.onStartup?.addListener(checkForUpdate);
 
 // ---- update check ----
 // Compares the running version to the latest GitHub release and stashes the
-// result. Only nags UNPACKED / development installs (people who load CER from a
-// git clone). Store installs auto-update, so we never bother them.
+// result. Only for dev builds (CER_DEV: people who load CER from a git clone).
+// Store installs auto-update, so they never call GitHub at all.
 const CER_REPO = "canardrblx/Canardev-s-Enhanced-Roblox";
 function cerVersionOlder(current, latest) {
   const a = String(current).replace(/^v/, "").split(".").map(Number);
@@ -29,14 +42,10 @@ function cerVersionOlder(current, latest) {
 }
 async function checkForUpdate() {
   try {
-    // Store installs (Chrome Web Store / Firefox AMO) auto-update and get an
-    // update_url injected into the runtime manifest; unpacked/git installs do
-    // not. This needs no permission, unlike management.getSelf() which Firefox
-    // gates behind the "management" permission.
     // Every branch stamps checkedAt: without it, updatecheck.js saw "never
     // checked" and woke this worker (and wrote storage) on EVERY page load.
     const stamp = (extra) => ext.storage.local.set({ cerUpdate: { available: false, ...extra, checkedAt: Date.now() } });
-    if (ext.runtime.getManifest().update_url) {
+    if (!CER_DEV) {
       await stamp();
       return;
     }
@@ -55,17 +64,23 @@ async function checkForUpdate() {
   }
 }
 
+// CSRF token from the last write that 403'd: reused, so a write costs one
+// request instead of two (the worker may sleep and lose it; then it re-learns)
+let csrfToken = "";
 async function robloxFetch({ url, method = "GET", body }) {
   const opts = { method, credentials: "include", headers: {} };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
+  const write = method !== "GET";
+  if (write && csrfToken) opts.headers["X-CSRF-TOKEN"] = csrfToken;
   let res = await fetch(url, opts);
-  // CSRF: first write 403s with a token, retry once with it
-  if (res.status === 403 && method !== "GET") {
+  // CSRF: a write without a (fresh) token 403s with one, retry once with it
+  if (res.status === 403 && write) {
     const token = res.headers.get("x-csrf-token");
-    if (token) {
+    if (token && token !== opts.headers["X-CSRF-TOKEN"]) {
+      csrfToken = token;
       opts.headers["X-CSRF-TOKEN"] = token;
       res = await fetch(url, opts);
     }
@@ -88,7 +103,18 @@ async function robloxFetch({ url, method = "GET", body }) {
 
 const POLL_MS = 60000;
 
-ext.alarms?.create("cer-playtime", { periodInMinutes: 1 });
+// Top-level code re-runs on every worker wake: creating the alarm each time
+// restarted its 1-minute countdown (late ticks, clamped minutes). Only make
+// it when it is missing.
+try {
+  Promise.resolve(ext.alarms?.get("cer-playtime"))
+    .then((a) => {
+      if (!a) ext.alarms?.create("cer-playtime", { periodInMinutes: 1 });
+    })
+    .catch(() => ext.alarms?.create("cer-playtime", { periodInMinutes: 1 }));
+} catch {
+  /* no alarms API */
+}
 ext.alarms?.onAlarm.addListener((a) => {
   // never let a failed presence poll surface as an uncaught rejection (which
   // Chrome flags as a persistent service-worker error on the extensions page)
@@ -117,18 +143,28 @@ async function tickPlaytime() {
 
 async function tickPlaytimeInner() {
   const now = Date.now();
-  const store = await ext.storage.local.get(["playtime", "playtimeState", "cerUserId"]);
+  const store = await ext.storage.local.get(["playtime", "playtimeState", "cerUserId", "cerUserIdAt"]);
   const playtime = store.playtime ?? {};
   const state = store.playtimeState ?? { lastTick: null, lastUniverse: null };
 
-  // cache our own user id
+  // cache our own user id. Pages keep it on the signed-in account (shared.js);
+  // here it is re-checked every 6 hours and after a failed poll, so a logout or
+  // account switch never keeps polling the old id for good.
   let userId = store.cerUserId;
-  if (!userId) {
+  if (!userId || Date.now() - (store.cerUserIdAt ?? 0) > 6 * 3600e3) {
     try {
-      userId = (await (await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" })).json()).id;
-      if (userId) await ext.storage.local.set({ cerUserId: userId });
+      const r = await fetch("https://users.roblox.com/v1/users/authenticated", { credentials: "include" });
+      if (r.status === 401 || r.status === 403) {
+        if (userId) await ext.storage.local.remove(["cerUserId", "cerUserIdAt"]); // signed out
+        return;
+      }
+      const id = r.ok ? (await r.json())?.id : null;
+      if (id) {
+        userId = id;
+        await ext.storage.local.set({ cerUserId: id, cerUserIdAt: Date.now() });
+      }
     } catch {
-      return;
+      /* offline: keep the cached id */
     }
   }
   if (!userId) return;
@@ -139,6 +175,7 @@ async function tickPlaytimeInner() {
     method: "POST",
     body: { userIds: [userId] },
   });
+  if (!res.ok && res.status !== 429) await ext.storage.local.set({ cerUserIdAt: 0 }); // re-check the id next tick
   const pres = res.data?.userPresences?.[0];
   const inGame = pres?.userPresenceType === 2 && pres?.universeId;
 
@@ -182,7 +219,8 @@ async function sendFeedback(text) {
   const res = await fetch(FEEDBACK_WEBHOOK, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: String(text).slice(0, 1900) }),
+    // no @everyone / @here / role or user pings, whatever the message says
+    body: JSON.stringify({ content: String(text).slice(0, 1900), allowed_mentions: { parse: [] } }),
   });
   return { ok: res.ok, status: res.status };
 }
@@ -233,7 +271,7 @@ async function cerProbeRegion(placeId, jobId) {
   return cerNearestRegion(coords.Latitude, coords.Longitude);
 }
 const CER_REGION_MAX_PROBES = 15;
-async function cerFindRegionServer(placeId, regionKey, onProgress) {
+async function cerFindRegionServer(placeId, regionKey, onProgress, signal) {
   const listRes = await robloxFetch({
     url: `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100&excludeFullGames=true`,
     method: "GET",
@@ -242,6 +280,7 @@ async function cerFindRegionServer(placeId, regionKey, onProgress) {
   if (servers.length === 0) return { empty: true }; // nothing to search (e.g. a game with no players)
   let probes = 0, detected = 0;
   for (const s of servers) {
+    if (signal?.cancelled) return { cancelled: true }; // the player closed the search
     const cached = cerRegionCache.get(s.id);
     if (cached !== undefined) { // already known — free, doesn't count toward the cap
       if (cached) detected++;
@@ -262,14 +301,15 @@ async function cerFindRegionServer(placeId, regionKey, onProgress) {
 }
 let cerRegionBusy = false;
 const CER_REGION_COOLDOWN_MS = 15 * 60 * 1000;
-async function cerRegionJoin(placeId, regionKey, onProgress) {
+async function cerRegionJoin(placeId, regionKey, onProgress, signal) {
   if (!CER_REGIONS[regionKey]) return { error: "badregion" };
   const { regionCooldownUntil = 0 } = await ext.storage.local.get("regionCooldownUntil");
   if (Date.now() < regionCooldownUntil) return { error: "cooldown", until: regionCooldownUntil };
   if (cerRegionBusy) return { error: "busy" }; // one search at a time across all tabs
   cerRegionBusy = true;
   try {
-    const r = await cerFindRegionServer(placeId, regionKey, onProgress);
+    const r = await cerFindRegionServer(placeId, regionKey, onProgress, signal);
+    if (r.cancelled || signal?.cancelled) return { error: "cancelled" }; // cancelled: no cooldown
     if (r.jobId) return { ok: true, jobId: r.jobId };
     if (r.empty) return { error: "empty" }; // no servers to search — caller just joins normally, NO cooldown
     const until = Date.now() + CER_REGION_COOLDOWN_MS; // probed the list, none matched -> 15 min cooldown
@@ -282,11 +322,17 @@ async function cerRegionJoin(placeId, regionKey, onProgress) {
 // streaming port: the content script gets live "N/15" progress plus the result
 ext.runtime.onConnect.addListener((port) => {
   if (port.name !== "region-join") return;
+  // Cancel / Esc / closing the tab disconnects the port: stop probing
+  const signal = { cancelled: false };
+  port.onDisconnect.addListener(() => {
+    signal.cancelled = true;
+    void ext.runtime.lastError;
+  });
   port.onMessage.addListener((msg) => {
     if (msg?.cer !== "start") return;
     cerRegionJoin(String(msg.placeId), msg.region, (n, total) => {
       try { port.postMessage({ progress: n, total }); } catch {}
-    }).then(
+    }, signal).then(
       (res) => { try { port.postMessage({ done: true, ...res }); } catch {} },
       () => { try { port.postMessage({ done: true, error: "failed" }); } catch {} }
     );
@@ -298,11 +344,12 @@ ext.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     tickPlaytime().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
     return true;
   }
-  if (msg?.cer === "dev-reload" && !ext.runtime.getManifest().update_url) {
-    ext.runtime.reload(); // unpacked/dev installs only
+  if (msg?.cer === "dev-reload" && CER_DEV) {
+    ext.runtime.reload(); // dev builds only
     return false;
   }
   if (msg?.cer === "check-update") {
+    if (!CER_DEV) return false; // store builds never call GitHub
     checkForUpdate().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
     return true;
   }

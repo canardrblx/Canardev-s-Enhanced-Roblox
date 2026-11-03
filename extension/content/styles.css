@@ -728,12 +728,6 @@ ul.badge-list.hlist {
   max-width: 100% !important;
 }
 
-/* anti-flash veil: home sections stay invisible (not display:none — layout
-   stays stable) until sections.js applies the user's hide preferences */
-html.cer-sections-pending div:has(> .home-sort-header-container) {
-  opacity: 0 !important;
-}
-
 /* --- group page: remove the leftover top-bar gap, pull content up --- */
 
 body.cer-group-page #container-main,
@@ -2208,10 +2202,22 @@ html.cer-own-theme #theme-background {
   color: var(--cer-text) !important;
 }
 .cer-cnav-ic {
+  position: relative;
   flex: none;
   display: grid;
   place-items: center;
   width: 22px;
+}
+/* "something new" dot on the icon (shows in the narrow rail too) */
+.cer-cnav-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--cer-acc);
+  box-shadow: 0 0 0 2px var(--cer-bg);
 }
 .cer-cnav-label {
   flex: 1;
@@ -2267,6 +2273,12 @@ html.cer-own-theme #theme-background {
 .cer-ctx .cer-ctx-item .cer-icon {
   flex: none;
 }
+.cer-ctx .cer-ctx-out {
+  display: grid;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--cer-text-3, var(--color-content-muted, inherit));
+}
 .cer-ctx .cer-ctx-item:hover {
   background: var(--cer-hover, var(--color-shift-200, rgba(255, 255, 255, 0.09)));
   color: var(--cer-text, var(--color-content-emphasis, #fff)) !important;
@@ -2286,7 +2298,7 @@ html.cer-own-theme #theme-background {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  padding: 20px 0 26px 288px; /* centred in the content column, not the viewport */
+  padding: 20px 0 26px var(--cer-nav-w, 288px); /* centred in the content column, not the viewport */
   border: none;
   background: transparent;
   color: var(--color-content-muted, #8e93a3);
@@ -2405,8 +2417,17 @@ html.cer-own-theme #theme-background {
 label.cer-sp-row {
   cursor: pointer;
 }
-label.cer-sp-row:hover {
+label.cer-sp-row:hover,
+a.cer-sp-row:hover {
   background: var(--cer-raise);
+}
+a.cer-sp-row {
+  color: var(--cer-text) !important;
+  text-decoration: none !important;
+}
+a.cer-sp-row > .cer-icon {
+  flex: none;
+  color: var(--cer-text-3);
 }
 .cer-sp-row-text {
   flex: 1;
@@ -2744,11 +2765,6 @@ label.cer-sp-row:hover {
 .cer-sp-maker:hover {
   background: var(--cer-raise);
 }
-.cer-sp-games {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px 14px;
-}
 .cer-sp-link {
   display: flex;
   align-items: center;
@@ -2796,11 +2812,16 @@ label.cer-sp-row:hover {
   flex-direction: column;
   gap: 10px;
 }
-.cer-sp-feedback-top {
+.cer-sp-feedback-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.cer-sp-feedback-note {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--cer-text-3);
 }
 
 @media (max-width: 760px), (max-height: 520px) {
@@ -2820,9 +2841,6 @@ label.cer-sp-row:hover {
   }
   .cer-sp-body {
     padding: 4px 18px 18px;
-  }
-  .cer-sp-games {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -2902,6 +2920,17 @@ label.cer-sp-row:hover {
   padding: 4px 8px 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.cer-chat-list > .cer-empty {
+  margin: 8px;
+  border: 0;
+}
+.cer-chat-find {
+  flex: none;
+  padding: 0 12px 6px;
+}
+.cer-chat-find .cer-input {
+  width: 100%;
 }
 .cer-chat-list > .cer-sk-row {
   flex: none;
@@ -3115,7 +3144,7 @@ label.cer-sp-row:hover {
   pointer-events: none;
 }
 html.cer-cnav .cer-toast-host {
-  left: calc(50% + 144px); /* centred over the page column, beside the nav */
+  left: calc(50% + var(--cer-nav-w, 288px) / 2); /* centred over the page column, beside the nav */
 }
 .cer-toast {
   display: flex;
@@ -3162,7 +3191,7 @@ html.cer-cnav .cer-toast-host {
   line-height: 1.4;
 }
 html.cer-cnav .cer-conflict-toast {
-  left: calc(50% + 144px);
+  left: calc(50% + var(--cer-nav-w, 288px) / 2);
 }
 .cer-conflict-ic {
   flex: none;
@@ -3199,7 +3228,7 @@ html.cer-cnav .cer-conflict-toast {
   pointer-events: none;
 }
 html.cer-cnav #cer-skeleton {
-  left: 288px;
+  left: var(--cer-nav-w, 288px);
 }
 #cer-skeleton.cer-skeleton-fade {
   opacity: 0;
@@ -3267,4 +3296,17 @@ html.cer-cnav #cer-skeleton {
 }
 html.cer-cnav .cer-version-tag {
   padding-left: var(--cer-nav-w);
+}
+/* Roblox's full-bleed marketing pages (gift cards, Buy Robux, Plus, Redeem)
+   stay native. theme.js tags them with html.cer-fullbleed: the whole body
+   moves right of the nav instead of sliding under it. */
+html.cer-cnav.cer-fullbleed body {
+  box-sizing: border-box;
+  padding-left: var(--cer-nav-w, 288px) !important;
+}
+html.cer-cnav.cer-fullbleed #wrap.left-nav-new-width #container-main {
+  margin-left: 0 !important;
+}
+html.cer-cnav.cer-fullbleed .cer-version-tag {
+  padding-left: 0;
 }

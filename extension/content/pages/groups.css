@@ -111,6 +111,48 @@
   text-overflow: ellipsis;
 }
 
+/* the hero's "more" menu (mounted on #cer-app, fixed, so no clip) */
+[data-page="groups"] .cer-gp-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 200px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  background: var(--cer-surface-2);
+  border-radius: var(--cer-r-m);
+  box-shadow: var(--cer-shadow-lg);
+  animation: cer-gp-pop 0.14s var(--cer-ease);
+}
+@keyframes cer-gp-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+[data-page="groups"] .cer-gp-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--cer-r-s);
+  background: transparent;
+  color: var(--cer-text) !important;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+[data-page="groups"] .cer-gp-menu-item:hover {
+  background: var(--cer-hover);
+}
+[data-page="groups"] .cer-gp-menu-item .cer-icon {
+  color: var(--cer-text-3);
+}
+
 /* right side of the hero: the shout, or else the top game */
 [data-page="groups"] .cer-gp-shout {
   order: 2;

@@ -30,7 +30,8 @@
     { tag: "groups", feat: "groupsPage", test: (p) => /^\/(communities|groups)(\/\d+(\/[^/]*)?\/?|\/?)$/i.test(p) && !/^\/(communities|groups)\/(\d+\/)?configure\/?$|^\/(communities|groups)\/configure/i.test(p) },
     { tag: "catalog", feat: "catalogClean", test: (p) => /^\/(catalog|bundles)(\/|$)/i.test(p) },
     { tag: "messages", feat: "messagesPage", test: (p) => /^\/my\/messages/i.test(p) },
-    { tag: "settings", feat: "settingsPage", test: (p) => /^\/my\/account/i.test(p) && !/^#!\/(?!info\b)\w/.test(location.hash) },
+    { tag: "account", feat: "accountPage", test: (p) => /^\/my\/account\/?$/i.test(p) && /^#!\/(privacy|notifications|info)\/?$/i.test(location.hash) },
+    { tag: "settings", feat: "settingsPage", test: (p) => /^\/my\/account/i.test(p) && !/^#!\/\w/.test(location.hash) },
     { tag: "transactions", feat: "transactionsPage", test: (p) => /^\/transactions/i.test(p) },
     // avatar.js (own manifest entry) mounts it; listed so Roblox's editor is never started
     { tag: "avatar", feat: "avatarEditor", test: (p) => /^\/my\/avatar/i.test(p) },
@@ -40,6 +41,8 @@
     { tag: "inventory", feat: "inventoryPage", test: (p) => /^\/users\/\d+\/inventory/i.test(p) },
     { tag: "favorites", feat: "favoritesPage", test: (p) => /^\/users\/\d+\/favorites/i.test(p) },
     { tag: "trades", feat: "tradesPage", test: (p) => /^\/trades?(\/|$)/i.test(p) },
+    // last: Roblox's error page, or its in-place 404 (only knowable once the DOM exists)
+    { tag: "notfound", feat: "notFoundPage", test: (p) => /^\/request-?error\/?$/i.test(p) || !!document.querySelector?.("#content > .request-error-page-content") },
   ];
   // Loaded with ?cer=native: Roblox's page for this whole visit, even after
   // Roblox rewrites the URL without the query (game pages, /charts do).
@@ -69,6 +72,43 @@
     u.searchParams.set("cer", "native");
     return u.toString();
   };
+  // Roblox's own report flow (open in a new tab). kind: "user" | "game" |
+  // "group" | "asset". For "game" pass the ROOT PLACE id (places are assets in
+  // Roblox's report flow), not the universe id.
+  // Users: the format Roblox's own profile menu builds (its bundle, checked
+  // 2026-11-03): /report-abuse/?targetId&submitterId&abuseVector=userprofile
+  // (behind its EnableParentalDashboard flag; /abusereport/userprofile?id= is
+  // its fallback).
+  // Others: Roblox's long-standing /abusereport/<type>?id= links, which it
+  // forwards into the same flow.
+  let meId = null;
+  CER.me?.().then((m) => (meId = m?.id ?? null)).catch(() => {});
+  ui.reportUrl = function (kind, id) {
+    if (id == null || !/^\d+$/.test(String(id))) return null;
+    const back = encodeURIComponent(location.href);
+    if (kind === "user") {
+      const q = new URLSearchParams({ targetId: String(id), submitterId: String(meId ?? ""), abuseVector: "userprofile" });
+      return "https://www.roblox.com/report-abuse/?" + q;
+    }
+    const type = { game: "asset", asset: "asset", group: "group" }[kind];
+    return type ? `https://www.roblox.com/abusereport/${type}?id=${id}&redirecturl=${back}` : null;
+  };
+
+  // Loaded with ?cer=native (a purchase, a flow only Roblox runs, or a page
+  // CER gave back): a small chip brings the kid back to CER's version.
+  if (loadedNative && window.top === window) {
+    const addBack = async () => {
+      if (document.querySelector(".cer-native-back") || !(await CER.me?.())) return;
+      const chip = h("button", { type: "button", class: "cer-ui cer-native-back" }, ui.icon("arrowLeft", 16), h("span", { text: "Back to CER" }));
+      chip.addEventListener("click", () => {
+        const u = new URL(location.href);
+        u.searchParams.delete("cer");
+        location.href = u.toString();
+      });
+      document.body.appendChild(chip);
+    };
+    document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", addBack, { once: true }) : addBack();
+  }
   const api = (CER.api = {});
   const fmt = (CER.fmt = {});
 
@@ -300,9 +340,24 @@
 
   // ---------------------------------------------------------------- data
   // GET (or write) JSON. Returns parsed JSON or null; never throws.
-  // opts: { method, body, ttl (ms, GET cache), bg (use background fetch) }
+  // opts: { method, body, ttl (ms, GET cache), bg (use background fetch),
+  //         tries (default 3; 1 = no 429 retry), onStatus(status) }
+  // Identical GETs in flight share one request (the sidebar and the page
+  // used to fire the same friends call side by side).
   const memo = new Map();
-  api.json = async function (url, opts = {}) {
+  const inflight = new Map();
+  api.json = function (url, opts = {}) {
+    const method = opts.method ?? "GET";
+    if (method !== "GET" || opts.onStatus) return jsonNow(url, opts);
+    const key = (opts.bg ? "bg:" : "") + url; // a ttl only changes caching, not the answer
+    let p = inflight.get(key);
+    if (!p) {
+      p = jsonNow(url, opts).finally(() => inflight.delete(key));
+      inflight.set(key, p);
+    }
+    return p;
+  };
+  async function jsonNow(url, opts) {
     const method = opts.method ?? "GET";
     const key = method === "GET" ? url : null;
     if (key && opts.ttl) {
@@ -322,26 +377,27 @@
       }
     }
     let v = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const tries = opts.tries ?? 3;
+    for (let attempt = 0; attempt < tries; attempt++) {
+      let status = 0;
       try {
         if (opts.bg) {
           const r = await CER.bgFetch(url, method, opts.body);
-          if (r.status === 429) {
-            await sleep(600 * (attempt + 1));
-            continue;
-          }
+          status = r.status;
           v = r.ok ? r.data ?? null : null;
         } else {
           const res = method === "GET" ? await fetch(url, { credentials: "include" }) : await CER.robloxWrite(url, method, opts.body ?? {});
-          if (res?.status === 429) {
-            await sleep(600 * (attempt + 1));
-            continue;
-          }
+          status = res?.status ?? 0;
           v = res?.ok ? await res.json().catch(() => null) : null;
         }
       } catch {
         v = null;
       }
+      if (status === 429 && attempt < tries - 1) {
+        await sleep(600 * (attempt + 1));
+        continue;
+      }
+      opts.onStatus?.(status);
       break;
     }
     if (key && opts.ttl && v != null) {
@@ -355,7 +411,7 @@
       }
     }
     return v;
-  };
+  }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   api.sleep = sleep;
 
@@ -431,9 +487,15 @@
       async (ids, emit) => {
         const out = new Map();
         let todo = ids;
-        for (let attempt = 0; attempt < 3 && todo.length; attempt++) {
-          if (attempt) await sleep(1100);
+        let failed = 0; // failed calls in a row (429 / network): the whole chunk is still to do
+        for (let attempt = 0; attempt < 5 && todo.length; attempt++) {
+          if (attempt) await sleep(failed ? 1500 * 2 ** (failed - 1) : 1100);
           const j = await api.json(`https://thumbnails.roblox.com/v1/${path}?${param}=${todo.join(",")}&size=${size}&format=Webp&isCircular=false${extra}`);
+          if (!Array.isArray(j?.data)) {
+            failed++;
+            continue;
+          }
+          failed = 0;
           const pending = [];
           for (const it of j?.data ?? []) {
             const t = multi ? it.thumbnails?.[0] : it;
@@ -462,14 +524,62 @@
 
   // Presence: { userPresenceType: 0 offline | 1 online | 2 in game | 3 studio, placeId, rootPlaceId, universeId, lastLocation }
   // From the PAGE: the background worker's request comes back all offline
-  // (verified live: 0 of 73 vs 9 online). Background only if the page fails.
-  api.presenceOne = batcher(async (ids) => {
-    const url = "https://presence.roblox.com/v1/presence/users";
-    const body = { userIds: ids.map(Number) };
-    const j = (await api.json(url, { method: "POST", body })) ?? (await api.json(url, { method: "POST", body, bg: true }));
-    return new Map((j?.userPresences ?? []).map((p) => [String(p.userId), p]));
-  }, 100, 12, false);
-  api.presence = (ids) => api.presenceOne.many(ids);
+  // (verified live: 0 of 73 vs 9 online). Background only if the page fails
+  // for another reason than a rate limit.
+  // One cache for the whole tab (sidebar, home, friends, profile, game): an
+  // answer is reused for 25 s, ids already asked for share that call, a 429
+  // is never retried, and a failed lookup pauses presence for a bit (like
+  // idDown). Ids whose lookup failed are ABSENT from the result, not offline.
+  const PRES_TTL = 25000;
+  const presCache = new Map(); // userId -> { t, v }
+  let presDown = 0;
+  const presFresh = (id) => {
+    const e = presCache.get(String(id));
+    return e && Date.now() - e.t < PRES_TTL ? e.v : null;
+  };
+  const presLoad = batcher(
+    async (ids) => {
+      const out = new Map();
+      if (Date.now() < presDown) return out;
+      const url = "https://presence.roblox.com/v1/presence/users";
+      const body = { userIds: ids.map(Number) };
+      let status = 0;
+      let j = await api.json(url, { method: "POST", body, tries: 1, onStatus: (s) => (status = s) });
+      let fromPage = true;
+      if (!Array.isArray(j?.userPresences) && status !== 429) {
+        j = await api.json(url, { method: "POST", body, bg: true, tries: 1, onStatus: (s) => (status = s) });
+        fromPage = false;
+      }
+      if (!Array.isArray(j?.userPresences)) {
+        presDown = Date.now() + (status === 429 ? 30000 : 10000);
+        return out;
+      }
+      const now = Date.now();
+      for (const p of j.userPresences) {
+        out.set(String(p.userId), p);
+        if (fromPage) presCache.set(String(p.userId), { t: now, v: p }); // the bg answer is often all offline: never reuse it
+      }
+      return out;
+    },
+    100,
+    12,
+    false
+  );
+  api.presenceOne = (id) => {
+    const hit = presFresh(id);
+    return hit ? Promise.resolve(hit) : presLoad(id);
+  };
+  api.presence = async (ids) => {
+    const out = new Map();
+    const need = [];
+    for (const id of ids) {
+      const hit = presFresh(id);
+      hit ? out.set(String(id), hit) : need.push(id);
+    }
+    if (need.length) for (const [k, v] of await presLoad.many(need)) out.set(k, v);
+    return out;
+  };
+  api.presenceOne.many = api.presence;
   // CSS state name for a presence object
   api.presenceState = (p) => ["offline", "online", "ingame", "studio", "offline"][p?.userPresenceType ?? 0] ?? "offline";
 
@@ -518,10 +628,14 @@
   // ui.thumb("gameThumb", universeId, { class, alt })
   ui.thumb = function (kind, id, opts = {}) {
     const img = h("img", { class: "cer-img " + (opts.class ?? ""), alt: opts.alt ?? "", loading: "lazy", decoding: "async", draggable: "false" });
+    let asked = 0;
     const done = (url) => {
       if (url) {
         img.addEventListener("load", () => img.classList.add("cer-img-in"), { once: true });
         img.src = url;
+      } else if (kind && id && asked++ < 1) {
+        // a rate-limited page often clears up: ask once more a bit later
+        setTimeout(() => (img.isConnected ? api.thumb(kind, id).then(done) : done(null)), 6000);
       } else img.classList.add("cer-img-none");
     };
     if (opts.src) done(opts.src);
@@ -647,13 +761,14 @@
 
   // ---------------------------------------------------------------- layout
   // Section with a title row. ui.section("Top games", { icon, action: { label, href|onClick }, sub })
+  // `title` may also be a Node (e.g. a ui.nameTag for "More from <creator>").
   // Returns the section element; append content to section.body.
   ui.section = function (title, opts = {}) {
     const body = h("div", { class: "cer-block-body" });
     const head = h(
       "div",
       { class: "cer-block-head" },
-      h("h2", { class: "cer-block-title" }, opts.icon && ui.icon(opts.icon, 20), h("span", { text: title }), opts.count != null && h("span", { class: "cer-block-count", text: fmt.num(opts.count) })),
+      h("h2", { class: "cer-block-title" }, opts.icon && ui.icon(opts.icon, 20), title instanceof Node ? title : h("span", { text: title }), opts.count != null && h("span", { class: "cer-block-count", text: fmt.num(opts.count) })),
       opts.sub && h("div", { class: "cer-block-sub", text: opts.sub }),
       h("div", { class: "cer-block-tools" }, opts.tools, opts.action && ui.link(opts.action.label ?? "See all", opts.action))
     );

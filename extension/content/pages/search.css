@@ -43,6 +43,40 @@
   height: 4px;
   opacity: 0.6;
 }
+[data-page="search"] .sr-more.is-failed {
+  display: flex;
+  justify-content: center;
+  height: auto;
+  opacity: 1;
+}
+
+/* placeholder under an image: a person shape or a group letter, gone once the image is in */
+[data-page="search"] .sr-person .cer-avatar,
+[data-page="search"] .sr-group-icon {
+  position: relative;
+}
+[data-page="search"] .sr-person .cer-avatar .cer-img,
+[data-page="search"] .sr-group-icon .cer-img {
+  position: relative;
+  z-index: 1;
+}
+[data-page="search"] .sr-ph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  color: var(--cer-text-3);
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+[data-page="search"] .cer-img.cer-img-in + .sr-ph {
+  opacity: 0;
+}
 [data-page="search"] .sr-note {
   display: flex;
   flex-direction: column;

@@ -163,15 +163,20 @@ CER.alive = function () {
 // URL-scoped scripts must re-run when the address changes.
 // One shared watcher for every caller (it used to be one 700 ms interval per
 // script, ten of them, plus a fixed 500 ms delay before reacting). Content
-// scripts can't hook the page's history.pushState, so this polls — cheaply.
+// scripts can't hook the page's history.pushState, but the Navigation API
+// (Chrome, newer Firefox) reports every same-document URL change. Without it,
+// a 1 s poll that sleeps while the tab is hidden.
 CER._navCbs = [];
 CER.onNavigate = function (cb) {
   CER._navCbs.push(cb);
-  if (CER._navTimer) return;
+  if (CER._navWired) return;
+  CER._navWired = true;
   let last = location.href;
+  const nav = globalThis.navigation;
   const check = () => {
     if (!CER.alive()) {
       clearInterval(CER._navTimer); // stop the orphaned poll after a reload/update
+      CER._navTimer = null;
       return;
     }
     if (location.href === last) return;
@@ -187,7 +192,14 @@ CER.onNavigate = function (cb) {
       }
     }, 150);
   };
-  CER._navTimer = setInterval(check, 300);
+  if (nav && typeof nav.addEventListener === "function") {
+    // currententrychange also covers pushState/replaceState that no one intercepts
+    nav.addEventListener("navigatesuccess", check);
+    nav.addEventListener("currententrychange", check);
+  } else {
+    CER._navTimer = setInterval(() => !document.hidden && check(), 1000);
+    document.addEventListener("visibilitychange", () => !document.hidden && check());
+  }
   window.addEventListener("popstate", check);
 };
 
@@ -319,22 +331,42 @@ CER.me = function () {
       obj.data[me.id] = true;
       localStorage.setItem("new-left-nav", JSON.stringify(obj));
     }
+    // the background playtime tracker caches our id: keep it on the account
+    // that is signed in now (it used to keep the first one forever)
+    const { cerUserId } = await CER.ext.storage.local.get("cerUserId");
+    if (String(cerUserId ?? "") !== String(me.id)) await CER.set({ cerUserId: me.id, cerUserIdAt: Date.now() });
   } catch {
     /* ignore */
   }
 })();
 
-// Dev only: unpacked installs (no update_url) can be reloaded from the page
-// with window.postMessage({ cer: "dev-reload" }) so changes can be tested
-// without clicking reload on chrome://extensions. Store installs ignore it.
+// Dev only. A build is "dev" only when its manifest carries "cer_dev": true
+// (the repo's extension/ folder does; build-firefox.sh and store zips strip
+// it) AND has no store update_url. Firefox store installs have no update_url,
+// so that alone used to turn every Firefox install into a dev build.
+// Dev builds can be reloaded from the page with window.postMessage({ cer:
+// "dev-reload" }) and honour the cer-dry-writes test switch.
 try {
-  CER.dev = !CER.ext.runtime.getManifest().update_url;
+  const m = CER.ext.runtime.getManifest();
+  CER.dev = m.cer_dev === true && !m.update_url;
   if (CER.dev) {
     window.addEventListener("message", (e) => {
       if (e.source === window && e.data?.cer === "dev-reload") CER.ext.runtime.sendMessage({ cer: "dev-reload" });
     });
   }
-} catch {}
+} catch {
+  CER.dev = false;
+}
+// Dev test switch: sessionStorage["cer-dry-writes"] = "1" makes page writes
+// log instead of sending. Never read outside dev builds.
+CER.dryWrites = function () {
+  if (!CER.dev) return false;
+  try {
+    return sessionStorage.getItem("cer-dry-writes") === "1";
+  } catch {
+    return false;
+  }
+};
 
 // Send feedback/bug/idea to the maintainer's Discord webhook, via the
 // background worker (Roblox CSP blocks a page fetch to discord.com). The URL
@@ -356,7 +388,16 @@ CER.sendFeedback = async function (kind, message) {
   const who = me ? `${me.name} (${me.id})` : "unknown user";
   const v = CER.ext.runtime.getManifest().version;
   const text = `**[${kind}]** from **${who}** · v${v}\n${message}`;
-  const res = await new Promise((resolve) => CER.ext.runtime.sendMessage({ cer: "feedback", text }, resolve));
+  const res = await new Promise((resolve) => {
+    try {
+      CER.ext.runtime.sendMessage({ cer: "feedback", text }, (r) => {
+        void CER.ext.runtime.lastError; // read it: a closed port is just a failed send
+        resolve(r ?? { ok: false, status: 0 });
+      });
+    } catch {
+      resolve({ ok: false, status: 0 }); // context invalidated
+    }
+  });
   if (res?.ok) await CER.set({ feedbackAt: Date.now() });
   return res ?? { ok: false };
 };
@@ -479,9 +520,10 @@ CER.robloxWrite = async function (url, method, body) {
 CER.bgFetch = function (url, method = "GET", body) {
   return new Promise((resolve) => {
     try {
-      CER.ext.runtime.sendMessage({ cer: "fetch", url, method, body }, (r) =>
-        resolve(r ?? { ok: false, status: 0 })
-      );
+      CER.ext.runtime.sendMessage({ cer: "fetch", url, method, body }, (r) => {
+        void CER.ext.runtime.lastError; // worker torn down mid-request: just a failed fetch
+        resolve(r ?? { ok: false, status: 0 });
+      });
     } catch {
       resolve({ ok: false, status: 0 }); // context invalidated
     }
@@ -626,42 +668,102 @@ CER.getGameIcons = async function (universeIds) {
   return icons;
 };
 
-// placeId → universeId, cached in storage so Continue-tab thumbnail swaps
-// don't refetch on every page load.
-CER.getUniverseIds = async function (placeIds) {
-  let placeUniverseCache = {};
-  try {
-    ({ placeUniverseCache = {} } = await CER.ext.storage.local.get("placeUniverseCache"));
-  } catch {
-    /* context invalidated: resolve without the cache */
+// placeId → universeId (never changes). One in-memory map per tab, loaded from
+// storage once; places already being looked up share that lookup; unknown
+// places go in one batched call (50 a time), and whatever it misses goes
+// through the per-place endpoint 4 at a time with 429 backoff. New entries
+// are merged into storage in one debounced write (re-read first), so two
+// callers finishing together no longer drop each other's ids.
+CER._pu = { map: {}, loadP: null, wait: new Map(), dirty: {}, saveT: null };
+CER._lookupUniverses = async function (ids) {
+  const out = {};
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < ids.length; i += 50) {
+    try {
+      const r = await fetch("https://games.roblox.com/v1/games/multiget-place-details?placeIds=" + ids.slice(i, i + 50).join(","), { credentials: "include" });
+      const list = r.ok ? await r.json().catch(() => null) : null;
+      if (Array.isArray(list)) for (const d of list) if (d?.placeId && d.universeId) out[String(d.placeId)] = String(d.universeId);
+    } catch {
+      /* the per-place path below picks these up */
+    }
   }
+  const rest = ids.filter((p) => !out[p]);
+  let next = 0;
+  const worker = async () => {
+    while (next < rest.length) {
+      const p = rest[next++];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await fetch("https://apis.roblox.com/universes/v1/places/" + p + "/universe");
+          if (r.status === 429) {
+            await sleep(800 * (attempt + 1));
+            continue;
+          }
+          if (r.ok) {
+            const id = (await r.json().catch(() => null))?.universeId; // non-2xx bodies never get cached
+            if (id) out[p] = String(id);
+          }
+        } catch {
+          /* leave unresolved */
+        }
+        break;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, rest.length) }, worker));
+  return out;
+};
+CER._savePlaceUniverses = function () {
+  const pu = CER._pu;
+  if (pu.saveT) return;
+  pu.saveT = setTimeout(async () => {
+    pu.saveT = null;
+    const add = pu.dirty;
+    pu.dirty = {};
+    try {
+      const { placeUniverseCache = {} } = await CER.ext.storage.local.get("placeUniverseCache");
+      const merged = { ...placeUniverseCache, ...add };
+      // don't let the map grow forever
+      const keys = Object.keys(merged);
+      if (keys.length > 2000) for (const k of keys.slice(0, keys.length - 1500)) delete merged[k];
+      await CER.set({ placeUniverseCache: merged });
+    } catch {
+      /* context invalidated: the memory map still works this page */
+    }
+  }, 1000);
+};
+CER.getUniverseIds = async function (placeIds) {
+  const pu = CER._pu;
+  pu.loadP ??= (async () => {
+    try {
+      const { placeUniverseCache = {} } = await CER.ext.storage.local.get("placeUniverseCache");
+      pu.map = { ...placeUniverseCache, ...pu.map };
+    } catch {
+      /* context invalidated: resolve without the cache */
+    }
+  })();
+  await pu.loadP;
   const result = {};
   const missing = [];
-  for (const p of placeIds) {
-    if (placeUniverseCache[p]) result[p] = placeUniverseCache[p];
-    else missing.push(p);
+  for (const raw of placeIds) {
+    const p = String(raw);
+    if (pu.map[p]) result[p] = pu.map[p];
+    else if (/^\d+$/.test(p) && !missing.includes(p)) missing.push(p);
   }
-  await Promise.all(
-    missing.map(async (p) => {
-      try {
-        const r = await fetch("https://apis.roblox.com/universes/v1/places/" + p + "/universe");
-        if (!r.ok) return; // non-2xx with a JSON body would otherwise cache a bad/undefined id
-        const id = (await r.json()).universeId;
-        if (id) {
-          result[p] = String(id);
-          placeUniverseCache[p] = String(id);
-        }
-      } catch {
-        /* leave unresolved */
-      }
-    })
-  );
-  if (missing.length) {
-    // place → universe never changes, but don't let the map grow forever
-    const keys = Object.keys(placeUniverseCache);
-    if (keys.length > 2000) for (const k of keys.slice(0, keys.length - 1500)) delete placeUniverseCache[k];
-    await CER.set({ placeUniverseCache });
+  const fresh = missing.filter((p) => !pu.wait.has(p));
+  if (fresh.length) {
+    const job = CER._lookupUniverses(fresh)
+      .catch(() => ({}))
+      .then((found) => {
+        for (const p of fresh) pu.wait.delete(p);
+        for (const p in found) pu.map[p] = pu.dirty[p] = found[p];
+        if (Object.keys(found).length) CER._savePlaceUniverses();
+        return found;
+      });
+    for (const p of fresh) pu.wait.set(p, job);
   }
+  const waits = missing.map((p) => pu.wait.get(p).then((found) => found[p] && (result[p] = found[p])));
+  await Promise.all(waits);
   return result;
 };
 

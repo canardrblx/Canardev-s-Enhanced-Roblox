@@ -38,6 +38,14 @@
 [data-page="discover"] .cer-cols.dc-fg-off > .cer-col-side {
   display: none;
 }
+/* logged out: no column and no button to bring it back */
+[data-page="discover"] .cer-cols.dc-fg-none {
+  grid-template-columns: minmax(0, 1fr);
+}
+[data-page="discover"] .cer-cols.dc-fg-none > .cer-col-side,
+[data-page="discover"] .dc-chips.dc-fg-none .dc-fg-show {
+  display: none;
+}
 [data-page="discover"] .dc-chip-row {
   padding: 2px 2px 4px;
   scroll-behavior: smooth;
@@ -272,9 +280,16 @@
   margin: 2px 8px;
 }
 [data-page="discover"] .dc-fg-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   padding: 4px 8px;
   font-size: 14px;
   color: var(--cer-text-3);
+}
+[data-page="discover"] .dc-fg-note p {
+  margin: 0;
 }
 [data-page="discover"] .dc-hero-link {
   color: inherit !important;

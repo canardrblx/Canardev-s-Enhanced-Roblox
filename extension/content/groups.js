@@ -23,6 +23,11 @@
   // once via CER.takeover) so SPA moves between groups and ?cer=native stay
   // right. Leave/transfer PROTECTION still runs on every page.
   const ownedByNewPage = () => CER.pageFor?.(location.pathname, location.search, settings.features)?.tag === "groups";
+  // CER's own profile page paints its banner itself: no sweep there
+  const ownedProfile = () => document.documentElement.classList.contains("cer-takeover") || CER.pageFor?.(location.pathname, location.search, settings.features)?.tag === "profile";
+  // CER's own UI never shows leave/transfer controls: its mutations are skipped
+  const OURS = ".cer-ui, #cer-app";
+  const ours = (n) => (n.nodeType === Node.ELEMENT_NODE ? n : n.parentElement)?.closest?.(OURS);
   const themed = () => {
     const preset = CER.THEMES.find((t) => t.id === settings.theme.preset);
     return preset && !preset.native && preset.id !== "" && settings.features.theme ? preset : null;
@@ -152,16 +157,22 @@
 
   let bannerUntil = Date.now() + 8000;
   let bannerPasses = 0;
+  let bannerDone = false;
   const BLACK = /rgba?\(0, 0, 0(?:, *(0\.[3-9]\d*|1))?\)|color\(srgb 0 0 0( \/ [\d.]+)?\)/;
 
   function unblackBanners(preset) {
     const flat = preset.flat ?? preset.bg;
     const writes = [];
     // read phase (no writes in between, so layout is computed once)
+    const rejects = [];
     for (const el of document.querySelectorAll("div, section, span")) {
       if (el.dataset.cerUb) continue;
       const rect = el.getBoundingClientRect();
-      if (rect.width < 250 || rect.height < 30 || rect.height > 700 || rect.top > 700) continue;
+      if (rect.width < 250 || rect.height < 30 || rect.height > 700 || rect.top > 700) {
+        // laid out but the wrong size: never read it again (unlaid-out ones get another look)
+        if (rect.width || rect.height) rejects.push(el);
+        continue;
+      }
       const cs = getComputedStyle(el);
       const w = { el, bg: null, img: null };
       if (BLACK.test(cs.backgroundColor)) w.bg = flat;
@@ -173,6 +184,7 @@
       writes.push(w);
     }
     // write phase
+    for (const el of rejects) el.dataset.cerUb = "0";
     for (const { el, bg, img } of writes) {
       el.dataset.cerUb = bg || img ? "1" : "0";
       if (bg) el.style.setProperty("background-color", bg, "important");
@@ -190,7 +202,10 @@
     for (const el of document.querySelectorAll("div, span, img, section")) {
       if (el.dataset.cerMk) continue;
       const r = el.getBoundingClientRect();
-      if (r.width < 600 || r.height < 150 || r.top > 500) continue;
+      if (r.width < 600 || r.height < 150 || r.top > 500) {
+        if (r.width || r.height) checked.push(el); // laid out, wrong size: skip it from now on
+        continue;
+      }
       checked.push(el);
       if (el.tagName === "IMG" || getComputedStyle(el).backgroundImage.includes("url(")) found.push(el);
     }
@@ -211,6 +226,7 @@
       el.dataset.cerMk = "1";
     }
     for (const sib of overlays) sib.style.setProperty("display", "none", "important");
+    return found.length > 0;
   }
 
   // ---- group games (one fetch per group, shared by the tabs + the row) ----
@@ -636,11 +652,13 @@
       hideStorePromo();
       hideGroupPayouts();
     }
+    // banners: one pass that finds the banner, then done. Passes before the
+    // banner exists only read elements that are new since the last one.
     const preset = themed();
-    if ((group || onProfile()) && preset && Date.now() < bannerUntil && bannerPasses < 12) {
+    if ((group || (onProfile() && !ownedProfile())) && preset && !bannerDone && Date.now() < bannerUntil && bannerPasses < 12) {
       bannerPasses++;
       unblackBanners(preset);
-      maskBanners();
+      if (maskBanners()) bannerDone = true;
     }
   }
 
@@ -653,15 +671,18 @@
       sweep();
     }, delay);
   }
-  const wantsSweep = () => (onGroups() && !ownedByNewPage()) || (onProfile() && Date.now() < bannerUntil);
+  const wantsSweep = () => (onGroups() && !ownedByNewPage()) || (onProfile() && !bannerDone && Date.now() < bannerUntil && !ownedProfile());
 
   // one observer: protection sees every added node (before paint); group and
   // profile pages also get a sweep
+  // Protection keeps running on CER-owned pages too (Roblox's own menus and
+  // modals can still open there); only CER's own subtrees are skipped.
   new MutationObserver((muts) => {
     if (settings.features.protectGroups) {
       for (const m of muts) {
+        if (ours(m.target)) continue;
         if (m.type === "characterData") queueProtect(m.target);
-        else for (const n of m.addedNodes) queueProtect(n);
+        else for (const n of m.addedNodes) if (!(n.nodeType === Node.ELEMENT_NODE && n.matches(OURS))) queueProtect(n);
       }
     }
     if (wantsSweep()) scheduleSweep();
@@ -670,6 +691,7 @@
   CER.onNavigate(() => {
     bannerUntil = Date.now() + 8000;
     bannerPasses = 0;
+    bannerDone = false;
     sweep();
   });
   CER.onSettingsChanged(async () => {

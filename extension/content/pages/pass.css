@@ -1,7 +1,7 @@
-/* CER game pass page (pages/pass.js). Store item screen: the pass art is the
-   hero, price + one Buy on it. Text on the hero is white (it always sits on
-   darkened art); the rest follows the theme tokens. Scoped under
-   [data-page="pass"], px- prefix. */
+/* CER game pass page (pages/pass.js). Store item screen: a short hero with
+   the pass art, price, Buy and Play. Theme tokens only (the hero's art is
+   blurred under a theme-colored shade). Scoped under [data-page="pass"],
+   px- prefix. */
 
 [data-page="pass"] .px {
   gap: 24px;
@@ -10,52 +10,51 @@
 }
 
 /* ------------------------------------------------------------ hero */
+/* short: art left, title + price + buttons right, theme colors over a
+   soft blur of the pass's own art */
 [data-page="pass"] .px-hero {
   position: relative;
   isolation: isolate;
   overflow: hidden;
   border-radius: var(--cer-r-xl);
-  background: #101117;
-  color: #fff;
-  min-height: 380px;
-  display: flex;
-  align-items: center;
+  background: var(--cer-surface);
+  color: var(--cer-text);
 }
 [data-page="pass"] .px-bg {
   position: absolute;
   inset: -80px;
   z-index: -2;
   background: center / cover no-repeat;
-  filter: blur(70px) saturate(1.6);
+  filter: blur(70px) saturate(1.4);
   transform: scale(1.15);
   opacity: 0;
   transition: opacity 0.6s var(--cer-ease);
 }
 [data-page="pass"] .px-hero.has-image .px-bg {
-  opacity: 0.95;
+  opacity: 0.55;
 }
 [data-page="pass"] .px-shade {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(90deg, rgba(6, 7, 12, 0.25) 0%, rgba(6, 7, 12, 0.55) 40%, rgba(6, 7, 12, 0.75) 100%), linear-gradient(0deg, rgba(6, 7, 12, 0.4), transparent 60%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--cer-surface) 25%, transparent) 0%, color-mix(in srgb, var(--cer-surface) 70%, transparent) 100%);
 }
 [data-page="pass"] .px-inner {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: clamp(28px, 4cqw, 56px);
-  padding: 44px clamp(28px, 4.5cqw, 64px);
+  gap: clamp(20px, 3cqw, 36px);
+  padding: 24px clamp(20px, 3cqw, 36px);
 }
 [data-page="pass"] .px-art {
   flex: none;
   position: relative;
-  width: clamp(190px, 21cqw, 270px);
+  width: clamp(120px, 14cqw, 168px);
   aspect-ratio: 1;
   border-radius: 50%; /* Roblox shows pass icons as circles */
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: var(--cer-raise);
+  box-shadow: var(--cer-shadow-lg);
 }
 [data-page="pass"] .px-art img {
   width: 100%;
@@ -72,7 +71,7 @@
 }
 [data-page="pass"] .px-art.is-loading,
 [data-page="pass"] .px-sk {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.06));
+  background: linear-gradient(90deg, var(--cer-raise), var(--cer-hover), var(--cer-raise));
   background-size: 200% 100%;
   animation: cer-shimmer 1.3s ease-in-out infinite;
 }
@@ -81,10 +80,10 @@
   position: absolute;
   inset: 32%;
   border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.18);
+  border: 3px solid var(--cer-line-2);
 }
 [data-page="pass"] .px-hero.is-owned .px-art {
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 4px var(--cer-good);
+  box-shadow: var(--cer-shadow-lg), 0 0 0 4px var(--cer-good);
 }
 
 [data-page="pass"] .px-body {
@@ -93,7 +92,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
 }
 [data-page="pass"] .px-eyebrow {
   display: flex;
@@ -102,7 +101,7 @@
   gap: 4px 10px;
   font-size: 15px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--cer-text-2);
   min-height: 20px;
 }
 [data-page="pass"] .px-game-slot:empty,
@@ -111,12 +110,12 @@
 }
 [data-page="pass"] .px-game-link,
 [data-page="pass"] .px-creator {
-  color: rgba(255, 255, 255, 0.86) !important;
+  color: var(--cer-text-2) !important;
   transition: color 0.15s;
 }
 [data-page="pass"] .px-game-link:hover,
 [data-page="pass"] a.px-creator:hover {
-  color: #fff !important;
+  color: var(--cer-text) !important;
 }
 [data-page="pass"] .px-by {
   display: inline-flex;
@@ -125,12 +124,11 @@
   font-weight: 600;
 }
 [data-page="pass"] .px-title {
-  font-size: clamp(32px, 4cqw, 56px);
-  line-height: 1.05;
+  font-size: clamp(26px, 3cqw, 40px);
+  line-height: 1.08;
   font-weight: 900;
-  letter-spacing: -0.025em;
-  color: #fff;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.4);
+  letter-spacing: -0.02em;
+  color: var(--cer-text);
   overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -141,11 +139,11 @@
   max-width: 640px;
 }
 [data-page="pass"] .px-desc p.cer-clamp {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 16px;
+  color: var(--cer-text-2);
+  font-size: 15px;
 }
 [data-page="pass"] .px-desc .cer-clamp-more {
-  color: #fff !important;
+  color: var(--cer-text) !important;
 }
 [data-page="pass"] .px-desc:empty {
   display: none;
@@ -154,8 +152,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px 22px;
-  margin-top: 8px;
+  gap: 12px 18px;
+  margin-top: 4px;
   min-height: 52px;
 }
 [data-page="pass"] .px-price {
@@ -171,28 +169,26 @@
   font-variant-numeric: tabular-nums;
 }
 [data-page="pass"] .px-robux.is-big {
-  font-size: 30px;
+  font-size: 28px;
   letter-spacing: -0.02em;
-  color: #fff;
+  color: var(--cer-text);
   align-self: center;
 }
 [data-page="pass"] .px-robux.is-big .cer-icon {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
 }
 [data-page="pass"] .px-was {
   font-size: 16px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--cer-text-3);
 }
-[data-page="pass"] .px-buy-btn {
-  min-width: 150px;
+[data-page="pass"] .px-buy-btn,
+[data-page="pass"] .px-play {
+  min-width: 140px;
 }
 [data-page="pass"] .px-have,
 [data-page="pass"] .px-off {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   font-size: 17px;
   font-weight: 800;
 }
@@ -200,91 +196,30 @@
   color: var(--cer-good);
 }
 [data-page="pass"] .px-off {
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--cer-text-3);
+}
+[data-page="pass"] .px-native-link {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cer-text-2) !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-page="pass"] .px-native-link:hover {
+  color: var(--cer-text) !important;
 }
 [data-page="pass"] .px-sk {
   display: block;
   border-radius: 8px;
 }
 [data-page="pass"] .px-sk-title {
-  width: min(420px, 70%);
-  height: 48px;
+  width: min(360px, 70%);
+  height: 40px;
 }
 [data-page="pass"] .px-sk-btn {
-  width: 260px;
+  width: 240px;
   height: 52px;
   border-radius: 999px;
-}
-
-/* ------------------------------------------------------------ game strip */
-[data-page="pass"] .px-game-sk {
-  height: 112px;
-  border-radius: var(--cer-r-l);
-  background: linear-gradient(90deg, var(--cer-raise) 0%, var(--cer-hover) 50%, var(--cer-raise) 100%);
-  background-size: 200% 100%;
-  animation: cer-shimmer 1.3s ease-in-out infinite;
-}
-[data-page="pass"] .px-game-card {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 12px 20px 12px 12px;
-  border-radius: var(--cer-r-l);
-  background: var(--cer-raise);
-  color: var(--cer-text) !important;
-  transition: background 0.15s;
-  min-width: 0;
-}
-[data-page="pass"] .px-game-card:hover {
-  background: var(--cer-hover);
-}
-[data-page="pass"] .px-game-art {
-  flex: none;
-  width: 156px;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--cer-r-m);
-  overflow: hidden;
-  background: var(--cer-surface-2);
-}
-[data-page="pass"] .px-game-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-[data-page="pass"] .px-game-name {
-  font-size: 19px;
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-[data-page="pass"] .px-game-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  font-size: 14px;
-  color: var(--cer-text-3);
-}
-[data-page="pass"] .px-game-meta > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-[data-page="pass"] .px-game-meta b {
-  color: var(--cer-text);
-  font-weight: 800;
-}
-[data-page="pass"] .px-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--cer-ingame);
-}
-[data-page="pass"] .px-play {
-  flex: none;
-  min-width: 150px;
 }
 
 /* ------------------------------------------------------------ more passes */
@@ -354,14 +289,12 @@
   [data-page="pass"] .px-inner {
     flex-direction: column;
     align-items: flex-start;
-    padding: 28px;
+    padding: 22px;
   }
   [data-page="pass"] .px-art {
-    width: 170px;
+    width: 120px;
   }
-  [data-page="pass"] .px-game-art {
-    width: 112px;
-  }
+  [data-page="pass"] .px-buy-btn,
   [data-page="pass"] .px-play {
     min-width: 0;
   }

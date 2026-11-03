@@ -1,6 +1,7 @@
-/* CER badge page (pages/badge.js). Achievement screen: the badge art is the
-   hero. Text on the hero is white (it always sits on darkened art); the rest
-   follows the theme tokens. Scoped under [data-page="badge"], bx- prefix. */
+/* CER badge page (pages/badge.js). Achievement screen: a short hero with
+   the badge art, its rarity, your status and Play. Theme tokens only (the
+   hero's art is blurred under a theme-colored shade). Scoped under
+   [data-page="badge"], bx- prefix. */
 
 [data-page="badge"] .bx {
   gap: 24px;
@@ -9,54 +10,53 @@
 }
 
 /* ------------------------------------------------------------ hero */
+/* short: art left, title + rarity + status + Play right, theme colors over
+   a soft blur of the badge's own art */
 [data-page="badge"] .bx-hero {
   position: relative;
   isolation: isolate;
   overflow: hidden;
   border-radius: var(--cer-r-xl);
-  background: #101117;
-  color: #fff;
-  min-height: 380px;
-  display: flex;
-  align-items: center;
+  background: var(--cer-surface);
+  color: var(--cer-text);
 }
 [data-page="badge"] .bx-bg {
   position: absolute;
   inset: -80px;
   z-index: -2;
   background: center / cover no-repeat;
-  filter: blur(70px) saturate(1.6);
+  filter: blur(70px) saturate(1.4);
   transform: scale(1.15);
   opacity: 0;
   transition: opacity 0.6s var(--cer-ease);
 }
 [data-page="badge"] .bx-hero.has-image .bx-bg {
-  opacity: 0.9;
+  opacity: 0.55;
 }
 [data-page="badge"] .bx-shade {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(90deg, rgba(6, 7, 12, 0.35) 0%, rgba(6, 7, 12, 0.6) 45%, rgba(6, 7, 12, 0.78) 100%), linear-gradient(0deg, rgba(6, 7, 12, 0.45), transparent 60%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--cer-surface) 25%, transparent) 0%, color-mix(in srgb, var(--cer-surface) 70%, transparent) 100%);
 }
 [data-page="badge"] .bx-inner {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: clamp(28px, 4cqw, 56px);
-  padding: 44px clamp(28px, 4.5cqw, 64px);
+  gap: clamp(20px, 3cqw, 36px);
+  padding: 24px clamp(20px, 3cqw, 36px);
 }
 
-/* the badge itself: big, round, glowing */
+/* the badge itself: round, lifted */
 [data-page="badge"] .bx-art {
   flex: none;
   position: relative;
-  width: clamp(190px, 21cqw, 270px);
+  width: clamp(120px, 14cqw, 168px);
   aspect-ratio: 1;
   border-radius: 50%;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: var(--cer-raise);
+  box-shadow: var(--cer-shadow-lg);
 }
 [data-page="badge"] .bx-art img {
   width: 100%;
@@ -73,7 +73,7 @@
 }
 [data-page="badge"] .bx-art.is-loading,
 [data-page="badge"] .bx-sk {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.06));
+  background: linear-gradient(90deg, var(--cer-raise), var(--cer-hover), var(--cer-raise));
   background-size: 200% 100%;
   animation: cer-shimmer 1.3s ease-in-out infinite;
 }
@@ -82,11 +82,11 @@
   position: absolute;
   inset: 32%;
   border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.18);
+  border: 3px solid var(--cer-line-2);
 }
 /* owned: a ring of the "good" color around the art */
 [data-page="badge"] .bx-hero.is-owned .bx-art {
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 4px var(--cer-good);
+  box-shadow: var(--cer-shadow-lg), 0 0 0 4px var(--cer-good);
 }
 
 [data-page="badge"] .bx-body {
@@ -95,7 +95,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
 }
 [data-page="badge"] .bx-eyebrow {
   display: flex;
@@ -104,17 +104,17 @@
   gap: 4px 10px;
   font-size: 15px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--cer-text-2);
   min-height: 20px;
 }
 [data-page="badge"] .bx-game-link,
 [data-page="badge"] .bx-creator {
-  color: rgba(255, 255, 255, 0.86) !important;
+  color: var(--cer-text-2) !important;
   transition: color 0.15s;
 }
 [data-page="badge"] .bx-game-link:hover,
 [data-page="badge"] a.bx-creator:hover {
-  color: #fff !important;
+  color: var(--cer-text) !important;
 }
 [data-page="badge"] .bx-by {
   display: inline-flex;
@@ -123,12 +123,11 @@
   font-weight: 600;
 }
 [data-page="badge"] .bx-title {
-  font-size: clamp(32px, 4cqw, 56px);
-  line-height: 1.05;
+  font-size: clamp(26px, 3cqw, 40px);
+  line-height: 1.08;
   font-weight: 900;
-  letter-spacing: -0.025em;
-  color: #fff;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.4);
+  letter-spacing: -0.02em;
+  color: var(--cer-text);
   overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -139,28 +138,23 @@
   max-width: 640px;
 }
 [data-page="badge"] .bx-desc p.cer-clamp {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 16px;
+  color: var(--cer-text-2);
+  font-size: 15px;
 }
 [data-page="badge"] .bx-desc .cer-clamp-more {
-  color: #fff !important;
+  color: var(--cer-text) !important;
 }
 [data-page="badge"] .bx-desc:empty {
   display: none;
 }
 [data-page="badge"] .bx-stats {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px 26px;
-  margin-top: 4px;
   font-size: 15px;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--cer-text-2);
 }
-[data-page="badge"] .bx-stats b {
-  color: #fff;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+[data-page="badge"] .bx-stats:empty {
+  display: none;
 }
 [data-page="badge"] .bx-rare {
   display: inline-flex;
@@ -168,24 +162,31 @@
   gap: 8px;
 }
 [data-page="badge"] .bx-rare b {
-  font-size: 30px;
+  font-size: 26px;
+  font-weight: 800;
   letter-spacing: -0.02em;
+  color: var(--cer-text);
+  font-variant-numeric: tabular-nums;
 }
 [data-page="badge"] .bx-word {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--cer-text-2);
+}
+[data-page="badge"] .bx-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 4px;
 }
 [data-page="badge"] .bx-own:empty {
   display: none;
 }
 [data-page="badge"] .bx-own > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
 }
 [data-page="badge"] .bx-have {
@@ -193,91 +194,32 @@
 }
 [data-page="badge"] .bx-not,
 [data-page="badge"] .bx-off {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--cer-text-3);
+}
+[data-page="badge"] .bx-play {
+  min-width: 140px;
+}
+[data-page="badge"] .bx-native-link {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cer-text-2) !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-page="badge"] .bx-native-link:hover {
+  color: var(--cer-text) !important;
 }
 [data-page="badge"] .bx-sk {
   display: block;
   border-radius: 8px;
 }
 [data-page="badge"] .bx-sk-title {
-  width: min(420px, 70%);
-  height: 48px;
+  width: min(360px, 70%);
+  height: 40px;
 }
 [data-page="badge"] .bx-sk-line {
-  width: 260px;
-  height: 18px;
-}
-
-/* ------------------------------------------------------------ game strip */
-[data-page="badge"] .bx-game-sk {
-  height: 112px;
-  border-radius: var(--cer-r-l);
-  background: linear-gradient(90deg, var(--cer-raise) 0%, var(--cer-hover) 50%, var(--cer-raise) 100%);
-  background-size: 200% 100%;
-  animation: cer-shimmer 1.3s ease-in-out infinite;
-}
-[data-page="badge"] .bx-game-card {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 12px 20px 12px 12px;
-  border-radius: var(--cer-r-l);
-  background: var(--cer-raise);
-  color: var(--cer-text) !important;
-  transition: background 0.15s;
-  min-width: 0;
-}
-[data-page="badge"] .bx-game-card:hover {
-  background: var(--cer-hover);
-}
-[data-page="badge"] .bx-game-art {
-  flex: none;
-  width: 156px;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--cer-r-m);
-  overflow: hidden;
-  background: var(--cer-surface-2);
-}
-[data-page="badge"] .bx-game-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-[data-page="badge"] .bx-game-name {
-  font-size: 19px;
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-[data-page="badge"] .bx-game-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  font-size: 14px;
-  color: var(--cer-text-3);
-  min-height: 18px;
-}
-[data-page="badge"] .bx-game-meta > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-[data-page="badge"] .bx-game-meta b {
-  color: var(--cer-text);
-  font-weight: 800;
-}
-[data-page="badge"] .bx-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--cer-ingame);
-}
-[data-page="badge"] .bx-play {
-  flex: none;
-  min-width: 150px;
+  width: 180px;
+  height: 22px;
 }
 
 /* ------------------------------------------------------------ more badges */
@@ -321,7 +263,7 @@
   place-items: center;
   border-radius: 50%;
   background: var(--cer-good);
-  color: #062b16;
+  color: var(--cer-bg);
   box-shadow: 0 0 0 3px var(--cer-bg);
 }
 [data-page="badge"] .bx-tile.is-owned .bx-tile-check {
@@ -351,13 +293,10 @@
   [data-page="badge"] .bx-inner {
     flex-direction: column;
     align-items: flex-start;
-    padding: 28px;
+    padding: 22px;
   }
   [data-page="badge"] .bx-art {
-    width: 170px;
-  }
-  [data-page="badge"] .bx-game-art {
-    width: 112px;
+    width: 120px;
   }
   [data-page="badge"] .bx-play {
     min-width: 0;

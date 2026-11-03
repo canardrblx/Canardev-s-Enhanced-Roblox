@@ -31,9 +31,11 @@
   // Real controls: any short label inside one is Roblox's own text.
   const CONTROL =
     "button, [role='button'], [role='tab'], [role='menuitem'], [role='option'], label, legend, th, [class*='breadcrumb' i]";
-  // Never inside these (user content / game + group names / inputs).
+  // Never inside these (user content / game + group names / inputs, and
+  // CER's own UI, which already says "Groups" when it should).
+  const OURS = ".cer-ui, #cer-app";
   const SKIP_SEL =
-    "script, style, textarea, input, select, code, pre, noscript, [contenteditable], " +
+    OURS + ", script, style, textarea, input, select, code, pre, noscript, [contenteditable], " +
     ".game-card-name, .game-name-title, h1.game-name, .cer-card-name, " +
     "a[href*='/games/'], a[href*='/users/'], a[href*='/catalog/'], a[href*='/bundles/'], a[href*='/badges/']";
   // class words that mark user content (split on - _ space and camelCase, so
@@ -98,9 +100,14 @@
     if (m && PHRASE.test(m[1].trim())) document.title = fix(m[1]) + (m[2] ?? "");
   }
 
+  // a CER-owned page has none of Roblox's page left to rename
+  const html = document.documentElement;
+  const owned = () => html.classList.contains("cer-takeover");
+  const ours = (n) => (n.nodeType === Node.ELEMENT_NODE ? n : n.parentElement)?.closest?.(OURS);
+
   function run() {
     if (!settings.features.renameGroups) return;
-    walk(document.body);
+    if (!owned()) walk(document.body);
     fixTitle();
   }
 
@@ -116,11 +123,12 @@
     pending.clear();
   };
   new MutationObserver((muts) => {
-    if (!settings.features.renameGroups) return;
+    if (!settings.features.renameGroups || owned()) return;
     for (const m of muts) {
+      if (ours(m.target)) continue; // inside CER's UI
       if (m.type === "characterData") {
         if (/communit/i.test(m.target.nodeValue)) pending.add(m.target);
-      } else for (const n of m.addedNodes) pending.add(n);
+      } else for (const n of m.addedNodes) if (!(n.nodeType === Node.ELEMENT_NODE && n.matches(OURS))) pending.add(n);
     }
     if (!scheduled && pending.size) {
       scheduled = true;
@@ -135,5 +143,11 @@
     run(); // turning it off takes effect on the next page load
   });
   CER.onNavigate?.(run);
+  // a CER page handing the page back to Roblox: rename what Roblox then shows
+  let wasOwned = owned();
+  new MutationObserver(() => {
+    if (wasOwned === (wasOwned = owned())) return;
+    if (!wasOwned) run();
+  }).observe(html, { attributes: true, attributeFilter: ["class"] });
   run();
 })();
