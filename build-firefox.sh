@@ -6,10 +6,11 @@
 # check host are stripped, so no dev-only code path can run for players.
 set -e
 cd "$(dirname "$0")"
+PY=$(command -v python3 || command -v python)
 rm -rf firefox-build
 cp -r extension firefox-build
 find firefox-build -name .DS_Store -delete
-python3 - <<'PY'
+"$PY" - <<'PY'
 import json
 p = "firefox-build/manifest.json"
 m = json.load(open(p))

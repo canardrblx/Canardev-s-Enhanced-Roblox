@@ -1,0 +1,5 @@
+# Keep LF everywhere so the bash build scripts also run from a Windows checkout
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.zip binary
