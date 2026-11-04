@@ -84,6 +84,9 @@
   gap: 6px 10px;
   min-height: 44px;
   padding: 0 4px 6px 20px;
+  /* never squeeze: when the bulk bar wraps, the head must grow, not spill
+     its buttons over the rows below */
+  flex: none;
 }
 [data-page="messages"] .ms-list-head[hidden] {
   display: none;
@@ -311,6 +314,7 @@
   justify-content: center;
   gap: 10px;
   padding: 10px 0 2px;
+  flex: none;
 }
 [data-page="messages"] .ms-pager:empty {
   display: none;
