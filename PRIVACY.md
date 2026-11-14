@@ -1,80 +1,140 @@
-# Privacy Policy — Canardev's Enhanced Roblox
+# Privacy Policy: Canardev's Enhanced Roblox
 
-Last updated: 2026-11-03
+Last updated: 2026-11-14
 
-Canardev's Enhanced Roblox (CER) is a browser extension that restyles the Roblox
-website. This policy explains exactly what it does with data. The short version:
-everything runs on your own device, and nothing is tracked or sold.
+Canardev's Enhanced Roblox ("CER", "the extension") is a browser extension that
+redesigns the Roblox website. It is made by Canardev (the "developer"). This
+policy covers every version of CER: the Chrome Web Store version, the Firefox
+Add-ons version, and copies loaded from the source code.
 
-## What CER does on your device
+Short version: CER works on your own device. It only talks to Roblox, plus the
+optional feedback box you can choose to use. It has no analytics, no ads and no
+tracking, and it never sells or shares your data.
 
-- CER reads and restyles the pages on roblox.com so they look and work the way
-  the extension designs them.
-- To fill in the redesigned pages (your friends, games, avatar, Robux, and so
-  on) CER calls Roblox's own website APIs using the login you already have in
-  your browser. This is the same data Roblox's own pages show you. It is used
-  only to draw the page in front of you and is not stored or sent anywhere else.
-- Your settings (theme, toggles) and your local playtime totals are saved on your
-  device using the browser's local storage. They never leave your device.
-- Playtime: about once a minute CER asks Roblox (with your login) whether you
-  are in a game, and adds the minutes to your local totals. This request goes
-  only to Roblox, and the totals stay on your device.
-- Preferred-region join: when you choose to join a server in a region, CER asks
-  Roblox's own server list and join service about up to 15 servers to find one
-  in that region. These requests go only to Roblox, only when you start the
-  search, and stop when you cancel it.
+## 1. What user data CER collects
 
-## The one thing that can leave your device
+**Data the developer receives (only if you use the feedback box).**
+CER has an optional feedback box. Nothing is sent unless you type a message and
+press Send. When you do, the developer receives exactly this:
 
-CER has an optional feedback box. If you choose to type a message and press send,
-CER sends one message to the developer's private Discord channel, so the
-developer can read your feedback. It contains exactly:
+| Data | Example |
+|---|---|
+| The kind of feedback you picked | Bug, Idea or Other |
+| Your Roblox username and user id | "builderman (156)", or "unknown user" if signed out |
+| The CER version | 1.31.3 |
+| The text you typed | up to about 1,900 characters |
 
-- the kind you picked (Bug, Idea or Other),
-- your Roblox username and user id (or "unknown user" if you are signed out),
-- the CER version number,
-- the text you typed (up to about 1900 characters).
+Nothing else is attached: no IP address is added by CER, no browsing history,
+no cookies, no device details.
 
-Nothing else is attached, and mentions such as @everyone are switched off. This
-only happens when you press send, at most once every 10 minutes. If you never
-use the feedback box, nothing is ever sent off your device.
+**Data that stays on your device (never sent to the developer).**
+- Your CER settings (theme, switches, pinned games).
+- Your playtime totals: about once a minute CER asks Roblox whether you are in a
+  game and adds the minutes to a total kept on your device.
+- Copies of Roblox page data (for example your recent games, game names and
+  picture links), kept so pages open faster.
 
-Developer copies only: if you load CER yourself from its source code (not from
-a browser store), it also asks GitHub every few hours whether a newer version
-exists. GitHub sees that request (your IP address and browser) like any web
-request. Store versions never make this request.
+**Roblox data shown on the redesigned pages.**
+To draw the new pages, CER loads your Roblox data from Roblox's own website
+(roblox.com), using the Roblox login already in your browser. This includes
+your profile, friends and their online status, groups, games, avatar,
+inventory, messages, trades, transactions and Robux balance, the same things
+Roblox's own pages show you. CER reads this data only to show it to you on the
+page. It is not collected, copied or sent to the developer or anyone else.
 
-## What CER does NOT do
+CER never collects passwords, payment details, email addresses, phone numbers,
+location, or your browsing on any website other than roblox.com.
 
-- No analytics, telemetry, tracking pixels, or advertising.
-- No selling, renting, or sharing of your data with anyone.
-- No collecting of passwords, payment details, or personal information.
-- No reading of pages other than roblox.com.
+## 2. How CER uses the data
 
-## Permissions and why
+- **Feedback:** the developer reads it to fix bugs and improve CER. Your Roblox
+  username lets the developer reply or ask about a bug on Roblox if needed.
+- **Settings and playtime:** used only on your device to run the features you
+  see (your theme, your playtime page).
+- **Roblox data:** used only to draw the page in front of you, and to do the
+  actions you click (for example accepting a friend request or saving an
+  outfit). Those actions are sent to Roblox only, the same as Roblox's own
+  buttons.
 
-- Access to roblox.com: to read and restyle Roblox pages and load your Roblox
-  data (through Roblox's own APIs, with your existing login) so the new pages
-  can be shown.
-- Access to a Discord webhook address: used only to deliver the text you type in
-  the feedback box to the developer. Nothing else is sent to it.
-- Access to api.github.com: only for the developer-copy version check described
-  above. Store versions never use it.
-- Storage: to save your theme, settings, and local playtime on your device.
-- Alarms: to update the local playtime tracker about once a minute.
+CER does not use any data for advertising, profiling, credit checks or any
+purpose unrelated to the features above.
 
-## Children
+## 3. How data is stored and for how long
 
-CER does not knowingly collect personal information from anyone, including
-children. The only information that can be sent is what a user chooses to type
-into the feedback box.
+- **Feedback** is delivered over an encrypted connection (HTTPS) to a private
+  Discord channel that only the developer can read. It is kept there until the
+  developer deletes it, and no longer than 12 months.
+- **Settings and playtime** are kept in your browser's extension storage on
+  your device. They stay until you remove them, uninstall CER, or clear the
+  extension's data.
+- **Page data copies** are kept in your browser (session storage, memory, and
+  for the home page a small list of your recent games in extension storage).
+  They are replaced as soon as fresh data loads, and removed when you uninstall
+  CER or clear its data.
+- CER has no server and no database of its own.
 
-## Changes
+## 4. Who data is shared with
 
-If this policy changes, the "last updated" date above will change and the new
-version will be posted here.
+CER does **not** sell, rent, trade or give your data to anyone.
 
-## Contact
+The only other parties involved are:
 
-For questions about this policy, use the feedback box in the extension or open an
-issue on the project's GitHub page.
+| Party | What it receives | Why |
+|---|---|---|
+| **Roblox Corporation** (roblox.com and its picture and video server rbxcdn.com) | The requests needed to load and change your own Roblox pages, sent with your existing Roblox login | To show the pages and do the actions you click. Roblox's privacy policy applies to Roblox. |
+| **Discord Inc.** (discord.com) | Only a feedback message you chose to send (the fields in section 1) | Discord hosts the developer's private channel where feedback arrives. Discord's privacy policy applies to Discord. |
+| **GitHub Inc.** (api.github.com) | A version check, only in copies loaded from the source code, never in store versions | To tell developers when a newer version exists. GitHub sees the request like any web request (IP address and browser). |
+
+No data is shared with anyone else, and the developer does not give feedback
+messages to anyone.
+
+## 5. Security
+
+All connections CER makes use HTTPS. Feedback messages have mentions (like
+@everyone) switched off and can be sent at most once every 10 minutes.
+
+## 6. Your choices
+
+- **Don't use the feedback box** and nothing about you ever reaches the
+  developer.
+- **Delete your local data** by removing CER or clearing its data in your
+  browser's extension settings.
+- **Ask for your feedback to be deleted:** send a feedback message or open an
+  issue on GitHub with your Roblox username, and the developer will delete your
+  messages within 30 days.
+
+## 7. Children
+
+Many Roblox players are children. CER does not ask for personal information and
+does not knowingly collect it from anyone. The only things that can reach the
+developer are what a user chooses to type into the feedback box, plus their
+Roblox username and id.
+
+## 8. Permissions and why CER needs them
+
+- **roblox.com:** to redesign Roblox pages and load your Roblox data from
+  Roblox's own website, as described above.
+- **discord.com/api/webhooks:** only to deliver a feedback message you chose to
+  send.
+- **api.github.com:** only for the source-code version check. Store versions do
+  not use it.
+- **storage:** to save your settings and playtime on your device.
+- **alarms:** to update the playtime total about once a minute.
+
+## 9. Limited use
+
+CER's use of data is limited to the features described in this policy. Data is
+not transferred to anyone for any other purpose, not used for advertising, not
+used to decide creditworthiness or lending, and not read by people except the
+developer reading feedback you sent.
+
+## 10. Changes
+
+If this policy changes, the "Last updated" date at the top changes and the new
+version is posted at this same address.
+
+## 11. Contact
+
+Canardev, the developer of CER.
+Use the feedback box in the extension, or open an issue at
+https://github.com/canardrblx/Canardev-s-Enhanced-Roblox/issues
