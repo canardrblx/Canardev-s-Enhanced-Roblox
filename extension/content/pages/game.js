@@ -48,6 +48,7 @@
     const g = info?.genre_l1 || (info?.genre && info.genre !== "All" ? info.genre : "");
     return g ? g.replace(/\b\w/g, (c) => c.toUpperCase()) : "";
   };
+  const mediaUrl = (U) => `https://games.roblox.com/v2/games/${U}/media?fetchAllExperienceRelatedMedia=false`;
   const thumbsUrl = (U) => `https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${U}&countPerUniverse=25&defaults=true&size=768x432&format=Webp&isCircular=false`;
   // plain bold title, no icon / count / subtitle
   const section = (title, opts = {}) => ui.section(title, { action: opts.action, tools: opts.tools, class: opts.class });
@@ -156,7 +157,8 @@
 
     const infoP = api.game(U);
     const playP = api.json(`https://games.roblox.com/v1/games/multiget-playability-status?universeIds=${U}`, { ttl: 60000 });
-    api.json(thumbsUrl(U), { ttl: 600000 }).then((j) => live() && stage.setGallery(j, U));
+    const mediaP = api.json(mediaUrl(U), { ttl: 600000 });
+    api.json(thumbsUrl(U), { ttl: 600000 }).then((j) => live() && stage.setGallery(j, U, mediaP));
 
     const info = await infoP;
     if (!live()) return;
@@ -215,6 +217,128 @@
     onCleanup(() => window.removeEventListener("hashchange", onHash));
   }
 
+  // ------------------------------------------------------------ preview video
+  // A game's preview video (media assetType "GamePreviewVideo"). Roblox serves
+  // it as an HLS playlist of standalone WebM pieces (VP9 + Opus) on signed CDN
+  // links, so it plays through MediaSource: every piece is appended in turn.
+  // Loads only when its slide is first shown. Starts muted.
+  // previewVideo(videoId, poster, { ended, failed }) ->
+  //   { video, play(user), pause(), replay(), busy(), dispose() }
+  function previewVideo(videoId, poster, on = {}) {
+    const video = h("video", { class: "gx-video", poster, playsinline: "", preload: "none", disablepictureinpicture: "" });
+    video.muted = true;
+    video.defaultMuted = true;
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let dead = false;
+    let loading = null;
+    let broke = false;
+    let wanted = false;
+    const fail = () => {
+      if (dead || broke) return;
+      broke = true;
+      on.failed?.();
+    };
+    video.addEventListener("error", fail);
+    video.addEventListener("ended", () => !dead && on.ended?.());
+
+    const text = async (url) => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(String(r.status));
+      return r.text();
+    };
+    // the playlists name their signed-link values ({$Policy} ...) and take
+    // them from their own link's query, as given (already encoded)
+    const vars = (url) => Object.fromEntries(new URL(url).search.slice(1).split("&").filter(Boolean).map((p) => [p.slice(0, p.indexOf("=")), p.slice(p.indexOf("=") + 1)]));
+    const sub = (line, v) => line.replace(/\{\$([^}]+)\}/g, (_, k) => v[k] ?? "");
+    const uris = (txt, base) => {
+      const v = vars(base);
+      return txt.split(/\r?\n/).filter((l) => l && !l.startsWith("#")).map((l) => new URL(sub(l, v), base).href);
+    };
+
+    async function load() {
+      const rep = encodeURIComponent(btoa(JSON.stringify([{ format: "hls", majorVersion: "1", fidelity: "main" }])));
+      const a = await api.json(`https://assetdelivery.roblox.com/v2/assetId/${videoId}?ContentRepresentationPriorityList=${rep}`, { tries: 2 });
+      const master = a?.locations?.[0]?.location;
+      if (!master) throw new Error("no video");
+      // pick a size: 720p on big screens, 360p on small ones
+      const mtxt = await text(master);
+      const v = vars(master);
+      const lines = mtxt.split(/\r?\n/);
+      const streams = [];
+      lines.forEach((l, i) => {
+        if (!l.startsWith("#EXT-X-STREAM-INF:")) return;
+        const uri = lines.slice(i + 1).find((x) => x && !x.startsWith("#"));
+        const height = Number(/RESOLUTION=\d+x(\d+)/.exec(l)?.[1] ?? 0);
+        const codecs = /CODECS="([^"]+)"/.exec(l)?.[1] ?? "vp9,opus";
+        if (uri) streams.push({ uri: new URL(sub(uri, v), master).href, height, codecs });
+      });
+      if (!streams.length) throw new Error("no streams");
+      const want = innerWidth >= 700 ? 720 : 360;
+      streams.sort((x, y) => x.height - y.height);
+      const s = streams.find((x) => x.height >= want) ?? streams[streams.length - 1];
+      const mime = `video/webm; codecs="${s.codecs}"`;
+      if (!MediaSource.isTypeSupported(mime)) throw new Error("codec");
+      const segs = uris(await text(s.uri), s.uri);
+      if (!segs.length || dead) throw new Error("empty");
+
+      const ms = new MediaSource();
+      const src = URL.createObjectURL(ms);
+      video.src = src;
+      await new Promise((r) => ms.addEventListener("sourceopen", r, { once: true }));
+      URL.revokeObjectURL(src);
+      if (dead) return;
+      const sb = ms.addSourceBuffer(mime);
+      sb.mode = "sequence"; // each piece starts at 0: play them one after another
+      const append = (buf) =>
+        new Promise((res, rej) => {
+          sb.addEventListener("updateend", res, { once: true });
+          sb.addEventListener("error", rej, { once: true });
+          sb.appendBuffer(buf);
+        });
+      const get = (u) => fetch(u).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))));
+      let nextP = get(segs[0]);
+      for (let i = 0; i < segs.length; i++) {
+        const buf = await nextP;
+        if (i + 1 < segs.length) nextP = get(segs[i + 1]);
+        if (dead) return;
+        await append(buf);
+        if (i === 0 && wanted) video.play().catch(() => {});
+      }
+      if (!dead && ms.readyState === "open") ms.endOfStream();
+    }
+
+    return {
+      video,
+      play(user) {
+        if (dead || broke) return;
+        if (still && !user && !loading) return; // reduced motion: wait for a tap
+        wanted = true;
+        if (!loading)
+          loading = load().catch(() => {
+            // half a video still plays; nothing at all falls back to pictures
+            if (!video.buffered.length) fail();
+          });
+        if (video.readyState >= 2) video.play().catch(() => {});
+      },
+      pause() {
+        wanted = false;
+        video.pause();
+      },
+      replay() {
+        video.currentTime = 0;
+        video.play().catch(() => {});
+      },
+      busy: () => wanted && !broke && !video.ended,
+      dispose() {
+        dead = true;
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      },
+    };
+  }
+  previewVideo.supported = () => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported('video/webm; codecs="vp9"');
+
   // ------------------------------------------------------------ stage (hero)
   // The art is the hero: the game's pictures fill the stage, slowly
   // crossfading. Title, Play and the quiet buttons sit on the art.
@@ -268,27 +392,47 @@
     const el = h("section", { class: "gx-hero" }, ambient, stageEl);
 
     // ---- gallery ----
-    let urls = [];
+    // items: { url } pictures, plus { url (poster), video } for a preview video
+    let items = [];
     let idx = 0;
     let timer = null;
+    let player = null;
+    const sound = h("button", { type: "button", class: "gx-sound", hidden: true }, ui.icon("soundOff", 20));
+    const setSound = () => {
+      const on = !!player && !player.video.muted;
+      sound.replaceChildren(ui.icon(on ? "soundOn" : "soundOff", 20));
+      sound.title = on ? "Sound off" : "Sound on";
+      sound.setAttribute("aria-label", sound.title);
+    };
+    sound.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!player) return;
+      player.video.muted = !player.video.muted;
+      setSound();
+      player.play(true);
+    });
+    const isVideo = (k) => !!items[k]?.video;
     const go = (i, user) => {
-      if (!urls.length) return;
-      idx = (i + urls.length) % urls.length;
+      if (!items.length) return;
+      idx = (i + items.length) % items.length;
       [...slides.children].forEach((s, k) => s.classList.toggle("is-on", k === idx));
       [...strip.children].forEach((s, k) => s.classList.toggle("is-on", k === idx));
-      for (const k of [idx, (idx + 1) % urls.length]) {
+      for (const k of [idx, (idx + 1) % items.length]) {
         const img = slides.children[k]?.querySelector("img");
         if (img && !img.src) img.src = img.dataset.src; // next one loads early, no blank swap
       }
-      ambient.style.backgroundImage = `url("${String(urls[idx]).replace(/"/g, "")}")`;
+      ambient.style.backgroundImage = `url("${String(items[idx].url ?? "").replace(/"/g, "")}")`;
+      sound.hidden = !isVideo(idx);
+      if (player) isVideo(idx) ? player.play(user) : player.pause();
       if (user) restart();
     };
     const restart = () => {
       clearInterval(timer);
-      if (urls.length > 1 && !matchMedia("(prefers-reduced-motion: reduce)").matches)
+      if (items.length > 1 && !matchMedia("(prefers-reduced-motion: reduce)").matches)
         timer = setInterval(() => {
           if (!el.isConnected) return clearInterval(timer); // page left
-          if (!document.hidden && !stageEl.matches(":hover")) go(idx + 1);
+          // the video moves on by itself when it ends
+          if (!document.hidden && !stageEl.matches(":hover") && !(isVideo(idx) && player?.busy())) go(idx + 1);
         }, 7000);
     };
     prev.addEventListener("click", () => go(idx - 1, true));
@@ -304,35 +448,74 @@
       if (sx != null && Math.abs(e.clientX - sx) > 40) go(idx + (e.clientX < sx ? 1 : -1), true);
       sx = null;
     });
-    onCleanup(() => clearInterval(timer));
+    onCleanup(() => {
+      clearInterval(timer);
+      player?.dispose();
+    });
+
+    const render = () => {
+      slides.replaceChildren(
+        ...items.map((it, i) => {
+          if (it.video) return h("div", { class: "gx-slide is-video" }, player.video);
+          const img = h("img", { alt: "", draggable: "false", decoding: "async", "data-src": it.url });
+          img.addEventListener("load", () => img.classList.add("is-in"), { once: true });
+          if (i === 0) img.src = it.url;
+          return h("div", { class: "gx-slide" }, img);
+        })
+      );
+      stageEl.classList.toggle("is-single", items.length < 2);
+      strip.replaceChildren(
+        ...(items.length > 1
+          ? items.map((it, i) =>
+              h(
+                "button",
+                { type: "button", class: "gx-thumb" + (it.video ? " is-video" : ""), "aria-label": it.video ? "Video" : "Picture " + (i + 1), onClick: () => go(i, true) },
+                h("img", { src: it.url, alt: "", loading: "lazy", draggable: "false" }),
+                it.video && h("span", { class: "gx-thumb-play" }, ui.icon("play", 14))
+              )
+            )
+          : [])
+      );
+    };
 
     return {
       el,
-      async setGallery(j, U) {
+      async setGallery(j, U, mediaP) {
         const pick = (r) => (r?.data?.[0]?.thumbnails ?? []).filter((t) => t.state === "Completed" && t.imageUrl).map((t) => t.imageUrl);
         let list = pick(j);
         if (!list.length && j?.data?.[0]?.thumbnails?.some((t) => t.state === "Pending")) {
           await api.sleep(1500); // fresh upload still rendering: one quiet retry
           list = pick(await api.json(thumbsUrl(U)));
         }
-        urls = [...new Set(list)];
+        const urls = [...new Set(list)];
+        // a preview video goes first, over the first picture
+        const media = await Promise.resolve(mediaP).catch(() => null);
+        if (!el.isConnected) return;
+        const vid = (media?.data ?? []).find((m) => m.assetType === "GamePreviewVideo" && m.approved !== false);
+        const videoId = vid?.videoId ?? null;
+        items = urls.map((url) => ({ url }));
+        if (videoId && urls.length && previewVideo.supported()) {
+          player = previewVideo(videoId, urls[0], {
+            ended: () => (items.length > 1 && !stageEl.matches(":hover") ? go(idx + 1) : player.replay()),
+            // could not play: carry on with the pictures only
+            failed: () => {
+              if (!player) return;
+              const wasOn = isVideo(idx);
+              player.dispose();
+              player = null;
+              items = items.filter((it) => !it.video);
+              render();
+              go(wasOn ? 0 : Math.max(0, idx - 1));
+              restart();
+            },
+          });
+          items.unshift({ url: urls[0], video: videoId });
+          stageEl.append(sound);
+          setSound();
+        }
         stageEl.classList.remove("is-loading");
-        if (!urls.length) return stageEl.classList.add("is-empty");
-        slides.replaceChildren(
-          ...urls.map((u, i) => {
-            const img = h("img", { alt: "", draggable: "false", decoding: "async", "data-src": u });
-            img.addEventListener("load", () => img.classList.add("is-in"), { once: true });
-            if (i === 0) img.src = u;
-            return h("div", { class: "gx-slide" }, img);
-          })
-        );
-        stageEl.classList.toggle("is-single", urls.length < 2);
-        if (urls.length > 1)
-          strip.replaceChildren(
-            ...urls.map((u, i) =>
-              h("button", { type: "button", class: "gx-thumb", "aria-label": "Picture " + (i + 1), onClick: () => go(i, true) }, h("img", { src: u, alt: "", loading: "lazy", draggable: "false" }))
-            )
-          );
+        if (!items.length) return stageEl.classList.add("is-empty");
+        render();
         go(0);
         restart();
       },

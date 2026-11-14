@@ -21,6 +21,8 @@
   const CACHE_KEY = "cerHomeCache"; // { uid, t, cont: [game], heroImg }
   const MAX_PINS = 40;
   const MAX_FRIENDS = 40;
+  // Canard's new game sits first in Recommended until this time (UTC)
+  const PROMO = { universeId: 10775004970, placeId: 98674738681437, until: Date.UTC(2026, 10, 28) };
 
   let gen = 0; // bumps on every (re)start; stale async work checks it
   let refreshTimer = null;
@@ -145,6 +147,10 @@
   function card(g, opts = {}) {
     const c = ui.gameCard(g, { features: feats, ...opts });
     if (g.universeId) c.querySelector(".cer-gc-media")?.append(pinButton(g));
+    if (g.promo) {
+      c.classList.add("is-promo");
+      c.querySelector(".cer-gc-media")?.append(h("span", { class: "home-promo", text: "Canard's new cool game" }));
+    }
     return c;
   }
 
@@ -408,6 +414,14 @@
     ui.whenVisible(sec, run);
   }
 
+  // Canard's new game first (until PROMO.until), never twice in the rail
+  async function withPromo(games) {
+    if (Date.now() >= PROMO.until) return games;
+    const [p] = await fill([{ universeId: PROMO.universeId, placeId: PROMO.placeId }]);
+    if (!p) return games;
+    return [{ ...p, promo: true }, ...games.filter((g) => String(g.universeId) !== String(PROMO.universeId))];
+  }
+
   async function loadFavorites(uid) {
     const j = await api.json(`https://games.roblox.com/v2/users/${uid}/favorite/games?limit=50&sortOrder=Desc`, { ttl: 120000 });
     if (!j) return null;
@@ -534,8 +548,9 @@
       if (!sorts) return null;
       const rec = recSort(sorts);
       // the hero fallback already shows the first pick
-      const games = rec ? await fill(rec.games.slice(0, 30)) : [];
-      return S.heroPick ? games.filter((g) => String(g.universeId) !== String(S.heroGame.universeId)) : games;
+      let games = rec ? await fill(rec.games.slice(0, 30)) : [];
+      if (S.heroPick) games = games.filter((g) => String(g.universeId) !== String(S.heroGame.universeId));
+      return withPromo(games);
     });
   }
 

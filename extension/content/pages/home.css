@@ -281,3 +281,22 @@
   width: 60px !important;
   height: 12px;
 }
+
+/* Canard's own new game, first in Recommended for a while */
+[data-page="home"] .home-promo {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--cer-acc);
+  color: var(--cer-acc-ink);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
